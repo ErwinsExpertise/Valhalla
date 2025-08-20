@@ -272,6 +272,10 @@ func (ctrl *npcChatPlayerController) SetSkinColor(skin byte) {
 	ctrl.plr.setSkinColor(skin)
 }
 
+func (ctrl *npcChatPlayerController) MapId() int32 {
+	return ctrl.plr.mapID
+}
+
 type npcChatController struct {
 	npcID int32
 	conn  mnet.Client

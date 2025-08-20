@@ -1,0 +1,3 @@
+npc.sendOk("這裡是獎勵之地，請打破箱子獲取意外的禮物。")
+
+// Generate by kimi-k2-instruct
