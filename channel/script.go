@@ -216,6 +216,10 @@ func (ctrl *npcChatPlayerController) GiveMesos(amount int32) {
 	ctrl.plr.giveMesos(amount)
 }
 
+func (ctrl *npcChatPlayerController) TakeMesos(amount int32) {
+	ctrl.plr.takeMesos(amount)
+}
+
 func (ctrl *npcChatPlayerController) GiveItem(id int32, amount int16) bool {
 	item, err := createItemFromID(id, amount)
 
@@ -240,6 +244,32 @@ func (ctrl *npcChatPlayerController) SetJob(id int16) {
 
 func (ctrl *npcChatPlayerController) Level() byte {
 	return ctrl.plr.level
+}
+
+func (ctrl *npcChatPlayerController) SetLevel(level byte) {
+	ctrl.plr.setLevel(level)
+}
+
+func (ctrl *npcChatPlayerController) TakeItem(id int32, amount int16) bool {
+	item, err := ctrl.plr.takeItemAnySlot(id, amount)
+	if err != nil {
+		return false
+	}
+
+	_, err = ctrl.plr.takeItem(item.id, item.slotID, item.amount, item.invID)
+	if err != nil {
+		return false
+	}
+
+	return true
+}
+
+func (ctrl *npcChatPlayerController) HasEquipped(id int32) bool {
+	return ctrl.plr.hasEquipped(id)
+}
+
+func (ctrl *npcChatPlayerController) SetSkinColor(skin byte) {
+	ctrl.plr.setSkinColor(skin)
 }
 
 type npcChatController struct {

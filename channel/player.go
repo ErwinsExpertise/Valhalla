@@ -1106,6 +1106,15 @@ func (d *player) itemQuantity(id int32) int32 {
 	return total
 }
 
+func (d *player) hasEquipped(itemID int32) bool {
+	for i := range d.equip {
+		if d.equip[i].slotID < 0 && d.equip[i].id == itemID && d.equip[i].amount != 0 {
+			return true
+		}
+	}
+	return false
+}
+
 func (d *player) updateSkill(updatedSkill playerSkill) {
 	d.skills[updatedSkill.ID] = updatedSkill
 	d.send(packetPlayerSkillBookUpdate(updatedSkill.ID, int32(updatedSkill.Level)))
