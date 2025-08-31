@@ -64,7 +64,7 @@ func (server *Server) HandleClientPacket(conn mnet.Client, reader mpacket.Reader
 		// This opcode is used for revival UI as well.
 		server.playerUsePortal(conn, reader)
 	case opcode.RecvChannelEnterCashShop:
-		conn.Send(packetMessageDialogueBox("Shop not implemented"))
+		server.playerEnterCashShop(conn, reader)
 	case opcode.RecvChannelPlayerMovement:
 		server.playerMovement(conn, reader)
 	case opcode.RecvChannelPlayerStand:
@@ -666,6 +666,45 @@ func validateSkillWithJob(jobID int16, baseSkillID int32) bool {
 	}
 
 	return true
+}
+
+func (server Server) playerEnterCashShop(conn mnet.Client, reader mpacket.Reader) {
+	plr, err := server.players.getFromConn(conn)
+	if err != nil {
+		return
+	}
+
+	if plr.summons != nil {
+		if field, ok := server.fields[plr.mapID]; ok && field != nil {
+			if inst, e := field.getInstance(plr.inst.id); e == nil && inst != nil {
+				if plr.summons.puppet != nil {
+					inst.send(packetRemoveSummon(plr.id, plr.summons.puppet.SkillID, constant.SummonRemoveReasonCancel))
+				}
+				if plr.summons.summon != nil {
+					inst.send(packetRemoveSummon(plr.id, plr.summons.summon.SkillID, constant.SummonRemoveReasonCancel))
+				}
+			}
+		}
+		plr.summons.puppet = nil
+		plr.summons.summon = nil
+	}
+	plr.saveBuffSnapshot()
+
+	if field, ok := server.fields[plr.mapID]; ok && field != nil {
+		if inst, e := field.getInstance(plr.inst.id); e == nil && inst != nil {
+			_ = inst.removePlayer(plr)
+		}
+	}
+
+	plr.send(packetCashShopSet(plr, "admin"))
+
+	nxCredit := int32(10000)
+	maplePoints := int32(10000)
+	plr.send(packetCashShopUpdateAmounts(nxCredit, maplePoints))
+	plr.send(packetCashShopWishList(nil, true))
+
+	// Persist character after state handoff
+	_ = plr.save()
 }
 
 func (server Server) playerUsePortal(conn mnet.Client, reader mpacket.Reader) {
