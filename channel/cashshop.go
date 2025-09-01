@@ -10,10 +10,11 @@ import (
 func packetCashShopSet(plr *player, accountName string) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelSetCashShop)
 
-	// Flags: Stats|Money|Equips|Consume|Install|Etc|Pet|Skills
-	p.WriteInt16(0x00FF)
+	// CharacterData flags: Stats|Money|MaxSlots|Items (no Skills/Quests)
+	// 0x01 | 0x02 | 0x80 | (0x04|0x08|0x10|0x20|0x40) = 0x00BF
+	p.WriteInt16(0x00BF)
 
-	// Stats (exactly like login)
+	// Stats (same layout as working enter-game packet)
 	p.WriteInt32(plr.id)
 	p.WritePaddedString(plr.name, 13)
 	p.WriteByte(plr.gender)
@@ -40,30 +41,51 @@ func packetCashShopSet(plr *player, accountName string) mpacket.Packet {
 	p.WriteInt32(plr.mapID)
 	p.WriteByte(plr.mapPos)
 
-	// No extra fields here. Buddy size comes next (like login).
+	// Buddy capacity
 	p.WriteByte(plr.buddyListSize)
 
-	// Inventory
+	// Mesos
 	p.WriteInt32(plr.mesos)
 
-	// Equipped (negative slots), non-cash then cash
-	for _, it := range sortEquipped(plr.equip, false) {
-		p.WriteBytes(it.inventoryBytes())
+	// Max slots (ensure sane non-zero defaults)
+	if plr.equipSlotSize == 0 {
+		plr.equipSlotSize = 24
 	}
-	p.WriteByte(0)
-
-	for _, it := range sortEquipped(plr.equip, true) {
-		p.WriteBytes(it.inventoryBytes())
+	if plr.useSlotSize == 0 {
+		plr.useSlotSize = 24
 	}
-	p.WriteByte(0)
+	if plr.setupSlotSize == 0 {
+		plr.setupSlotSize = 24
+	}
+	if plr.etcSlotSize == 0 {
+		plr.etcSlotSize = 24
+	}
+	if plr.cashSlotSize == 0 {
+		plr.cashSlotSize = 24
+	}
+	p.WriteByte(plr.equipSlotSize)
+	p.WriteByte(plr.useSlotSize)
+	p.WriteByte(plr.setupSlotSize)
+	p.WriteByte(plr.etcSlotSize)
+	p.WriteByte(plr.cashSlotSize)
 
-	// Per-tab writer: MaxSlots byte, then items (slotID > 0 sorted), then 0
-	writeTab := func(capacity byte, items []item) {
-		if capacity == 0 {
-			// Defensive: most clients expect non-zero; use a sane default if DB holds 0
-			capacity = 24
+	// Equipped items (non-cash then cash) — use inventoryBytes() to match enter-game
+	for _, it := range plr.equip {
+		if it.slotID < 0 && !it.cash {
+			p.WriteBytes(it.inventoryBytes())
 		}
-		p.WriteByte(capacity)
+	}
+	p.WriteByte(0)
+	for _, it := range plr.equip {
+		if it.slotID < 0 && it.cash {
+			p.WriteBytes(it.inventoryBytes())
+		}
+	}
+	p.WriteByte(0)
+
+	// Inventory tabs (same as enter-game)
+	writeInv := func(items []item) {
+		// Keep order consistent by slotID ascending for >0 slots
 		cp := make([]item, 0, len(items))
 		for _, it := range items {
 			if it.slotID > 0 {
@@ -76,103 +98,46 @@ func packetCashShopSet(plr *player, accountName string) mpacket.Packet {
 		}
 		p.WriteByte(0)
 	}
+	writeInv(plr.equip)
+	writeInv(plr.use)
+	writeInv(plr.setUp)
+	writeInv(plr.etc)
+	writeInv(plr.cash)
 
-	// Equip (inventory), Use, Setup, Etc, Cash
-	writeTab(plr.equipSlotSize, plr.equip)
-	writeTab(plr.useSlotSize, plr.use)
-	writeTab(plr.setupSlotSize, plr.setUp)
-	writeTab(plr.etcSlotSize, plr.etc)
-	writeTab(plr.cashSlotSize, plr.cash)
+	// Do NOT append skills/quests here; flags didn’t include them.
 
-	// Skills: count + (skillID, level) — no cooldown list in CS packet
-	p.WriteInt16(int16(len(plr.skills)))
-	for _, sk := range plr.skills {
-		p.WriteInt32(sk.ID)
-		p.WriteInt32(int32(sk.Level))
-	}
-
-	// Footer
-	p.WriteBool(true)
-	p.WriteString(accountName)
-
-	// Wishlist (0)
+	// Cash shop tail (v28 style from your first reference):
+	// 1) Optional custom commodity list (empty)
 	p.WriteInt16(0)
 
-	// BEST items + stock states + trailing longs
-	writeCSTopItemsAndStock(&p, nil, nil)
+	// 2) Bool + AccountName (enable username display)
+	p.WriteBool(false)
+	p.WriteString(accountName)
 
-	return p
-}
+	// 3) Wishlist (short count)
+	p.WriteInt16(0)
 
-func sortEquipped(items []item, cash bool) []item {
-	cp := make([]item, 0, len(items))
-	for _, it := range items {
-		if it.slotID < 0 && it.cash == cash {
-			cp = append(cp, it)
-		}
-	}
-	sort.Slice(cp, func(i, j int) bool {
-		a, b := cp[i].slotID, cp[j].slotID
-		if a < 0 {
-			a = -a
-		}
-		if b < 0 {
-			b = -b
-		}
-		return a < b
-	})
-	return cp
-}
-
-// writeCSTopItemsAndStock writes:
-//   - BEST items: for categories 1..8 and genders 0..1, 5 top items each.
-//     Layout per entry: int category, int gender, int sn
-//   - Custom stock states: ushort count + [int sn, int stockState]*
-//   - 9 trailing long(0)
-type bestItemKey struct {
-	category byte
-	gender   byte
-	index    byte
-}
-
-// bestItems may provide SNs mapped by (category, gender, index 0..4). If nil, writes zeros.
-// stockStates is an optional slice of (sn, state). If nil, writes zero count.
-func writeCSTopItemsAndStock(p *mpacket.Packet, bestItems map[bestItemKey]int32, stockStates []struct {
-	sn    int32
-	state int32
-}) {
-	// BEST items
+	// 4) Categories BEST items: category, gender, SN per entry.
+	//    If you don’t have SNs, write 0.
 	for cat := byte(1); cat <= 8; cat++ {
-		for gen := byte(0); gen <= 1; gen++ {
-			for idx := byte(0); idx < 5; idx++ {
-				p.WriteInt32(int32(cat)) // category
-				p.WriteInt32(int32(gen)) // gender
-				sn := int32(0)
-				if bestItems != nil {
-					if v, ok := bestItems[bestItemKey{category: cat, gender: gen, index: idx}]; ok {
-						sn = v
-					}
-				}
-				p.WriteInt32(sn) // SN (0 if none)
+		for gender := byte(0); gender <= 1; gender++ {
+			for i := 0; i < 5; i++ {
+				p.WriteInt32(int32(cat))    // category
+				p.WriteInt32(int32(gender)) // gender
+				p.WriteInt32(0)             // SN (none)
 			}
 		}
 	}
 
-	// Custom stock states
-	if stockStates == nil {
-		p.WriteInt16(0) // count
-	} else {
-		p.WriteInt16(int16(len(stockStates)))
-		for _, s := range stockStates {
-			p.WriteInt32(s.sn)
-			p.WriteInt32(s.state)
-		}
+	// 5) 120 padding bytes seen in v28 references
+	for i := 0; i < 120; i++ {
+		p.WriteByte(0)
 	}
 
-	// 9 trailing longs
-	for i := 0; i < 9; i++ {
-		p.WriteInt64(0)
-	}
+	// 6) Custom stock states (empty)
+	p.WriteInt16(0)
+
+	return p
 }
 
 // packetCashShopUpdateAmounts mirrors "sendCash" (CS_CASH): writes the player's credit balances.
