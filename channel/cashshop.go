@@ -5,16 +5,16 @@ import (
 
 	"github.com/Hucaru/Valhalla/common/opcode"
 	"github.com/Hucaru/Valhalla/mpacket"
+	"github.com/Hucaru/Valhalla/nx"
 )
 
 func packetCashShopSet(plr *player, accountName string) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelSetCashShop)
 
-	// CharacterData flags: Stats|Money|MaxSlots|Items (no Skills/Quests)
-	// 0x01 | 0x02 | 0x80 | (0x04|0x08|0x10|0x20|0x40) = 0x00BF
+	// CharacterDataFlag: Stats|Money|MaxSlots|Items
 	p.WriteInt16(0x00BF)
 
-	// Stats (same layout as working enter-game packet)
+	// Stats
 	p.WriteInt32(plr.id)
 	p.WritePaddedString(plr.name, 13)
 	p.WriteByte(plr.gender)
@@ -41,13 +41,16 @@ func packetCashShopSet(plr *player, accountName string) mpacket.Packet {
 	p.WriteInt32(plr.mapID)
 	p.WriteByte(plr.mapPos)
 
-	// Buddy capacity
+	// p.WriteReversedInt64(time.Now().UnixMilli())
+	// p.WriteInt32(0)
+	//  p.WriteInt32(0)
+
+	// Buddy list size
 	p.WriteByte(plr.buddyListSize)
 
-	// Mesos
+	// Money
 	p.WriteInt32(plr.mesos)
 
-	// Max slots (ensure sane non-zero defaults)
 	if plr.equipSlotSize == 0 {
 		plr.equipSlotSize = 24
 	}
@@ -63,13 +66,14 @@ func packetCashShopSet(plr *player, accountName string) mpacket.Packet {
 	if plr.cashSlotSize == 0 {
 		plr.cashSlotSize = 24
 	}
+
 	p.WriteByte(plr.equipSlotSize)
 	p.WriteByte(plr.useSlotSize)
 	p.WriteByte(plr.setupSlotSize)
 	p.WriteByte(plr.etcSlotSize)
 	p.WriteByte(plr.cashSlotSize)
 
-	// Equipped items (non-cash then cash) — use inventoryBytes() to match enter-game
+	// Equipped (normal then cash)
 	for _, it := range plr.equip {
 		if it.slotID < 0 && !it.cash {
 			p.WriteBytes(it.inventoryBytes())
@@ -83,9 +87,8 @@ func packetCashShopSet(plr *player, accountName string) mpacket.Packet {
 	}
 	p.WriteByte(0)
 
-	// Inventory tabs (same as enter-game)
+	// Inventory tabs
 	writeInv := func(items []item) {
-		// Keep order consistent by slotID ascending for >0 slots
 		cp := make([]item, 0, len(items))
 		for _, it := range items {
 			if it.slotID > 0 {
@@ -104,44 +107,38 @@ func packetCashShopSet(plr *player, accountName string) mpacket.Packet {
 	writeInv(plr.etc)
 	writeInv(plr.cash)
 
-	// Do NOT append skills/quests here; flags didn’t include them.
+	// p.WriteInt16(0) // Minigames?
+	// p.WriteInt16(0) // Rings?
+	// p.WriteInt16(0) // Rocks?
 
-	// Cash shop tail (v28 style from your first reference):
-	// 1) Optional custom commodity list (empty)
-	p.WriteInt16(0)
+	p.WriteUnicodeString(accountName)
 
-	// 2) Bool + AccountName (enable username display)
-	p.WriteBool(false)
-	p.WriteString(accountName)
+	/*
+		Wishlist example
+		p.WriteByte(2)
+		p.WriteInt32(item-id-1)
+		p.WriteInt32(item-id-2)
+	*/
+	p.WriteByte(0) // Wishlist
 
-	// 3) Wishlist (short count)
-	p.WriteInt16(0)
-
-	// 4) Categories BEST items: category, gender, SN per entry.
-	//    If you don’t have SNs, write 0.
-	for cat := byte(1); cat <= 8; cat++ {
-		for gender := byte(0); gender <= 1; gender++ {
-			for i := 0; i < 5; i++ {
-				p.WriteInt32(int32(cat))    // category
-				p.WriteInt32(int32(gender)) // gender
-				p.WriteInt32(0)             // SN (none)
-			}
-		}
-	}
-
-	// 5) 120 padding bytes seen in v28 references
+	// 120 bytes padding
 	for i := 0; i < 120; i++ {
-		p.WriteByte(0)
+		p.WriteInt64(0)
 	}
 
-	// 6) Custom stock states (empty)
-	p.WriteInt16(0)
+	p.WriteByte(0)
+
+	// Stock states block: send every commodity's current state
+	comms := nx.GetCommodities()
+	p.WriteInt16(int16(len(comms)))
+	for sn, c := range comms {
+		p.WriteInt32(sn)
+		p.WriteInt32(c.StockState)
+	}
 
 	return p
 }
 
-// packetCashShopUpdateAmounts mirrors "sendCash" (CS_CASH): writes the player's credit balances.
-// nxCredit: e.g., PayPal/PayByCash NX. maplePoints: Maple Points.
 func packetCashShopUpdateAmounts(nxCredit, maplePoints int32) mpacket.Packet {
 	p := mpacket.CreateWithOpcode16(opcode.SendChannelCSUpdateAmounts)
 	p.WriteInt32(nxCredit)
@@ -149,8 +146,6 @@ func packetCashShopUpdateAmounts(nxCredit, maplePoints int32) mpacket.Packet {
 	return p
 }
 
-// packetCashShopShowBoughtItem mirrors "showBoughtCSItem" (CS_OPERATION sub-op).
-// This is a best-effort structure aligned to your Java reference.
 func packetCashShopShowBoughtItem(charID int32, cashItemSNHash int64, itemID int32, count int16, itemName string) mpacket.Packet {
 	p := mpacket.CreateWithOpcode16(opcode.SendChannelCSAction)
 	// Cash unique ID (hash-like), then player id
@@ -203,9 +198,6 @@ func packetCashShopShowCouponRedeemedItem(itemID int32) mpacket.Packet {
 	return p
 }
 
-// packetCashShopSendCSItemInventory mirrors "sendCSItemInventory" with a simplified payload.
-// Note: protocol differences between versions exist; this sub-op 0x2F + an item payload
-// is sufficient for many v62-like clients to select the tab and show the item in normal inventory.
 func packetCashShopSendCSItemInventory(slotType byte, it item) mpacket.Packet {
 	p := mpacket.CreateWithOpcode16(opcode.SendChannelCSAction)
 	p.WriteByte(0x2F)
