@@ -2,6 +2,7 @@ package channel
 
 import (
 	"sort"
+	"time"
 
 	"github.com/Hucaru/Valhalla/common/opcode"
 	"github.com/Hucaru/Valhalla/mpacket"
@@ -11,8 +12,7 @@ import (
 func packetCashShopSet(plr *player, accountName string) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelSetCashShop)
 
-	// CharacterDataFlag: Stats|Money|MaxSlots|Items
-	p.WriteInt16(0x00BF)
+	p.WriteInt16(-1)
 
 	// Stats
 	p.WriteInt32(plr.id)
@@ -41,11 +41,7 @@ func packetCashShopSet(plr *player, accountName string) mpacket.Packet {
 	p.WriteInt32(plr.mapID)
 	p.WriteByte(plr.mapPos)
 
-	// p.WriteReversedInt64(time.Now().UnixMilli())
-	// p.WriteInt32(0)
-	//  p.WriteInt32(0)
-
-	// Buddy list size
+	// Buddy list size (GW_CharacterStat tail)
 	p.WriteByte(plr.buddyListSize)
 
 	// Money
@@ -107,26 +103,54 @@ func packetCashShopSet(plr *player, accountName string) mpacket.Packet {
 	writeInv(plr.etc)
 	writeInv(plr.cash)
 
-	// p.WriteInt16(0) // Minigames?
-	// p.WriteInt16(0) // Rings?
-	// p.WriteInt16(0) // Rocks?
+	// Skills
+	p.WriteInt16(int16(len(plr.skills))) // number of skills
 
-	p.WriteUnicodeString(accountName)
+	skillCooldowns := make(map[int32]int16)
 
-	/*
-		Wishlist example
-		p.WriteByte(2)
-		p.WriteInt32(item-id-1)
-		p.WriteInt32(item-id-2)
-	*/
-	p.WriteByte(0) // Wishlist
+	for _, skill := range plr.skills {
+		p.WriteInt32(skill.ID)
+		p.WriteInt32(int32(skill.Level))
 
-	// 120 bytes padding
-	for i := 0; i < 120; i++ {
-		p.WriteInt64(0)
+		if skill.Cooldown > 0 {
+			skillCooldowns[skill.ID] = skill.Cooldown
+		}
 	}
 
-	p.WriteByte(0)
+	p.WriteInt16(int16(len(skillCooldowns))) // number of cooldowns
+
+	for id, cooldown := range skillCooldowns {
+		p.WriteInt32(id)
+		p.WriteInt16(cooldown)
+	}
+
+	// Quests
+	writeActiveQuests(&p, plr.quests.inProgressList())
+	writeCompletedQuests(&p, plr.quests.completedList())
+
+	p.WriteInt32(0)
+	p.WriteInt32(0)
+	p.WriteInt32(0)
+	p.WriteInt32(0)
+	p.WriteInt32(0)
+	p.WriteInt32(0)
+	p.WriteInt32(0)
+	p.WriteInt32(0)
+	p.WriteInt32(0)
+	p.WriteInt32(0)
+	p.WriteInt32(0)
+	p.WriteInt32(0)
+	p.WriteInt32(0)
+	p.WriteInt32(0)
+	p.WriteInt64(time.Now().Unix())
+
+	// IMPORTANT: CCashShop::CCashShop reads this byte immediately after CharacterData::Decode.
+	// So write auth AFTER all CharacterData content above and BEFORE any Cash Shop extra blocks below.
+	p.WriteByte(1)
+	p.WriteString(accountName)
+
+	// B: CCashShop::CCashShop reads another byte right after sub_440D14
+	p.WriteInt16(0)
 
 	// Stock states block: send every commodity's current state
 	comms := nx.GetCommodities()
