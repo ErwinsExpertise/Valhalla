@@ -132,6 +132,7 @@ type player struct {
 	chairID int32
 	stance  byte
 	pos     pos
+	inCS    bool
 
 	equipSlotSize byte
 	useSlotSize   byte
@@ -176,6 +177,8 @@ type player struct {
 
 	// write-behind persistence
 	dirty DirtyBits
+
+	csReturnInstID int
 }
 
 // Helper: mark dirty and schedule debounced save.
@@ -1377,6 +1380,9 @@ func loadPlayerFromID(id int32, conn mnet.Client) player {
 
 	// Initialize the per-player buff manager so handlers can call plr.addBuff(...)
 	c.buffs = NewCharacterBuffs(&c)
+
+	c.inCS = false
+	c.csReturnInstID = -1
 
 	c.conn = conn
 
