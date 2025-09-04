@@ -98,9 +98,10 @@ type player struct {
 	conn mnet.Client
 	inst *fieldInstance
 
-	id        int32 // Unique identifier of the character
-	accountID int32
-	worldID   byte
+	id          int32 // Unique identifier of the character
+	accountID   int32
+	accountName string
+	worldID     byte
 
 	mapID       int32
 	mapPos      byte
@@ -144,7 +145,9 @@ type player struct {
 	etc   []item
 	cash  []item
 
-	mesos int32
+	mesos       int32
+	nx          int32
+	maplepoints int32
 
 	skills map[int32]playerSkill
 
@@ -1342,6 +1345,10 @@ func loadPlayerFromID(id int32, conn mnet.Client) player {
 	if err != nil {
 		log.Println(err)
 		return c
+	}
+
+	if err := common.DB.QueryRow("SELECT username, nx, maplepoints FROM accounts WHERE accountID=?", c.accountID).Scan(&c.accountName, &c.nx, &c.maplepoints); err != nil {
+		log.Printf("loadPlayerFromID: failed to fetch accountName for accountID=%d: %v", c.accountID, err)
 	}
 
 	c.skills = make(map[int32]playerSkill)

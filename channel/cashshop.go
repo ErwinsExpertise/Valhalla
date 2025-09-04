@@ -41,7 +41,6 @@ func packetCashShopSet(plr *player, accountName string) mpacket.Packet {
 	p.WriteInt32(plr.mapID)
 	p.WriteByte(plr.mapPos)
 
-	// Buddy list size (GW_CharacterStat tail)
 	p.WriteByte(plr.buddyListSize)
 
 	// Money
@@ -104,8 +103,7 @@ func packetCashShopSet(plr *player, accountName string) mpacket.Packet {
 	writeInv(plr.cash)
 
 	// Skills
-	p.WriteInt16(int16(len(plr.skills))) // number of skills
-
+	p.WriteInt16(int16(len(plr.skills)))
 	skillCooldowns := make(map[int32]int16)
 
 	for _, skill := range plr.skills {
@@ -117,7 +115,7 @@ func packetCashShopSet(plr *player, accountName string) mpacket.Packet {
 		}
 	}
 
-	p.WriteInt16(int16(len(skillCooldowns))) // number of cooldowns
+	p.WriteInt16(int16(len(skillCooldowns)))
 
 	for id, cooldown := range skillCooldowns {
 		p.WriteInt32(id)
@@ -144,15 +142,10 @@ func packetCashShopSet(plr *player, accountName string) mpacket.Packet {
 	p.WriteInt32(0)
 	p.WriteInt64(time.Now().Unix())
 
-	// IMPORTANT: CCashShop::CCashShop reads this byte immediately after CharacterData::Decode.
-	// So write auth AFTER all CharacterData content above and BEFORE any Cash Shop extra blocks below.
 	p.WriteByte(1)
 	p.WriteString(accountName)
-
-	// B: CCashShop::CCashShop reads another byte right after sub_440D14
 	p.WriteInt16(0)
 
-	// Stock states block: send every commodity's current state
 	comms := nx.GetCommodities()
 	p.WriteInt16(int16(len(comms)))
 	for sn, c := range comms {
@@ -164,26 +157,23 @@ func packetCashShopSet(plr *player, accountName string) mpacket.Packet {
 }
 
 func packetCashShopUpdateAmounts(nxCredit, maplePoints int32) mpacket.Packet {
-	p := mpacket.CreateWithOpcode16(opcode.SendChannelCSUpdateAmounts)
+	p := mpacket.CreateWithOpcode(opcode.SendChannelCSUpdateAmounts)
 	p.WriteInt32(nxCredit)
 	p.WriteInt32(maplePoints)
 	return p
 }
 
 func packetCashShopShowBoughtItem(charID int32, cashItemSNHash int64, itemID int32, count int16, itemName string) mpacket.Packet {
-	p := mpacket.CreateWithOpcode16(opcode.SendChannelCSAction)
-	// Cash unique ID (hash-like), then player id
+	p := mpacket.CreateWithOpcode(opcode.SendChannelCSAction)
 	p.WriteInt64(cashItemSNHash)
 	p.WriteInt32(charID)
 
-	// 4x 0x01 bytes (unknown flags in legacy implementations)
 	for i := 0; i < 4; i++ {
 		p.WriteByte(0x01)
 	}
 
 	p.WriteInt32(itemID)
 
-	// 4x 0x01 bytes again
 	for i := 0; i < 4; i++ {
 		p.WriteByte(0x01)
 	}
@@ -197,9 +187,8 @@ func packetCashShopShowBoughtItem(charID int32, cashItemSNHash int64, itemID int
 	return p
 }
 
-// packetCashShopShowBoughtQuestItem mirrors "showBoughtCSQuestItem".
 func packetCashShopShowBoughtQuestItem(position byte, itemID int32) mpacket.Packet {
-	p := mpacket.CreateWithOpcode16(opcode.SendChannelCSAction)
+	p := mpacket.CreateWithOpcode(opcode.SendChannelCSAction)
 	p.WriteInt32(365) // sub-op code per reference
 	p.WriteByte(0)
 	p.WriteInt16(1)
@@ -209,9 +198,8 @@ func packetCashShopShowBoughtQuestItem(position byte, itemID int32) mpacket.Pack
 	return p
 }
 
-// packetCashShopShowCouponRedeemedItem mirrors "showCouponRedeemedItem".
 func packetCashShopShowCouponRedeemedItem(itemID int32) mpacket.Packet {
-	p := mpacket.CreateWithOpcode16(opcode.SendChannelCSAction)
+	p := mpacket.CreateWithOpcode(opcode.SendChannelCSAction)
 	p.WriteInt16(0x3A)
 	p.WriteInt32(0)
 	p.WriteInt32(1)
@@ -223,21 +211,17 @@ func packetCashShopShowCouponRedeemedItem(itemID int32) mpacket.Packet {
 }
 
 func packetCashShopSendCSItemInventory(slotType byte, it item) mpacket.Packet {
-	p := mpacket.CreateWithOpcode16(opcode.SendChannelCSAction)
+	p := mpacket.CreateWithOpcode(opcode.SendChannelCSAction)
 	p.WriteByte(0x2F)
-	// Java used: writeShort((byte)slot); write(slot)
 	p.WriteInt16(int16(slotType))
 	p.WriteByte(slotType)
 
-	// Reuse existing inventory encoder (as used elsewhere in server packets)
-	// Ensure 'it' is correctly populated (invID, slotID, amount, id, stats etc.)
 	p.WriteBytes(it.inventoryBytes())
 	return p
 }
 
-// packetCashShopWishList mirrors "sendWishList". Provide up to 10 SN values.
 func packetCashShopWishList(sns []int32, update bool) mpacket.Packet {
-	p := mpacket.CreateWithOpcode16(opcode.SendChannelCSAction)
+	p := mpacket.CreateWithOpcode(opcode.SendChannelCSAction)
 	if update {
 		p.WriteByte(0x39)
 	} else {
@@ -254,9 +238,8 @@ func packetCashShopWishList(sns []int32, update bool) mpacket.Packet {
 	return p
 }
 
-// packetCashShopWrongCoupon mirrors "wrongCouponCode".
 func packetCashShopWrongCoupon() mpacket.Packet {
-	p := mpacket.CreateWithOpcode16(opcode.SendChannelCSAction)
+	p := mpacket.CreateWithOpcode(opcode.SendChannelCSAction)
 	p.WriteByte(0x40)
 	p.WriteByte(0x87)
 	return p

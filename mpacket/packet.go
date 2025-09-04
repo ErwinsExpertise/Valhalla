@@ -35,13 +35,6 @@ func CreateInternal(op byte) Packet {
 	return p
 }
 
-func CreateWithOpcode16(op uint16) Packet {
-	p := Packet{}
-	p.WriteInt32(0)
-	p.WriteInt16(int16(op))
-	return p
-}
-
 // Append -
 func (p *Packet) Append(data []byte) {
 	*p = append(*p, data...)

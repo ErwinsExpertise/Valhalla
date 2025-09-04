@@ -698,8 +698,6 @@ func (server Server) playerEnterCashShop(conn mnet.Client, reader mpacket.Reader
 
 	plr.send(packetCashShopSet(plr, "admin"))
 
-	nxCredit := int32(10000)
-	maplePoints := int32(10000)
 	plr.send(packetCashShopUpdateAmounts(nxCredit, maplePoints))
 	plr.send(packetCashShopWishList(nil, true))
 
