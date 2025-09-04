@@ -696,9 +696,8 @@ func (server Server) playerEnterCashShop(conn mnet.Client, reader mpacket.Reader
 		}
 	}
 
-	plr.send(packetCashShopSet(plr, "admin"))
-
-	plr.send(packetCashShopUpdateAmounts(nxCredit, maplePoints))
+	plr.send(packetCashShopSet(plr, plr.accountName))
+	plr.send(packetCashShopUpdateAmounts(plr.nx, plr.maplepoints))
 	plr.send(packetCashShopWishList(nil, true))
 
 	// Persist character after state handoff
