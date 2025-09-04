@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
-	"unicode/utf16"
 )
 
 // Packet -
@@ -102,20 +101,10 @@ func (p *Packet) WriteBytes(data []byte) {
 	p.Append(data)
 }
 
-// WriteString - (length-prefixed ASCII/byte string)
+// WriteString -
 func (p *Packet) WriteString(str string) {
 	p.WriteUint16(uint16(len(str)))
 	p.WriteBytes([]byte(str))
-}
-
-// WriteUnicodeString - (length-prefixed UTF-16LE string, length is in characters)
-func (p *Packet) WriteUnicodeString(str string) {
-	// Convert Go string (UTF-8) to UTF-16 code units (LE)
-	u16 := utf16.Encode([]rune(str))
-	p.WriteUint16(uint16(len(u16))) // length in characters
-	for _, cu := range u16 {
-		p.WriteUint16(uint16(cu))
-	}
 }
 
 // WritePaddedString -
@@ -136,19 +125,6 @@ func (p *Packet) WriteInt32(data int32) { p.WriteUint32(uint32(data)) }
 
 // WriteInt64 -
 func (p *Packet) WriteInt64(data int64) { p.WriteUint64(uint64(data)) }
-
-func (p *Packet) WriteReversedUint64(data uint64) {
-	hi := uint32(data >> 32)
-	lo := uint32(data)
-	*p = append(*p,
-		byte(hi), byte(hi>>8), byte(hi>>16), byte(hi>>24),
-		byte(lo), byte(lo>>8), byte(lo>>16), byte(lo>>24),
-	)
-}
-
-func (p *Packet) WriteReversedInt64(data int64) {
-	p.WriteReversedUint64(uint64(data))
-}
 
 func (p *Packet) readByte(pos *int) byte {
 	r := byte((*p)[*pos])
