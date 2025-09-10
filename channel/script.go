@@ -372,6 +372,72 @@ func (ctrl *npcChatPlayerController) ForfeitQuest(id int16) {
 	clearQuestMobKills(ctrl.plr.ID, id)
 }
 
+func (ctrl *npcChatPlayerController) TakeItem(id int32, slot int16, amount int16, invID byte) bool {
+	_, err := ctrl.plr.takeItem(id, slot, amount, invID)
+	return err == nil
+}
+
+func (ctrl *npcChatPlayerController) RemoveItemsByID(id int32, count int32) bool {
+	return ctrl.plr.removeItemsByID(id, count)
+}
+
+func (ctrl *npcChatPlayerController) ItemCount(id int32) int32 {
+	return ctrl.plr.countItem(id)
+}
+
+func (ctrl *npcChatPlayerController) TakeMesos(amount int32) {
+	ctrl.plr.takeMesos(amount)
+}
+
+func (ctrl *npcChatPlayerController) GetNX() int32 {
+	return ctrl.plr.GetNX()
+}
+
+func (ctrl *npcChatPlayerController) SetNX(nx int32) {
+	ctrl.plr.SetNX(nx)
+}
+
+func (ctrl *npcChatPlayerController) GetMaplePoints() int32 {
+	return ctrl.plr.GetMaplePoints()
+}
+
+func (ctrl *npcChatPlayerController) SetMaplePoints(points int32) {
+	ctrl.plr.SetMaplePoints(points)
+}
+
+func (ctrl *npcChatPlayerController) SetFame(value int16) {
+	ctrl.plr.setFame(value)
+}
+
+func (ctrl *npcChatPlayerController) GiveFame(delta int16) {
+	ctrl.plr.setFame(ctrl.plr.fame + delta)
+}
+
+func (ctrl *npcChatPlayerController) GiveAP(amount int16) {
+	ctrl.plr.giveAP(amount)
+}
+
+func (ctrl *npcChatPlayerController) GiveSP(amount int16) {
+	ctrl.plr.giveSP(amount)
+}
+
+func (ctrl *npcChatPlayerController) GiveEXP(amount int32) {
+	ctrl.plr.giveEXP(amount, false, false)
+}
+
+func (ctrl *npcChatPlayerController) GiveHP(amount int16) {
+	ctrl.plr.giveHP(amount)
+}
+
+func (ctrl *npcChatPlayerController) GiveMP(amount int16) {
+	ctrl.plr.giveMP(amount)
+}
+
+func (ctrl *npcChatPlayerController) HealToFull() {
+	ctrl.plr.setHP(ctrl.plr.maxHP)
+	ctrl.plr.setMP(ctrl.plr.maxMP)
+}
+
 type scriptQuestView struct {
 	Data   string `json:"data"`
 	Status int    `json:"status"` // 0,1,2 same as GetQuestStatus
@@ -389,7 +455,8 @@ type npcChatController struct {
 	npcID int32
 	conn  mnet.Client
 
-	goods [][]int32
+	goods       [][]int32
+	persistShop bool
 
 	stateTracker npcChatStateTracker
 
@@ -421,6 +488,19 @@ func createNpcChatController(npcID int32, conn mnet.Client, program *goja.Progra
 
 func (ctrl *npcChatController) Id() int32 {
 	return ctrl.npcID
+}
+
+// Send simple next packet to Player
+func (ctrl *npcChatController) Send(text string) int {
+	if ctrl.stateTracker.performInterrupt() {
+		ctrl.conn.Send(packetNpcChatBackNext(ctrl.npcID, text, true, false))
+		ctrl.vm.Interrupt("Send")
+		return 0
+	}
+	if ctrl.stateTracker.getCurrentState() == npcNextState {
+		return 1
+	}
+	return 0
 }
 
 // SendBackNext packet to Player
@@ -509,7 +589,141 @@ func (ctrl *npcChatController) SendGuildEmblemEditor() {
 // SendShop packet to Player
 func (ctrl *npcChatController) SendShop(goods [][]int32) {
 	ctrl.goods = goods
+	ctrl.persistShop = true
 	ctrl.conn.Send(packetNpcShop(ctrl.npcID, goods))
+}
+
+func (ctrl *npcChatController) SendMenu(baseText string, selections ...string) int {
+	msg := baseText
+	if len(selections) > 0 {
+		var b strings.Builder
+		if len(msg) > 0 {
+			b.WriteString(msg)
+			if msg[len(msg)-1] != '\n' {
+				b.WriteByte('\n')
+			}
+		}
+		for i, s := range selections {
+			fmt.Fprintf(&b, "#L%d#%s#l\n", i, s)
+		}
+		msg = b.String()
+	}
+
+	if ctrl.stateTracker.performInterrupt() {
+		ctrl.conn.Send(packetNpcChatSelection(ctrl.npcID, msg))
+		ctrl.vm.Interrupt("SendMenu")
+		return -1
+	}
+	if len(ctrl.stateTracker.selections) > ctrl.stateTracker.selection {
+		val := ctrl.stateTracker.selections[ctrl.stateTracker.selection]
+		ctrl.stateTracker.selection++
+		return int(val)
+	}
+	return -1
+}
+
+func (ctrl *npcChatController) SendImage(imagePath string) {
+	img := fmt.Sprintf("#f%s#", imagePath)
+	ctrl.SendOk(img)
+}
+
+func (ctrl *npcChatController) SendNumber(text string, def, min, max int) int {
+	if ctrl.stateTracker.performInterrupt() {
+		ctrl.conn.Send(packetNpcChatUserNumber(ctrl.npcID, text, int32(def), int32(min), int32(max)))
+		ctrl.vm.Interrupt("SendNumber")
+		return def
+	}
+	if len(ctrl.stateTracker.numbers) > ctrl.stateTracker.number {
+		val := ctrl.stateTracker.numbers[ctrl.stateTracker.number]
+		ctrl.stateTracker.number++
+		return int(val)
+	}
+	return def
+}
+
+func (ctrl *npcChatController) SendBoxText(askMsg, defaultAnswer string, column, line int) string {
+	max := column * line
+	if max <= 0 {
+		max = 200
+	}
+	if ctrl.stateTracker.performInterrupt() {
+		ctrl.conn.Send(packetNpcChatUserString(ctrl.npcID, askMsg, defaultAnswer, 0, int16(max)))
+		ctrl.vm.Interrupt("SendBoxText")
+		return defaultAnswer
+	}
+	if len(ctrl.stateTracker.inputs) > ctrl.stateTracker.input {
+		val := ctrl.stateTracker.inputs[ctrl.stateTracker.input]
+		ctrl.stateTracker.input++
+		return val
+	}
+	return defaultAnswer
+}
+
+func (ctrl *npcChatController) SendQuiz(text, problem, hint string, inputMin, inputMax, _ int) string {
+	prompt := text
+	if problem != "" {
+		if len(prompt) > 0 {
+			prompt += "\n"
+		}
+		prompt += problem
+	}
+	if hint != "" {
+		prompt += "\n(" + hint + ")"
+	}
+	if ctrl.stateTracker.performInterrupt() {
+		ctrl.conn.Send(packetNpcChatUserString(ctrl.npcID, prompt, "", int16(inputMin), int16(inputMax)))
+		ctrl.vm.Interrupt("SendQuiz")
+		return ""
+	}
+	if len(ctrl.stateTracker.inputs) > ctrl.stateTracker.input {
+		val := ctrl.stateTracker.inputs[ctrl.stateTracker.input]
+		ctrl.stateTracker.input++
+		return val
+	}
+	return ""
+}
+
+func (ctrl *npcChatController) SendSlideMenu(text string) int {
+	if ctrl.stateTracker.performInterrupt() {
+		ctrl.conn.Send(packetNpcChatSelection(ctrl.npcID, text))
+		ctrl.vm.Interrupt("SendSlideMenu")
+		return -1
+	}
+	if len(ctrl.stateTracker.selections) > ctrl.stateTracker.selection {
+		val := ctrl.stateTracker.selections[ctrl.stateTracker.selection]
+		ctrl.stateTracker.selection++
+		return int(val)
+	}
+	return -1
+}
+
+func (ctrl *npcChatController) SendAvatar(text string, avatars ...int32) int {
+	if ctrl.stateTracker.performInterrupt() {
+		ctrl.conn.Send(packetNpcChatStyleWindow(ctrl.npcID, text, avatars))
+		ctrl.vm.Interrupt("SendAvatar")
+		return -1
+	}
+	if len(ctrl.stateTracker.selections) > ctrl.stateTracker.selection {
+		val := ctrl.stateTracker.selections[ctrl.stateTracker.selection]
+		ctrl.stateTracker.selection++
+		return int(val)
+	}
+	return -1
+}
+
+func (ctrl *npcChatPlayerController) InventoryExchange(itemSource int32, srcCount int32, itemExchangeFor int32, count int16) bool {
+	if !ctrl.plr.removeItemsByID(itemSource, srcCount) {
+		return false
+	}
+
+	item, err := CreateItemFromID(itemExchangeFor, count)
+	if err != nil {
+		return false
+	}
+	if err = ctrl.plr.GiveItem(item); err != nil {
+		return false
+	}
+	return true
 }
 
 func (ctrl *npcChatController) clearUserInput() {

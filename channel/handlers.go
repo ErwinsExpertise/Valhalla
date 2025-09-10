@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"math"
 	"math/rand"
 	"strconv"
 	"strings"
@@ -2125,25 +2126,21 @@ func (server *Server) npcChatStart(conn mnet.Client, reader mpacket.Reader) {
 	npcSpawnID := reader.ReadInt32()
 
 	plr, err := server.players.getFromConn(conn)
-
 	if err != nil {
 		return
 	}
 
 	field, ok := server.fields[plr.mapID]
-
 	if !ok {
 		return
 	}
 
 	inst, err := field.getInstance(plr.inst.id)
-
 	if err != nil {
 		return
 	}
 
 	npcData, err := inst.lifePool.getNPCFromSpawnID(npcSpawnID)
-
 	if err != nil {
 		return
 	}
@@ -2163,15 +2160,20 @@ func (server *Server) npcChatStart(conn mnet.Client, reader mpacket.Reader) {
 		log.Println("Unable to find npc script for:", npcData.id, ".... default.js not found")
 		return
 	}
-
 	if err != nil {
 		log.Println("script init:", err)
 	}
 
 	server.npcChat[conn] = controller
 
-	if controller.run() {
-		delete(server.npcChat, conn)
+	// Run the script. If it returns true, chat flow ended.
+	// If a shop was opened (persistShop), keep the controller for shop ops.
+	ended := controller.run()
+	if ended {
+		if controller.persistShop {
+		} else {
+			delete(server.npcChat, conn)
+		}
 	}
 }
 
@@ -2260,72 +2262,205 @@ func (server *Server) npcShop(conn mnet.Client, reader mpacket.Reader) {
 	getInventoryID := func(id int32) byte {
 		return byte(id / 1000000)
 	}
+	isRechargeable := func(itemID int32) bool {
+		base := itemID / 10000
+		return base == 207 || base == 233
+	}
+
+	// ShopRes codes (aligned with client-side enum)
+	const (
+		shopBuySuccess byte = iota
+		shopBuyNoStock
+		shopBuyNoMoney
+		shopBuyUnknown
+		shopSellSuccess
+		shopSellNoStock
+		shopSellIncorrectRequest
+		shopSellUnknown
+		shopRechargeSuccess
+		shopRechargeNoStock
+		shopRechargeNoMoney
+		shopRechargeIncorrectRequest
+		shopRechargeUnknown
+	)
 
 	plr, err := server.players.getFromConn(conn)
-
 	if err != nil {
 		return
 	}
 
-	operation := reader.ReadByte()
-	switch operation {
-	case 0: // buy
+	switch reader.ReadByte() {
+	case 0: // Buy
 		index := reader.ReadInt16()
 		itemID := reader.ReadInt32()
 		amount := reader.ReadInt16()
-
-		newItem, err := createAverageItemFromID(itemID, amount)
-
-		if err != nil {
+		if amount < 1 {
+			plr.Send(packetNpcShopResult(shopBuyUnknown))
 			return
 		}
 
-		if controller, ok := server.npcChat[conn]; ok {
-			goods := controller.goods
-
-			if int(index) < len(goods) && index > -1 {
-				if len(goods[index]) == 1 { // Default price
-					item, err := nx.GetItem(itemID)
-
-					if err != nil {
-						return
-					}
-
-					plr.giveMesos(-1 * item.Price)
-				} else if len(goods[index]) == 2 { // Custom price
-					plr.giveMesos(-1 * goods[index][1])
-				} else {
-					return // bad shop slice
-				}
-
-				plr.GiveItem(newItem)
-				plr.Send(packetNpcShopContinue()) //check if needed
-			}
-
+		controller, ok := server.npcChat[conn]
+		if !ok || controller == nil {
+			plr.Send(packetNpcShopResult(shopBuyUnknown))
+			return
 		}
-	case 1: // sell
+		goods := controller.goods
+		if int(index) < 0 || int(index) >= len(goods) {
+			plr.Send(packetNpcShopResult(shopBuyUnknown))
+			return
+		}
+		entry := goods[index]
+		if len(entry) < 1 || entry[0] != itemID {
+			plr.Send(packetNpcShopResult(shopBuyUnknown))
+			return
+		}
+
+		meta, nxErr := nx.GetItem(itemID)
+		if nxErr != nil {
+			plr.Send(packetNpcShopResult(shopBuyUnknown))
+			return
+		}
+
+		var price int32
+		if len(entry) >= 2 {
+			price = entry[1]
+		} else {
+			price = meta.Price
+		}
+
+		if isRechargeable(itemID) {
+			if amount != 1 || price == 0 {
+				plr.Send(packetNpcShopResult(shopBuyUnknown))
+				return
+			}
+		}
+		if meta.InvTabID == 1 && amount != 1 {
+			plr.Send(packetNpcShopResult(shopBuyUnknown))
+			return
+		}
+
+		totalCost := int64(price) * int64(amount)
+		if totalCost < 0 || int64(plr.mesos) < totalCost {
+			plr.Send(packetNpcShopResult(shopBuyNoMoney))
+			return
+		}
+
+		newItem, mkErr := createAverageItemFromID(itemID, amount)
+		if mkErr != nil {
+			plr.Send(packetNpcShopResult(shopBuyUnknown))
+			return
+		}
+		if err := plr.GiveItem(newItem); err != nil {
+			plr.Send(packetNpcShopResult(shopBuyUnknown))
+			return
+		}
+
+		plr.giveMesos(int32(-totalCost))
+		plr.Send(packetNpcShopResult(shopBuySuccess))
+
+	case 1: // Sell
 		slotPos := reader.ReadInt16()
 		itemID := reader.ReadInt32()
 		amount := reader.ReadInt16()
+		if amount < 1 {
+			plr.Send(packetNpcShopResult(shopSellIncorrectRequest))
+			return
+		}
 
-		fmt.Println("Selling:", itemID, "[", slotPos, "], amount:", amount)
-
-		item, err := nx.GetItem(itemID)
-
-		if err != nil {
+		meta, nxErr := nx.GetItem(itemID)
+		if nxErr != nil {
+			plr.Send(packetNpcShopResult(shopSellUnknown))
 			return
 		}
 
 		invID := getInventoryID(itemID)
+		sellAmount := amount
+		if isRechargeable(itemID) {
+			useItem := plr.findUseItemBySlot(slotPos)
+			if useItem == nil || useItem.ID != itemID || useItem.amount <= 0 {
+				plr.Send(packetNpcShopResult(shopSellIncorrectRequest))
+				return
+			}
+			sellAmount = useItem.amount
+		}
 
-		plr.takeItem(itemID, slotPos, amount, invID)
+		if _, remErr := plr.takeItem(itemID, slotPos, sellAmount, invID); remErr != nil {
+			plr.Send(packetNpcShopResult(shopSellIncorrectRequest))
+			return
+		}
 
-		plr.giveMesos(item.Price)
-		plr.Send(packetNpcShopContinue()) // check if needed
-	case 3: // exit
-		delete(server.npcChat, conn) // delete here as we need access to shop goods
-	default:
-		log.Println("Unkown shop operation packet:", reader)
+		var payout int64
+		if meta.InvTabID == 1 {
+			payout = int64(meta.Price)
+		} else {
+			payout = int64(meta.Price) * int64(sellAmount)
+		}
+		if payout < 0 {
+			plr.Send(packetNpcShopResult(shopSellIncorrectRequest))
+			return
+		}
+
+		plr.giveMesos(int32(payout))
+		plr.Send(packetNpcShopResult(shopSellSuccess))
+
+	case 2: // Recharge
+		slotPos := reader.ReadInt16()
+
+		it := plr.findUseItemBySlot(slotPos)
+		if it == nil || !isRechargeable(it.ID) {
+			plr.Send(packetNpcShopResult(shopRechargeIncorrectRequest))
+			return
+		}
+
+		controller, ok := server.npcChat[conn]
+		if !ok || controller == nil {
+			plr.Send(packetNpcShopResult(shopRechargeUnknown))
+			return
+		}
+		found := false
+		for _, g := range controller.goods {
+			if len(g) > 0 && g[0] == it.ID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			plr.Send(packetNpcShopResult(shopRechargeIncorrectRequest))
+			return
+		}
+
+		meta, nxErr := nx.GetItem(it.ID)
+		if nxErr != nil {
+			plr.Send(packetNpcShopResult(shopRechargeUnknown))
+			return
+		}
+
+		slotMax := meta.SlotMax
+		if slotMax <= 0 || it.amount < 0 || it.amount >= slotMax {
+			plr.Send(packetNpcShopResult(shopRechargeIncorrectRequest))
+			return
+		}
+
+		toFill := int(slotMax - it.amount)
+		unitPrice := meta.UnitPrice
+		if unitPrice <= 0 {
+			plr.Send(packetNpcShopResult(shopRechargeIncorrectRequest))
+			return
+		}
+
+		cost := int(math.Ceil(unitPrice * float64(toFill)))
+		if cost < 0 || int(plr.mesos) < cost {
+			plr.Send(packetNpcShopResult(shopRechargeNoMoney))
+			return
+		}
+
+		it.amount = slotMax
+		plr.updateItemStack(*it)
+		plr.giveMesos(int32(-cost))
+		plr.Send(packetNpcShopResult(shopRechargeSuccess))
+
+	case 3: // Close
+		delete(server.npcChat, conn)
 	}
 }
 
