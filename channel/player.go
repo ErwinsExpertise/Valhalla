@@ -769,11 +769,6 @@ func (d *Player) GiveItem(newItem Item) error { // TODO: Refactor
 }
 
 func (d *Player) takeItem(id int32, slot int16, amount int16, invID byte) (Item, error) {
-	isRechargeable := func(itemID int32) bool {
-		base := itemID / 10000
-		return base == 207
-	}
-
 	item, err := d.getItem(invID, slot)
 	if err != nil {
 		return item, fmt.Errorf("item not found at inv=%d slot=%d", invID, slot)
@@ -787,10 +782,6 @@ func (d *Player) takeItem(id int32, slot int16, amount int16, invID byte) (Item,
 	}
 	if amount <= 0 {
 		return item, fmt.Errorf("invalid amount requested: %d", amount)
-	}
-
-	if isRechargeable(id) && amount != item.amount {
-		return item, fmt.Errorf("rechargeable must remove full stack: have=%d requested=%d", item.amount, amount)
 	}
 
 	if amount > item.amount {
