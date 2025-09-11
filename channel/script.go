@@ -218,6 +218,24 @@ func (ctrl *npcChatPlayerController) Warp(id int32) {
 	}
 }
 
+func (ctrl *npcChatPlayerController) WarpFromName(id int32, name string) {
+	if field, ok := ctrl.fields[id]; ok {
+		inst, err := field.getInstance(0)
+
+		if err != nil {
+			return
+		}
+
+		portal, err := inst.getPortalFromName(name)
+
+		if err != nil {
+			return
+		}
+
+		_ = ctrl.warpFunc(ctrl.plr, field, portal)
+	}
+}
+
 func (ctrl *npcChatPlayerController) InstanceProperties() map[string]interface{} {
 	return ctrl.plr.inst.properties
 }
@@ -485,6 +503,14 @@ func (ctrl *npcChatPlayerController) Quest(id int16) scriptQuestView {
 	}
 }
 
+func (ctrl *npcChatPlayerController) PreviousMap() int32 {
+	return ctrl.plr.previousMap
+}
+
+func (ctrl *npcChatPlayerController) MapID() int32 {
+	return ctrl.plr.mapID
+}
+
 type npcChatController struct {
 	npcID int32
 	conn  mnet.Client
@@ -600,6 +626,7 @@ func (ctrl *npcChatController) SendSelection(msg string) {
 // SendStyles packet to Player
 func (ctrl *npcChatController) SendStyles(msg string, styles []int32) {
 	if ctrl.stateTracker.performInterrupt() {
+		ctrl.stateTracker.addState(npcSelectionState)
 		ctrl.conn.Send(packetNpcChatStyleWindow(ctrl.npcID, msg, styles))
 		ctrl.vm.Interrupt("SendStyles")
 	}
@@ -734,10 +761,12 @@ func (ctrl *npcChatController) SendSlideMenu(text string) int {
 
 func (ctrl *npcChatController) SendAvatar(text string, avatars ...int32) int {
 	if ctrl.stateTracker.performInterrupt() {
+		ctrl.stateTracker.addState(npcSelectionState)
 		ctrl.conn.Send(packetNpcChatStyleWindow(ctrl.npcID, text, avatars))
 		ctrl.vm.Interrupt("SendAvatar")
 		return -1
 	}
+
 	if len(ctrl.stateTracker.selections) > ctrl.stateTracker.selection {
 		val := ctrl.stateTracker.selections[ctrl.stateTracker.selection]
 		ctrl.stateTracker.selection++
@@ -1096,4 +1125,50 @@ func (p *playerWrapper) GiveJob(id int16) {
 func (p *playerWrapper) GainItem(id int32, amount int16) {
 	item, _ := createAverageItemFromID(id, amount)
 	p.GiveItem(item)
+}
+
+type portalScriptController struct {
+	vm      *goja.Runtime
+	program *goja.Program
+}
+
+type portalHost struct {
+	plr    *Player
+	fields map[int32]*field
+	conn   mnet.Client
+}
+
+func createPortalScriptController(program *goja.Program, plr *Player, fields map[int32]*field, warpFunc warpFn, conn mnet.Client) (*portalScriptController, error) {
+	vm := goja.New()
+	vm.SetFieldNameMapper(goja.UncapFieldNameMapper())
+
+	plrCtrl := &npcChatPlayerController{
+		plr:       plr,
+		fields:    fields,
+		warpFunc:  warpFunc,
+		worldConn: nil,
+	}
+
+	host := &portalHost{
+		plr:    plr,
+		fields: fields,
+		conn:   conn,
+	}
+
+	_ = vm.Set("plr", plrCtrl)
+	_ = vm.Set("portal", host)
+
+	return &portalScriptController{
+		vm:      vm,
+		program: program,
+	}, nil
+}
+
+func (c *portalScriptController) run() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Println("Error in portal script:", r)
+		}
+	}()
+	_, _ = c.vm.RunProgram(c.program)
 }

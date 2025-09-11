@@ -1,36 +1,36 @@
-var couponCut  = 5150053; // Haircut coupon
-var couponDye = 5151036; // Hair dye coupon
+var couponCut  = 5150001; // Haircut coupon
+var couponDye  = 5151001; // Hair dye coupon
 
 // Main menu
 npc.sendSelection(
-    "I'm the head of this hair salon Natalie. If you have #b#t5150053##k or #b#t5151036##k, allow me to take care of your hairdo. Please choose the one you want.\r\n"
+    "I'm the head of this hair salon Natalie. If you have #b#t" + couponCut + "##k or #b#t" + couponDye + "##k, allow me to take care of your hairdo. Please choose the one you want.\r\n"
     + "#L0#Haircut (VIP coupon)#l\r\n"
     + "#L1#Dye your hair (VIP coupon)#l"
 );
 var sel = npc.selection();
 
+var z = plr.hair() % 10;
+
 if (sel === 0) {
-    // Haircut branch
-    var hair;
-    if (plr.gender() < 1) { // male
-        hair = [33040, 30060, 30210, 30140, 30200, 33170, 33100];
-    } else { // female
-        hair = [31150, 34090, 31300, 31700, 31350, 31740, 34110];
+    // Haircut branch — build from base IDs + current color digit
+    var baseMale   = [30030, 30020, 30000, 30060, 30150, 30210, 30140, 30120, 30200, 30170];
+    var baseFemale = [31050, 31040, 31000, 31150, 31160, 31100, 31030, 31080, 31030, 31070];
+
+    var hair = [];
+    var src = (plr.gender() < 1) ? baseMale : baseFemale;
+    for (var i = 0; i < src.length; i++) {
+        hair.push(src[i] + z);
     }
 
-    // Add last digit from current hair to each style
-    var lastDigit = plr.hair() % 10;
-    for (var i = 0; i < hair.length; i++) {
-        hair[i] += lastDigit;
-    }
-
-    npc.sendAvatar(
-        "I can totally change up your hairstyle and make it look so good. Why don't you change it up a bit? with #b#t5150053##k I'll change it for you. Choose the one to your liking~",
-        hair
+    npc.sendAvatar.apply(npc,
+        ["I can totally change up your hairstyle and make it look so good. Why don't you change it up a bit? With #b#t" + couponCut + "##k I'll change it for you. Choose the one to your liking~"]
+            .concat(hair)
     );
     var choice = npc.selection();
 
-    if (plr.itemCount(couponCut) > 0) {
+    if (choice < 0 || choice >= hair.length) {
+        npc.sendOk("Changed your mind? That's fine. Come back any time.");
+    } else if (plr.itemCount(couponCut) > 0) {
         plr.removeItemsByID(couponCut, 1);
         plr.setHair(hair[choice]);
         npc.sendBackNext(
@@ -39,23 +39,25 @@ if (sel === 0) {
         );
     } else {
         npc.sendBackNext(
-            "Hmmm...it looks like you don't have our designated coupon...I'm afraid I can't give you a haircut without it. I'm sorry...",
+            "Hmmm... it looks like you don't have our designated coupon... I'm afraid I can't give you a haircut without it. I'm sorry...",
             false, true
         );
     }
 
 } else if (sel === 1) {
-    // Hair dye branch
+    // Hair dye branch — keep style, vary color 0..7
     var base = Math.floor(plr.hair() / 10) * 10;
-    var colors = [base + 0, base + 1, base + 2, base + 4, base + 6];
+    var colors = [base + 0, base + 1, base + 2, base + 3, base + 4, base + 5, base + 6, base + 7];
 
-    npc.sendAvatar(
-        "I can totally change your haircolor and make it look so good. Why don't you change it up a bit? With #b#t5151036##k I'll change it for you. Choose the one to your liking.",
-        colors
+    npc.sendAvatar.apply(npc,
+        ["I can totally change your haircolor and make it look so good. Why don't you change it up a bit? With #b#t" + couponDye + "##k I'll change it for you. Choose the one to your liking."]
+            .concat(colors)
     );
     var choice = npc.selection();
 
-    if (plr.itemCount(couponDye) > 0) {
+    if (choice < 0 || choice >= colors.length) {
+        npc.sendOk("Changed your mind? That's fine. Come back any time.");
+    } else if (plr.itemCount(couponDye) > 0) {
         plr.removeItemsByID(couponDye, 1);
         plr.setHair(colors[choice]);
         npc.sendBackNext(
@@ -64,7 +66,7 @@ if (sel === 0) {
         );
     } else {
         npc.sendBackNext(
-            "Hmmm...it looks like you don't have our designated coupon...I'm afraid I can't dye your hair without it. I'm sorry...",
+            "Hmmm... it looks like you don't have our designated coupon... I'm afraid I can't dye your hair without it. I'm sorry...",
             false, true
         );
     }

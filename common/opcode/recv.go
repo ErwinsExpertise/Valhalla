@@ -42,6 +42,7 @@ const (
 	RecvChannelPlayerFame          byte = 0x3D
 	RecvChannelCharacterInfo       byte = 0x3F
 	RecvChannelCancelBuff          byte = 0x41 // This is received by the client when the buff needs to be cancelled
+	RecvChannelScriptedPortal      byte = 0x42
 	RecvChannelLieDetectorResult   byte = 0x45
 	RecvChannelQuestOperation      byte = 0x47
 	RecvChannelAcknowledgeBuff     byte = 0x48

@@ -533,6 +533,7 @@ func (d Player) checkPos(pos pos, xRange, yRange int16) bool {
 func (d *Player) setMapID(id int32) {
 	oldMapID := d.mapID
 	d.mapID = id
+	d.previousMap = oldMapID
 
 	if d.party != nil {
 		d.UpdatePartyInfo(d.party.ID, d.ID, int32(d.job), int32(d.level), d.mapID, d.Name)
@@ -540,6 +541,7 @@ func (d *Player) setMapID(id int32) {
 
 	// write-behind for mapID/pos (mapPos updated on save())
 	d.MarkDirty(DirtyMap, 500*time.Millisecond)
+	d.MarkDirty(DirtyPrevMap, 500*time.Millisecond)
 	if err := d.saveMapID(id, oldMapID); err != nil {
 		log.Println(err)
 	}

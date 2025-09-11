@@ -64,6 +64,8 @@ func (server *Server) HandleClientPacket(conn mnet.Client, reader mpacket.Reader
 	case opcode.RecvChannelUserPortal:
 		// This opcode is used for revival UI as well.
 		server.playerUsePortal(conn, reader)
+	case opcode.RecvChannelScriptedPortal:
+		server.playerUseScriptedPortal(conn, reader)
 	case opcode.RecvChannelEnterCashShop:
 		server.playerEnterCashShop(conn, reader)
 	case opcode.RecvChannelPlayerMovement:
@@ -828,6 +830,79 @@ func (server Server) playerUsePortal(conn mnet.Client, reader mpacket.Reader) {
 			return
 		}
 	}
+}
+
+func (server Server) playerUseScriptedPortal(conn mnet.Client, reader mpacket.Reader) {
+	plr, err := server.players.getFromConn(conn)
+	if err != nil {
+		return
+	}
+
+	nameLen := reader.ReadInt16()
+	if nameLen <= 0 {
+		plr.Send(packetPlayerNoChange())
+		return
+	}
+	portalName := reader.ReadString(nameLen)
+
+	curField, ok := server.fields[plr.mapID]
+	if !ok || curField == nil {
+		return
+	}
+
+	instID := -1
+	if plr.inst != nil {
+		instID = plr.inst.id
+	}
+
+	srcInst, err := curField.getInstance(instID)
+	if err != nil {
+		if inst0, e2 := curField.getInstance(0); e2 == nil {
+			if _, has := inst0.getPlayerFromID(plr.ID); has != nil {
+				_ = inst0.addPlayer(plr)
+			}
+			plr.inst = inst0
+			srcInst = inst0
+			instID = 0
+		} else {
+			return
+		}
+	}
+
+	srcPortal, err := srcInst.getPortalFromName(portalName)
+	if err != nil {
+		plr.Send(packetPlayerNoChange())
+		return
+	}
+
+	// Validate range to prevent teleport hacks
+	if !plr.checkPos(srcPortal.pos, 100, 100) {
+		if conn.GetAdminLevel() > 0 {
+			plr.Send(packetMessageRedText("ScriptedPortal - " + srcPortal.pos.String() + " Player - " + plr.pos.String()))
+		}
+		plr.Send(packetPlayerNoChange())
+		return
+	}
+
+	// Strictly script-driven
+	if server.portalScriptStore == nil {
+		plr.Send(packetPlayerNoChange())
+		return
+	}
+
+	program, ok := server.portalScriptStore.scripts[portalName]
+	if !ok || program == nil {
+		plr.Send(packetPlayerNoChange())
+		return
+	}
+
+	ctrl, cerr := createPortalScriptController(program, plr, server.fields, server.warpPlayer, conn)
+	if cerr != nil || ctrl == nil {
+		plr.Send(packetPlayerNoChange())
+		return
+	}
+
+	ctrl.run()
 }
 
 func (server Server) warpPlayer(plr *Player, dstField *field, dstPortal portal) error {
