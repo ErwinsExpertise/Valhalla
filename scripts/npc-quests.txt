@@ -936,11 +936,11 @@
  9058 - Beat the Heat <Hard> - 2nd Stage
  9059 - Beat the Heat <Hard> - 3rd Stage
  9100 - 추석이벤트 : MapleStory
- 9101 - 추석이벤트 : MapleStory 
+ 9101 - 추석이벤트 : MapleStory
  9110 - 추석이벤트 : Wizet
- 9111 - 추석이벤트 : Wizet 
+ 9111 - 추석이벤트 : Wizet
  9120 - 추석이벤트 : Nexon
- 9121 - 추석이벤트 : Nexon 
+ 9121 - 추석이벤트 : Nexon
  9130 - 깜짝이벤트 : 스페셜 알파벳?
  9140 - 추석 송편 만들기
  9141 - 추석 금송편 만들기

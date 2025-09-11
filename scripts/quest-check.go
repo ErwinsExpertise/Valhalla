@@ -35,6 +35,32 @@ func main() {
 
 	log.SetFlags(0)
 
+	// Accept positional scripts dir too
+	extras := flag.Args()
+	if len(extras) == 1 {
+		scriptsDir = extras[0]
+	} else if len(extras) >= 2 {
+		if strings.EqualFold(extras[0], "scripts") {
+			scriptsDir = extras[1]
+		} else if scriptsDir == "" || scriptsDir == "scripts/npc" {
+			scriptsDir = extras[len(extras)-1]
+		}
+	}
+
+	// Verify scripts directory exists and show absolute path for clarity
+	scriptsDir = filepath.Clean(scriptsDir)
+	absScriptsDir, _ := filepath.Abs(scriptsDir)
+	if _, err := os.Stat(scriptsDir); err != nil {
+		cwd, _ := os.Getwd()
+		log.Printf("Failed to find scripts directory: %s", scriptsDir)
+		log.Printf("Resolved absolute path: %s", absScriptsDir)
+		log.Printf("Working directory: %s", cwd)
+		log.Printf("Usage examples:")
+		log.Printf("  go run quest-check.go -nx ..\\Data.nx -scripts .\\npc -report npc-quests.txt -dry-run")
+		log.Printf("  go run quest-check.go -nx ..\\Data.nx .\\npc -report npc-quests.txt -dry-run")
+		log.Fatalf("Error: %v", err)
+	}
+
 	if verbose {
 		log.Printf("Loading NX from: %s", nxPath)
 	}
@@ -49,11 +75,7 @@ func main() {
 	questNames := extractQuestNames(nodes, textLookup)
 	npcToQuestIDs := extractQuestNPCs(nodes, textLookup)
 
-	if len(npcToQuestIDs) == 0 {
-		log.Println("No quests associated with NPCs were found.")
-	}
-
-	// Build final NPC -> []questInfo mapping (attach names)
+	// Build NPC -> []questInfo (attach names, uniq)
 	npcToQuests := make(map[int32][]questInfo, len(npcToQuestIDs))
 	for npcID, qIDs := range npcToQuestIDs {
 		seen := make(map[int16]struct{}, len(qIDs))
@@ -69,9 +91,13 @@ func main() {
 		}
 	}
 
-	// Walk scripts and collect deletions: any <npc-id>.js where npc-id is in npcToQuests
+	// Walk scripts and decide deletions:
+	// delete only if:
+	//  - file name is <npc-id>.js AND
+	//  - npc-id has quests in NX AND
+	//  - file contains the word "quest" (case-insensitive)
 	if verbose {
-		log.Printf("Scanning scripts directory: %s", scriptsDir)
+		log.Printf("Scanning scripts directory: %s", absScriptsDir)
 	}
 	var toDelete []string
 	err = filepath.WalkDir(scriptsDir, func(path string, d os.DirEntry, walkErr error) error {
@@ -84,6 +110,7 @@ func main() {
 		if !strings.HasSuffix(strings.ToLower(d.Name()), ".js") {
 			return nil
 		}
+
 		base := strings.TrimSuffix(d.Name(), filepath.Ext(d.Name()))
 		id64, perr := strconv.ParseInt(base, 10, 32)
 		if perr != nil {
@@ -93,8 +120,23 @@ func main() {
 			return nil
 		}
 		npcID := int32(id64)
-		if _, exists := npcToQuests[npcID]; exists {
+
+		// Only consider scripts whose NPC is referenced by quests
+		if _, referencedByQuests := npcToQuests[npcID]; !referencedByQuests {
+			return nil
+		}
+
+		hasQuestWord, rerr := fileContainsQuestWord(path)
+		if rerr != nil && verbose {
+			log.Printf("Warning: failed reading %s: %v", path, rerr)
+		}
+		if hasQuestWord {
 			toDelete = append(toDelete, path)
+			if verbose && dryRun {
+				log.Printf("[match] %s contains 'quest' and NPC %d has quest references", path, npcID)
+			}
+		} else if verbose {
+			log.Printf("[skip] %s: NPC %d has quest references but file lacks 'quest'", path, npcID)
 		}
 		return nil
 	})
@@ -102,7 +144,7 @@ func main() {
 		log.Fatalf("Failed to walk scripts dir: %v", err)
 	}
 
-	// Build and print the report in requested format
+	// Report is always printed, regardless of deletions
 	report := buildReport(npcToQuests)
 	fmt.Print(report)
 
@@ -117,7 +159,7 @@ func main() {
 
 	// Delete files or dry-run
 	if len(toDelete) == 0 {
-		log.Println("No NPC script files matched NPCs associated with quests.")
+		log.Println("No NPC scripts matched both: 'has associated quests' AND contains 'quest'.")
 		return
 	}
 
@@ -153,7 +195,7 @@ func buildReport(npcToQuests map[int32][]questInfo) string {
 	if len(npcToQuests) == 0 {
 		return "No NPCs associated with quests were found.\n"
 	}
-	// Sort NPC IDs
+	// Sort NPC IDs for stable output
 	npcIDs := make([]int, 0, len(npcToQuests))
 	for id := range npcToQuests {
 		npcIDs = append(npcIDs, int(id))
@@ -167,8 +209,8 @@ func buildReport(npcToQuests map[int32][]questInfo) string {
 		sort.Slice(qs, func(i, j int) bool { return qs[i].ID < qs[j].ID })
 		b.WriteString(fmt.Sprintf("%d:\n", id))
 		for _, q := range qs {
-			name := q.Name
-			if strings.TrimSpace(name) == "" {
+			name := strings.TrimSpace(q.Name)
+			if name == "" {
 				name = "(unnamed quest)"
 			}
 			b.WriteString(fmt.Sprintf(" %d - %s\n", q.ID, name))
@@ -227,11 +269,9 @@ func extractQuestNPCs(nodes []gonx.Node, text []string) map[int32][]int16 {
 
 			for j := uint32(0); j < uint32(dir.ChildCount); j++ {
 				phaseDir := nodes[dir.ChildID+j]
-				// phase "0" (start) or "1" (complete)
 				for k := uint32(0); k < uint32(phaseDir.ChildCount); k++ {
 					entry := nodes[phaseDir.ChildID+k]
-					key := text[entry.NameID]
-					if key == "npc" && entry.ChildCount == 0 {
+					if text[entry.NameID] == "npc" && entry.ChildCount == 0 {
 						npcID := gonx.DataToInt32(entry.Data)
 						if npcID != 0 {
 							out[npcID] = append(out[npcID], qid)
@@ -245,4 +285,15 @@ func extractQuestNPCs(nodes []gonx.Node, text []string) map[int32][]int16 {
 		log.Printf("Warning: could not find %s in NX.", root)
 	}
 	return out
+}
+
+// fileContainsQuestWord returns true if the file content contains the word "quest"
+// (case-insensitive substring match).
+func fileContainsQuestWord(path string) (bool, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+	s := strings.ToLower(string(data))
+	return strings.Contains(s, "quest"), nil
 }
