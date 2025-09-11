@@ -1,54 +1,55 @@
-// Brittany the assistant hair NPC – stateless version
+// Brittany the assistant hair NPC – REG coupons (random result)
 const couponHaircut = 5150052
 const couponDye = 5151035
 const maleHaircuts = [30310,30330,30060,30150,30410,30210,30140,30120,30200,30560,30510,30610,30470]
 const femaleHaircuts = [31150,31310,31300,31160,31100,31410,31030,31080,31070,31610,31350,31510,31740]
 
-const choice = npc.sendMenu(
+// Intro
+npc.sendBackNext(
     "I'm Brittany the assistant. If you have #b#t5150052##k or #b#t5151035##k by any chance, then how about letting me change your hairdo?",
-    "#bHaircut (REG coupon)",
-    "Dye your hair (REG coupon)"
+    false, true
 )
 
-// Haircut branch
+// Menu
+npc.sendSelection(
+    "What would you like to do today?\r\n" +
+    "#L0##bHaircut (REG coupon)#k#l\r\n" +
+    "#L1##bDye your hair (REG coupon)#k#l"
+)
+var choice = npc.selection()
+
 if (choice === 0) {
-    let hair
-    if (plr.gender() < 1) {
-        hair = maleHaircuts[Math.floor(Math.random() * maleHaircuts.length)]
-    } else {
-        hair = femaleHaircuts[Math.floor(Math.random() * femaleHaircuts.length)]
-    }
-    hair += plr.getHairStyle() % 10
+    // Haircut (random style within gender, keep color)
+    var pool = (plr.gender() < 1) ? maleHaircuts : femaleHaircuts
+    var newStyle = pool[Math.floor(Math.random() * pool.length)]
+    newStyle += plr.hair() % 10
 
-    const ok = npc.sendYesNo("If you use the REG coupon your hair will change RANDOMLY with a chance to obtain a new experimental style that even you didn't think was possible. Are you going to use #b#t5150052##k and really change your hairstyle?")
-    if (ok) {
-        if (plr.itemCount(couponHaircut) > 0) {
-            plr.giveItem(couponHaircut, -1)
-            plr.setHairStyle(hair)
-            npc.sendNext("Hey, here's the mirror. What do you think of your new haircut? I know it wasn't the smoothest of all, but didn't it come out pretty nice? Come back later when you need to change it up again!")
-        } else {
-            npc.sendNext("Hmmm...are you sure you have our designated coupon? Sorry but no haircut without it.")
-        }
-    } else {
+    if (!npc.sendYesNo("If you use the REG coupon, your hair will change RANDOMLY. Use #b#t5150052##k and change your hairstyle?")) {
         npc.sendOk("See you another time!")
+    } else if (plr.itemCount(couponHaircut) >= 1) {
+        plr.removeItemsByID(couponHaircut, 1)
+        plr.setHair(newStyle)
+        npc.sendOk("Hey, here's the mirror. What do you think of your new haircut? Come back later when you want to change it up again!")
+    } else {
+        npc.sendOk("Hmmm... are you sure you have our designated coupon? Sorry, no haircut without it.")
     }
-}
-// Dye branch
-else {
-    let hair = Math.floor(plr.getHairStyle() / 10) * 10
-    const colors = [hair + 0, hair + 1, hair + 2, hair + 3, hair + 4, hair + 5]
-    hair = colors[Math.floor(Math.random() * colors.length)]
 
-    const ok = npc.sendYesNo("If you use a regular coupon your hair will change RANDOMLY. Do you still want to use #b#t5151035##k and change it up?")
-    if (ok) {
-        if (plr.itemCount(couponDye) > 0) {
-            plr.giveItem(couponDye, -1)
-            plr.setHairStyle(hair)
-            npc.sendNext("Hey, here's the mirror. What do you think of your new haircolor? I know it wasn't the smoothest of all, but didn't it come out pretty nice? Come back later when you need to change it up again!")
-        } else {
-            npc.sendNext("Hmmm...are you sure you have our designated coupon? Sorry but no dye your hair without it.")
-        }
-    } else {
+} else if (choice === 1) {
+    // Dye (random color, keep base style)
+    var base = Math.floor(plr.hair() / 10) * 10
+    var colors = [base + 0, base + 1, base + 2, base + 3, base + 4, base + 5]
+    var newStyle = colors[Math.floor(Math.random() * colors.length)]
+
+    if (!npc.sendYesNo("If you use the REG coupon, your hair color will change RANDOMLY. Use #b#t5151035##k and change it up?")) {
         npc.sendOk("See you another time!")
+    } else if (plr.itemCount(couponDye) >= 1) {
+        plr.removeItemsByID(couponDye, 1)
+        plr.setHair(newStyle)
+        npc.sendOk("Hey, here's the mirror. What do you think of your new hair color? Come back later when you want to change it up again!")
+    } else {
+        npc.sendOk("Hmmm... are you sure you have our designated coupon? Sorry, we can’t dye your hair without it.")
     }
+
+} else {
+    npc.sendOk("See you another time!")
 }

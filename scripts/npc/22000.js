@@ -1,5 +1,5 @@
 // Shanks conversation flow
-if (plr.itemQuantity(4031801) > 0) {
+if (plr.itemCount(4031801) > 0) {
     // Has recommendation letter
     if (npc.sendYesNo("Take this ship and you'll head off to a bigger continent. For #e150 mesos#n, I'll take you to #bVictoria Island#k. The thing is, once you leave this place, you will never be able to return. So, choice is yours. Do you want to go to Victoria Island?")) {
         npc.sendBackNext("Okay, now give me 150 mesos...Hey, what's that? Is that the recommendation letter from Lucas, the chief of Amherst? You should have told me about this earlier. I, Shanks, recognize greatness when l see it, and since you have been recommended by Lucas, l can see that you have very great potential as an adventurer. No way would l dare charge you for this trip!", true, true)

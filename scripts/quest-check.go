@@ -1,0 +1,248 @@
+package main
+
+import (
+	"flag"
+	"fmt"
+	"log"
+	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+
+	"github.com/Hucaru/gonx"
+)
+
+type questInfo struct {
+	ID   int16
+	Name string
+}
+
+func main() {
+	var (
+		nxPath     string
+		scriptsDir string
+		reportPath string
+		dryRun     bool
+		verbose    bool
+	)
+	flag.StringVar(&nxPath, "nx", "Data.nx", "Path to the NX file (e.g., Data.nx)")
+	flag.StringVar(&scriptsDir, "scripts", "scripts/npc", "Path to the npc scripts directory")
+	flag.StringVar(&reportPath, "report", "", "Optional path to write the report")
+	flag.BoolVar(&dryRun, "dry-run", true, "If true, do not delete; only print what would be deleted")
+	flag.BoolVar(&verbose, "v", true, "Verbose logging")
+	flag.Parse()
+
+	log.SetFlags(0)
+
+	if verbose {
+		log.Printf("Loading NX from: %s", nxPath)
+	}
+	nodes, textLookup, _, _, err := gonx.Parse(nxPath)
+	if err != nil {
+		log.Fatalf("Failed to parse NX: %v", err)
+	}
+
+	if verbose {
+		log.Printf("Extracting quest names and NPC associations from NX...")
+	}
+	questNames := extractQuestNames(nodes, textLookup)
+	npcToQuestIDs := extractQuestNPCs(nodes, textLookup)
+
+	if len(npcToQuestIDs) == 0 {
+		log.Println("No quests associated with NPCs were found.")
+	}
+
+	// Build final NPC -> []questInfo mapping (attach names)
+	npcToQuests := make(map[int32][]questInfo, len(npcToQuestIDs))
+	for npcID, qIDs := range npcToQuestIDs {
+		seen := make(map[int16]struct{}, len(qIDs))
+		for _, qid := range qIDs {
+			if _, ok := seen[qid]; ok {
+				continue
+			}
+			seen[qid] = struct{}{}
+			npcToQuests[npcID] = append(npcToQuests[npcID], questInfo{
+				ID:   qid,
+				Name: questNames[qid],
+			})
+		}
+	}
+
+	// Walk scripts and collect deletions: any <npc-id>.js where npc-id is in npcToQuests
+	if verbose {
+		log.Printf("Scanning scripts directory: %s", scriptsDir)
+	}
+	var toDelete []string
+	err = filepath.WalkDir(scriptsDir, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if !strings.HasSuffix(strings.ToLower(d.Name()), ".js") {
+			return nil
+		}
+		base := strings.TrimSuffix(d.Name(), filepath.Ext(d.Name()))
+		id64, perr := strconv.ParseInt(base, 10, 32)
+		if perr != nil {
+			if verbose {
+				log.Printf("Skipping non-numeric script file: %s", d.Name())
+			}
+			return nil
+		}
+		npcID := int32(id64)
+		if _, exists := npcToQuests[npcID]; exists {
+			toDelete = append(toDelete, path)
+		}
+		return nil
+	})
+	if err != nil {
+		log.Fatalf("Failed to walk scripts dir: %v", err)
+	}
+
+	// Build and print the report in requested format
+	report := buildReport(npcToQuests)
+	fmt.Print(report)
+
+	// Optionally write report to file
+	if reportPath != "" {
+		if werr := os.WriteFile(reportPath, []byte(report), 0o644); werr != nil {
+			log.Printf("Failed to write report to %s: %v", reportPath, werr)
+		} else if verbose {
+			log.Printf("Report written to: %s", reportPath)
+		}
+	}
+
+	// Delete files or dry-run
+	if len(toDelete) == 0 {
+		log.Println("No NPC script files matched NPCs associated with quests.")
+		return
+	}
+
+	if dryRun {
+		log.Printf("[DRY-RUN] Would delete %d files:", len(toDelete))
+		for _, p := range toDelete {
+			log.Println(" -", p)
+		}
+		return
+	}
+
+	var delCount, delErrs int
+	for _, p := range toDelete {
+		if err := os.Remove(p); err != nil {
+			delErrs++
+			log.Printf("Failed to delete %s: %v", p, err)
+			continue
+		}
+		delCount++
+		if verbose {
+			log.Println("Deleted:", p)
+		}
+	}
+
+	if delErrs > 0 {
+		log.Printf("Done with errors. Deleted %d, %d failed.", delCount, delErrs)
+	} else {
+		log.Printf("Done. Deleted %d files.", delCount)
+	}
+}
+
+func buildReport(npcToQuests map[int32][]questInfo) string {
+	if len(npcToQuests) == 0 {
+		return "No NPCs associated with quests were found.\n"
+	}
+	// Sort NPC IDs
+	npcIDs := make([]int, 0, len(npcToQuests))
+	for id := range npcToQuests {
+		npcIDs = append(npcIDs, int(id))
+	}
+	sort.Ints(npcIDs)
+
+	var b strings.Builder
+	for _, id := range npcIDs {
+		qs := npcToQuests[int32(id)]
+		// Sort quests by ID
+		sort.Slice(qs, func(i, j int) bool { return qs[i].ID < qs[j].ID })
+		b.WriteString(fmt.Sprintf("%d:\n", id))
+		for _, q := range qs {
+			name := q.Name
+			if strings.TrimSpace(name) == "" {
+				name = "(unnamed quest)"
+			}
+			b.WriteString(fmt.Sprintf(" %d - %s\n", q.ID, name))
+		}
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+// extractQuestNames traverses /Quest/QuestInfo.img and returns questID -> name.
+func extractQuestNames(nodes []gonx.Node, text []string) map[int16]string {
+	out := make(map[int16]string)
+	const root = "/Quest/QuestInfo.img"
+	found := gonx.FindNode(root, nodes, text, func(n *gonx.Node) {
+		for i := uint32(0); i < uint32(n.ChildCount); i++ {
+			dir := nodes[n.ChildID+i]
+			raw := text[dir.NameID]
+			name := strings.TrimSuffix(raw, filepath.Ext(raw))
+			qid64, err := strconv.ParseInt(name, 10, 16)
+			if err != nil {
+				continue
+			}
+			var qname string
+			for j := uint32(0); j < uint32(dir.ChildCount); j++ {
+				ch := nodes[dir.ChildID+j]
+				key := text[ch.NameID]
+				if key == "name" && ch.ChildCount == 0 {
+					qname = text[gonx.DataToUint32(ch.Data)]
+					break
+				}
+			}
+			out[int16(qid64)] = qname
+		}
+	})
+	if !found {
+		log.Printf("Warning: could not find %s in NX.", root)
+	}
+	return out
+}
+
+// extractQuestNPCs traverses /Quest/Check.img and returns NPCID -> []questID
+// by reading "npc" fields in both start ("0") and complete ("1") phases.
+func extractQuestNPCs(nodes []gonx.Node, text []string) map[int32][]int16 {
+	out := make(map[int32][]int16)
+	const root = "/Quest/Check.img"
+	found := gonx.FindNode(root, nodes, text, func(n *gonx.Node) {
+		for i := uint32(0); i < uint32(n.ChildCount); i++ {
+			dir := nodes[n.ChildID+i]
+			raw := text[dir.NameID]
+			name := strings.TrimSuffix(raw, filepath.Ext(raw))
+			qid64, err := strconv.ParseInt(name, 10, 16)
+			if err != nil {
+				continue
+			}
+			qid := int16(qid64)
+
+			for j := uint32(0); j < uint32(dir.ChildCount); j++ {
+				phaseDir := nodes[dir.ChildID+j]
+				// phase "0" (start) or "1" (complete)
+				for k := uint32(0); k < uint32(phaseDir.ChildCount); k++ {
+					entry := nodes[phaseDir.ChildID+k]
+					key := text[entry.NameID]
+					if key == "npc" && entry.ChildCount == 0 {
+						npcID := gonx.DataToInt32(entry.Data)
+						if npcID != 0 {
+							out[npcID] = append(out[npcID], qid)
+						}
+					}
+				}
+			}
+		}
+	})
+	if !found {
+		log.Printf("Warning: could not find %s in NX.", root)
+	}
+	return out
+}

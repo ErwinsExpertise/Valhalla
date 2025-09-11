@@ -24,13 +24,14 @@ if (sel === 0) {
         hair[i] += lastDigit;
     }
 
-    var choice = npc.askAvatar(
+    npc.sendAvatar(
         "I can totally change up your hairstyle and make it look so good. Why don't you change it up a bit? with #b#t5150053##k I'll change it for you. Choose the one to your liking~",
-        ...hair
+        hair
     );
+    var choice = npc.selection();
 
     if (plr.itemCount(couponCut) > 0) {
-        plr.giveItem(couponCut, -1);
+        plr.removeItemsByID(couponCut, 1);
         plr.setHair(hair[choice]);
         npc.sendBackNext(
             "Check it out!! What do you think? Even I think this one is a work of art! AHAHAHA. Please let me know when you want another haircut, because I'll make you look good each time!",
@@ -48,13 +49,14 @@ if (sel === 0) {
     var base = Math.floor(plr.hair() / 10) * 10;
     var colors = [base + 0, base + 1, base + 2, base + 4, base + 6];
 
-    var choice = npc.askAvatar(
+    npc.sendAvatar(
         "I can totally change your haircolor and make it look so good. Why don't you change it up a bit? With #b#t5151036##k I'll change it for you. Choose the one to your liking.",
-        ...colors
+        colors
     );
+    var choice = npc.selection();
 
     if (plr.itemCount(couponDye) > 0) {
-        plr.giveItem(couponDye, -1);
+        plr.removeItemsByID(couponDye, 1);
         plr.setHair(colors[choice]);
         npc.sendBackNext(
             "Check it out!! What do you think? Even I think this one is a work of art! AHAHAHA. Please let me know when you want to dye your hair again, because I'll make you look good each time!",

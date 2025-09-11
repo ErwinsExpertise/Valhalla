@@ -438,6 +438,40 @@ func (ctrl *npcChatPlayerController) HealToFull() {
 	ctrl.plr.setMP(ctrl.plr.maxMP)
 }
 
+func (ctrl *npcChatPlayerController) Gender() byte {
+	return ctrl.plr.gender
+}
+
+// Hair returns the current hair ID
+func (ctrl *npcChatPlayerController) Hair() int32 {
+	return ctrl.plr.hair
+}
+
+// SetHair updates the player's hair and refreshes the client appearance
+func (ctrl *npcChatPlayerController) SetHair(id int32) {
+	if ctrl.plr.hair == id {
+		return
+	}
+	ctrl.plr.hair = id
+	// Refresh avatar appearance on client
+	ctrl.plr.Send(packetInventoryChangeEquip(*ctrl.plr))
+}
+
+// Skin returns the current skin tone (0..n)
+func (ctrl *npcChatPlayerController) Skin() byte {
+	return ctrl.plr.skin
+}
+
+// SetSkinColor updates the player's skin tone and refreshes the client appearance
+func (ctrl *npcChatPlayerController) SetSkinColor(skin byte) {
+	if ctrl.plr.skin == skin {
+		return
+	}
+	ctrl.plr.skin = skin
+	// Refresh avatar appearance on client
+	ctrl.plr.Send(packetInventoryChangeEquip(*ctrl.plr))
+}
+
 type scriptQuestView struct {
 	Data   string `json:"data"`
 	Status int    `json:"status"` // 0,1,2 same as GetQuestStatus
