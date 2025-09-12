@@ -311,7 +311,6 @@ func (f *field) createInstance(rates *rates) int {
 	portals := make([]portal, len(f.Data.Portals))
 	for i, p := range f.Data.Portals {
 		portals[i] = createPortalFromData(p)
-		portals[i].id = byte(i)
 	}
 
 	inst := &fieldInstance{

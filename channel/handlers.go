@@ -734,6 +734,11 @@ func (server Server) playerUsePortal(conn mnet.Client, reader mpacket.Reader) {
 	}
 
 	chooseDstPortal := func(dstInst *fieldInstance, backToMapID int32, srcName, preferName string) (portal, error) {
+		if preferName != "" {
+			if p, e := dstInst.getPortalFromName(preferName); e == nil {
+				return p, nil
+			}
+		}
 		for _, p := range dstInst.portals {
 			if p.destFieldID == backToMapID && p.destName == srcName {
 				return p, nil
@@ -741,11 +746,6 @@ func (server Server) playerUsePortal(conn mnet.Client, reader mpacket.Reader) {
 		}
 		for _, p := range dstInst.portals {
 			if p.destFieldID == backToMapID {
-				return p, nil
-			}
-		}
-		if preferName != "" {
-			if p, e := dstInst.getPortalFromName(preferName); e == nil {
 				return p, nil
 			}
 		}
@@ -932,12 +932,7 @@ func (server Server) warpPlayer(plr *Player, dstField *field, dstPortal portal) 
 	plr.setMapID(dstField.id)
 	plr.pos = dstPortal.pos
 
-	spawnIdx, idxErr := dstInst.calculateNearestSpawnPortalID(dstPortal.pos)
-	if idxErr != nil {
-		spawnIdx = dstPortal.id
-	}
-
-	plr.Send(packetMapChange(dstField.id, int32(server.id), spawnIdx, plr.hp))
+	plr.Send(packetMapChange(dstField.id, int32(server.id), dstPortal.id, plr.hp))
 	if err = dstInst.addPlayer(plr); err != nil {
 		return err
 	}
