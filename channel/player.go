@@ -530,10 +530,18 @@ func (d Player) checkPos(pos pos, xRange, yRange int16) bool {
 	return xValid && yValid
 }
 
+func isExcludedMap(id int32) bool {
+	// Free Market range (inclusive)
+	return id >= 910000000 && id <= 910000022
+}
+
 func (d *Player) setMapID(id int32) {
-	oldMapID := d.mapID
+	// Never set previousMap to a FM ID
+	if !isExcludedMap(d.mapID) {
+		d.previousMap = d.mapID
+	}
+
 	d.mapID = id
-	d.previousMap = oldMapID
 
 	if d.party != nil {
 		d.UpdatePartyInfo(d.party.ID, d.ID, int32(d.job), int32(d.level), d.mapID, d.Name)
@@ -542,25 +550,6 @@ func (d *Player) setMapID(id int32) {
 	// write-behind for mapID/pos (mapPos updated on save())
 	d.MarkDirty(DirtyMap, 500*time.Millisecond)
 	d.MarkDirty(DirtyPrevMap, 500*time.Millisecond)
-	if err := d.saveMapID(id, oldMapID); err != nil {
-		log.Println(err)
-	}
-}
-
-func (d *Player) saveMapID(newMapId, oldMapId int32) error {
-	query := "UPDATE characters SET mapID=?,previousMapID=? WHERE accountID=? and Name=?"
-
-	_, err := common.DB.Exec(query,
-		newMapId,
-		oldMapId,
-		d.accountID,
-		d.Name)
-
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func (d Player) noChange() {
