@@ -393,7 +393,7 @@ func (pool *lifePool) mobDamaged(poolID int32, damager *Player, dmg ...int32) {
 					}
 
 					// TODO: droppool type determination between DropTimeoutNonOwner and DropTimeoutNonOwnerParty
-					pool.dropPool.createDrop(dropSpawnNormal, dropFreeForAll, mesos, v.pos, true, 0, 0, drops...)
+					pool.dropPool.createDrop(dropSpawnNormal, dropFreeForAll, int32(damager.rates.mesos*float32(mesos)), v.pos, true, 0, 0, drops...)
 
 					// If has hp bar: remove
 				}

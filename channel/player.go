@@ -485,7 +485,7 @@ func (d *Player) setMesos(amount int32) {
 }
 
 func (d *Player) giveMesos(amount int32) {
-	d.setMesos(d.mesos + int32(d.rates.mesos*float32(amount)))
+	d.setMesos(d.mesos + amount)
 }
 
 func (d *Player) takeMesos(amount int32) {

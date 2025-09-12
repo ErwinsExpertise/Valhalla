@@ -2376,11 +2376,11 @@ func (server *Server) npcShop(conn mnet.Client, reader mpacket.Reader) {
 		index := reader.ReadInt16()
 		itemID := reader.ReadInt32()
 		amount := reader.ReadInt16()
+
 		if amount < 1 {
 			plr.Send(packetNpcShopResult(shopBuyUnknown))
 			return
 		}
-
 		controller, ok := server.npcChat[conn]
 		if !ok || controller == nil {
 			plr.Send(packetNpcShopResult(shopBuyUnknown))
