@@ -880,7 +880,6 @@ func (pool *dropPool) createDrop(spawnType byte, dropType byte, mesos int32, dro
 	if dropType == dropTimeoutNonOwner || dropType == dropTimeoutNonOwnerParty {
 		timeoutTime = now.Add(itemLootableByAllTimeout).UnixMilli()
 	}
-
 	if len(items) > 0 {
 		for i, item := range items {
 			tmp := dropFrom
@@ -908,6 +907,15 @@ func (pool *dropPool) createDrop(spawnType byte, dropType byte, mesos int32, dro
 				pool.drops[drop.ID] = drop
 
 				pool.instance.send(packetShowDrop(spawnType, drop))
+
+				d := drop
+				time.AfterFunc(5*time.Second, func() {
+					if _, ok := pool.drops[d.ID]; !ok {
+						return
+					}
+
+					pool.instance.reactorPool.TryTriggerByDrop(d)
+				})
 			}
 		}
 	}
@@ -964,6 +972,154 @@ func (pool *dropPool) update(t time.Time) {
 func (pool dropPool) HideDrops(plr *Player) {
 	for id := range pool.drops {
 		plr.Send(packetRemoveDrop(1, id, 0))
+	}
+}
+
+// Reactors
+
+type fieldReactor struct {
+	spawnID    int32
+	templateID int32
+	state      byte
+	frameDelay int16
+	pos        pos
+	faceLeft   bool
+	name       string
+
+	info        nx.ReactorInfo
+	reactorTime int32
+}
+
+type reactorPool struct {
+	instance *fieldInstance
+	reactors map[int32]*fieldReactor
+	nextID   int32
+}
+
+func createNewReactorPool(inst *fieldInstance, data []nx.Reactor) reactorPool {
+	pool := reactorPool{
+		instance: inst,
+		reactors: make(map[int32]*fieldReactor),
+	}
+
+	for _, r := range data {
+		if r.ID == 0 {
+			log.Println("Reactor skipped: templateID=0, map:", inst.fieldID, "name:", r.Name)
+			continue
+		}
+
+		info, err := nx.GetReactorInfo(int32(r.ID))
+		if err != nil {
+			log.Println("Reactor skipped: template not found:", r.ID, "map:", inst.fieldID, "name:", r.Name, "err:", err)
+			continue
+		}
+
+		id, err := pool.nextReactorID()
+		if err != nil {
+			continue
+		}
+
+		p := pos{x: int16(r.X), y: int16(r.Y)}
+		pool.reactors[id] = &fieldReactor{
+			spawnID:    id,
+			templateID: int32(r.ID),
+			state:      0, // default initial state
+			frameDelay: 0,
+			pos:        p,
+			faceLeft:   r.FaceLeft != 0,
+			name:       r.Name,
+			info:       info,
+			reactorTime: func() int32 {
+				if r.ReactorTime > math.MaxInt32 {
+					return math.MaxInt32
+				}
+				return int32(r.ReactorTime)
+			}(),
+		}
+	}
+
+	return pool
+}
+
+func (pool *reactorPool) Trigger(spawnID int32, nextState byte, frameDelay int16, cause byte) {
+	r, ok := pool.reactors[spawnID]
+	if !ok {
+		return
+	}
+
+	if _, exists := r.info.States[int(nextState)]; !exists {
+		log.Println("Reactor state missing in template:", r.templateID, "state:", nextState)
+	}
+
+	r.state = nextState
+	r.frameDelay = frameDelay
+
+	pool.instance.send(
+		packetMapReactorChangeState(r.spawnID, r.state, r.pos.x, r.pos.y, r.frameDelay, r.faceLeft, cause),
+	)
+}
+
+func (pool *reactorPool) nextReactorID() (int32, error) {
+	for i := 0; i < 100; i++ {
+		pool.nextID++
+
+		if pool.nextID == math.MaxInt32-1 {
+			pool.nextID = math.MaxInt32 / 2
+		} else if pool.nextID == 0 {
+			pool.nextID = 1
+		}
+
+		if _, ok := pool.reactors[pool.nextID]; !ok {
+			return pool.nextID, nil
+		}
+	}
+	return 0, fmt.Errorf("no space to generate ID in reactor pool")
+}
+
+func (pool *reactorPool) playerShowReactors(plr *Player) {
+	for _, r := range pool.reactors {
+		plr.Send(packetMapReactorEnterField(r.spawnID, r.templateID, r.state, r.pos.x, r.pos.y, r.faceLeft))
+	}
+}
+
+func (pool *reactorPool) AddReactor(r *fieldReactor, send bool) {
+	if r.spawnID == 0 {
+		if id, err := pool.nextReactorID(); err == nil {
+			r.spawnID = id
+		} else {
+			return
+		}
+	}
+	pool.reactors[r.spawnID] = r
+	if send {
+		pool.instance.send(packetMapReactorEnterField(r.spawnID, r.templateID, r.state, r.pos.x, r.pos.y, r.faceLeft))
+	}
+}
+
+func (pool *reactorPool) RemoveReactor(spawnID int32, send bool) {
+	if r, ok := pool.reactors[spawnID]; ok {
+		delete(pool.reactors, spawnID)
+		if send {
+			pool.instance.send(packetMapReactorLeaveField(r.spawnID, r.state, r.pos.x, r.pos.y))
+		}
+	}
+}
+
+func (pool *reactorPool) ChangeState(spawnID int32, newState byte, frameDelay int16, cause byte) {
+	if r, ok := pool.reactors[spawnID]; ok {
+		r.state = newState
+		r.frameDelay = frameDelay
+		pool.instance.send(packetMapReactorChangeState(r.spawnID, r.state, r.pos.x, r.pos.y, r.frameDelay, r.faceLeft, cause))
+	}
+}
+
+func (pool *reactorPool) Reset(send bool) {
+	for _, r := range pool.reactors {
+		r.state = 0
+		r.frameDelay = 0
+		if send {
+			pool.instance.send(packetMapReactorChangeState(r.spawnID, r.state, r.pos.x, r.pos.y, r.frameDelay, r.faceLeft, 0))
+		}
 	}
 }
 

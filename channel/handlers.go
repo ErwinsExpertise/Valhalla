@@ -54,7 +54,6 @@ func (server *Server) HandleClientPacket(conn mnet.Client, reader mpacket.Reader
 			log.Printf("panic in HandleClientPacket op=%d: %v", op, r)
 		}
 	}()
-
 	switch op {
 	case opcode.RecvPing:
 	case opcode.RecvClientMigrate:
@@ -154,9 +153,11 @@ func (server *Server) HandleClientPacket(conn mnet.Client, reader mpacket.Reader
 		server.playerSummonDamage(conn, reader)
 	case opcode.RecvChannelSummonAttack:
 		server.playerSummonAttack(conn, reader)
+	case opcode.RecvChannelReactorHit:
+		server.playerHitReactor(conn, reader)
 	default:
 		unknownPacketsTotal.Inc()
-		log.Println("UNKNOWN CLIENT PACKET:", reader)
+		log.Println("UNKNOWN CLIENT PACKET(", op, "):", reader)
 	}
 }
 
@@ -4163,4 +4164,18 @@ func (server *Server) playerFame(conn mnet.Client, reader mpacket.Reader) {
 
 	target.Send(packetFameNotifyVictim(source.Name, up))
 	source.Send(packetFameNotifySource(target.Name, up, target.fame))
+}
+
+func (server *Server) playerHitReactor(conn mnet.Client, reader mpacket.Reader) {
+	plr, err := server.players.getFromConn(conn)
+	if err != nil {
+		return
+	}
+
+	spawnID := reader.ReadInt32()
+	_ = reader.ReadInt32() // stance
+	_ = reader.ReadInt16() // delay
+
+	plr.inst.reactorPool.TriggerHit(spawnID, 0)
+
 }
