@@ -1,11 +1,17 @@
 package channel
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"math"
 	"math/rand"
+	"os"
+	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Hucaru/Valhalla/common/opcode"
@@ -1041,24 +1047,6 @@ func createNewReactorPool(inst *fieldInstance, data []nx.Reactor) reactorPool {
 	return pool
 }
 
-func (pool *reactorPool) Trigger(spawnID int32, nextState byte, frameDelay int16, cause byte) {
-	r, ok := pool.reactors[spawnID]
-	if !ok {
-		return
-	}
-
-	if _, exists := r.info.States[int(nextState)]; !exists {
-		log.Println("Reactor state missing in template:", r.templateID, "state:", nextState)
-	}
-
-	r.state = nextState
-	r.frameDelay = frameDelay
-
-	pool.instance.send(
-		packetMapReactorChangeState(r.spawnID, r.state, r.pos.x, r.pos.y, r.frameDelay, r.faceLeft, cause),
-	)
-}
-
 func (pool *reactorPool) nextReactorID() (int32, error) {
 	for i := 0; i < 100; i++ {
 		pool.nextID++
@@ -1082,43 +1070,254 @@ func (pool *reactorPool) playerShowReactors(plr *Player) {
 	}
 }
 
-func (pool *reactorPool) AddReactor(r *fieldReactor, send bool) {
-	if r.spawnID == 0 {
-		if id, err := pool.nextReactorID(); err == nil {
-			r.spawnID = id
-		} else {
-			return
-		}
-	}
-	pool.reactors[r.spawnID] = r
-	if send {
-		pool.instance.send(packetMapReactorEnterField(r.spawnID, r.templateID, r.state, r.pos.x, r.pos.y, r.faceLeft))
-	}
-}
-
-func (pool *reactorPool) RemoveReactor(spawnID int32, send bool) {
-	if r, ok := pool.reactors[spawnID]; ok {
-		delete(pool.reactors, spawnID)
-		if send {
-			pool.instance.send(packetMapReactorLeaveField(r.spawnID, r.state, r.pos.x, r.pos.y))
-		}
-	}
-}
-
-func (pool *reactorPool) ChangeState(spawnID int32, newState byte, frameDelay int16, cause byte) {
-	if r, ok := pool.reactors[spawnID]; ok {
-		r.state = newState
-		r.frameDelay = frameDelay
-		pool.instance.send(packetMapReactorChangeState(r.spawnID, r.state, r.pos.x, r.pos.y, r.frameDelay, r.faceLeft, cause))
-	}
-}
-
 func (pool *reactorPool) Reset(send bool) {
 	for _, r := range pool.reactors {
 		r.state = 0
 		r.frameDelay = 0
 		if send {
 			pool.instance.send(packetMapReactorChangeState(r.spawnID, r.state, r.pos.x, r.pos.y, r.frameDelay, r.faceLeft, 0))
+		}
+	}
+}
+
+type reactorTableEntry map[string]interface{}
+
+var reactorTable map[string]map[string]reactorTableEntry
+
+func PopulateReactorTable(reactorJSON string) error {
+	f, err := os.Open(reactorJSON)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	b, err := io.ReadAll(f)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(b, &reactorTable)
+}
+
+type rect struct{ left, top, right, bottom int16 }
+
+func (r rect) contains(x, y int16) bool {
+	return !(r.right < r.left || r.bottom < r.top) && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom
+}
+
+func (r *fieldReactor) calcEventRect() (rect, bool) {
+	st, ok := r.info.States[int(r.state)]
+	if !ok || len(st.Events) == 0 {
+		return rect{}, false
+	}
+	ev := st.Events[0]
+	if ev.LT.X == 0 && ev.LT.Y == 0 && ev.RB.X == 0 && ev.RB.Y == 0 {
+		return rect{}, false
+	}
+	L := int16(int(ev.LT.X) + int(r.pos.x))
+	T := int16(int(ev.LT.Y) + int(r.pos.y))
+	R := int16(int(ev.RB.X) + int(r.pos.x))
+	B := int16(int(ev.RB.Y) + int(r.pos.y))
+	return rect{left: L, top: T, right: R, bottom: B}, true
+}
+
+func (r *fieldReactor) nextStateFromTemplate() (byte, bool) {
+	cur := int(r.state)
+	st, ok := r.info.States[cur]
+	if ok && len(st.Events) > 0 {
+		ns := int(st.Events[0].State)
+		if _, ok2 := r.info.States[ns]; ok2 {
+			return byte(ns), true
+		}
+	}
+	if _, ok := r.info.States[cur+1]; ok {
+		return byte(cur + 1), true
+	}
+	return r.state, false
+}
+
+func (r *fieldReactor) isTerminal() bool {
+	_, ok := r.info.States[int(r.state)+1]
+	return !ok
+}
+
+func (pool *reactorPool) changeState(r *fieldReactor, next byte, frameDelay int16, cause byte) {
+	r.state = next
+	r.frameDelay = frameDelay
+	pool.instance.send(packetMapReactorChangeState(r.spawnID, r.state, r.pos.x, r.pos.y, r.frameDelay, r.faceLeft, cause))
+	pool.processStateSideEffects(r)
+}
+
+func (pool *reactorPool) leaveAndMaybeRespawn(r *fieldReactor, _ int) {
+	pool.instance.send(packetMapReactorLeaveField(r.spawnID, r.state, r.pos.x, r.pos.y))
+	if r.reactorTime > 0 {
+		time.AfterFunc(time.Duration(r.reactorTime)*time.Second, func() {
+			r.state = 0
+			r.frameDelay = 0
+			pool.instance.send(packetMapReactorEnterField(r.spawnID, r.templateID, r.state, r.pos.x, r.pos.y, r.faceLeft))
+		})
+	}
+}
+
+func (pool *reactorPool) TriggerHit(spawnID int32, cause byte) {
+	r, ok := pool.reactors[spawnID]
+	if !ok {
+		return
+	}
+	if next, ok := r.nextStateFromTemplate(); ok && next != r.state {
+		pool.changeState(r, next, 0, cause)
+		if r.isTerminal() {
+			pool.leaveAndMaybeRespawn(r, 0)
+		}
+	}
+}
+
+func (pool *reactorPool) TryTriggerByDrop(drop fieldDrop) bool {
+	if drop.mesos > 0 {
+		return false
+	}
+	for _, r := range pool.reactors {
+		st, has := r.info.States[int(r.state)]
+		if !has || len(st.Events) == 0 {
+			continue
+		}
+		ev := st.Events[0]
+		if ev.ReqItemID != drop.item.ID {
+			continue
+		}
+		if ev.ReqItemCnt > 0 && int16(ev.ReqItemCnt) != drop.item.amount {
+			continue
+		}
+		if rr, okRect := r.calcEventRect(); okRect && !rr.contains(drop.finalPos.x, drop.finalPos.y) {
+			continue
+		}
+		if next, okNext := r.nextStateFromTemplate(); okNext && next != r.state {
+			pool.changeState(r, next, 0, 0)
+			pool.instance.dropPool.removeDrop(0, drop.ID)
+			if r.isTerminal() {
+				pool.leaveAndMaybeRespawn(r, 0)
+			}
+			return true
+		}
+	}
+	return false
+}
+
+func getInt(e reactorTableEntry, key string, def int) int {
+	if v, ok := e[key]; ok && v != nil {
+		switch t := v.(type) {
+		case float64:
+			return int(t)
+		case int:
+			return t
+		case int32:
+			return int(t)
+		case int64:
+			return int(t)
+		}
+	}
+	return def
+}
+
+func getString(e reactorTableEntry, key, def string) string {
+	if v, ok := e[key]; ok && v != nil {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return def
+}
+
+func entriesForReactor(r *fieldReactor) []reactorTableEntry {
+	groupName := strings.TrimSpace(r.info.Action)
+	if groupName == "" {
+		groupName = strings.TrimSpace(r.name)
+	}
+	group, ok := reactorTable[groupName]
+	if !ok {
+		return nil
+	}
+	type kv struct {
+		n int
+		k string
+	}
+	keys := make([]kv, 0, len(group))
+	for k := range group {
+		if n, err := strconv.Atoi(k); err == nil {
+			keys = append(keys, kv{n: n, k: k})
+		}
+	}
+	sort.Slice(keys, func(i, j int) bool { return keys[i].n < keys[j].n })
+
+	out := make([]reactorTableEntry, 0, len(keys))
+	for _, it := range keys {
+		e := group[it.k]
+		if getInt(e, "state", -1) == int(r.state) {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+func (pool *reactorPool) processStateSideEffects(r *fieldReactor) {
+	if st, ok := r.info.States[int(r.state)]; ok && len(st.Events) > 0 {
+		ev := st.Events[0]
+		if mobID, ok := ev.ExtraInts["mob"]; ok && mobID > 0 {
+			count := int32(1)
+			if c, ok := ev.ExtraInts["count"]; ok && c > 0 {
+				count = c
+			} else if a, ok := ev.ExtraInts["amount"]; ok && a > 0 {
+				count = a
+			}
+			if count < 1 {
+				count = 1
+			} else if count > 15 {
+				count = 15
+			}
+			spawnPos := r.pos
+			if rr, okRect := r.calcEventRect(); okRect {
+				spawnPos = pos{
+					x:        int16((int(rr.left) + int(rr.right)) / 2),
+					y:        int16((int(rr.top) + int(rr.bottom)) / 2),
+					foothold: r.pos.foothold,
+				}
+			}
+			for i := int32(0); i < count; i++ {
+				_ = pool.instance.lifePool.spawnMobFromID(mobID, spawnPos, false, true, true, 0)
+			}
+		}
+	}
+
+	entries := entriesForReactor(r)
+	if len(entries) == 0 {
+		return
+	}
+
+	for _, e := range entries {
+		if msg := getString(e, "message", ""); msg != "" {
+			pool.instance.send(packetMessageRedText(msg))
+			break
+		}
+	}
+
+	for _, e := range entries {
+		if getInt(e, "type", -1) != 1 {
+			continue
+		}
+		mobID := getInt(e, "0", 0)
+		if mobID <= 0 {
+			continue
+		}
+		count := getInt(e, "2", 1)
+		if count < 1 {
+			count = 1
+		} else if count > 15 {
+			count = 15
+		}
+		x := int16(getInt(e, "4", int(r.pos.x)))
+		y := int16(getInt(e, "5", int(r.pos.y)))
+		spawnPos := pos{x: x, y: y, foothold: r.pos.foothold}
+		for i := 0; i < count; i++ {
+			_ = pool.instance.lifePool.spawnMobFromID(int32(mobID), spawnPos, false, true, true, 0)
 		}
 	}
 }
