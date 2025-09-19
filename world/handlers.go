@@ -478,6 +478,62 @@ func (server *Server) handleGuildEvent(conn mnet.Server, reader mpacket.Reader) 
 	}
 }
 
+type kv struct {
+	k byte
+	v int32
+}
+
+type messengerMember struct {
+	CharID    int32
+	Name      string
+	ChannelID byte
+	Slot      byte
+	Gender    byte
+	Skin      byte
+	Face      int32
+	Hair      int32
+	Vis       []kv
+	Hid       []kv
+	CashW     int32
+	PetAcc    int32
+}
+
+type messengerRoom struct {
+	ID      int32
+	Members [3]*messengerMember
+}
+
+func (m *messengerRoom) count() int {
+	c := 0
+	for _, mm := range m.Members {
+		if mm != nil {
+			c++
+		}
+	}
+	return c
+}
+func (m *messengerRoom) firstFreeSlot() (byte, bool) {
+	for i := 0; i < len(m.Members); i++ {
+		if m.Members[i] == nil {
+			return byte(i), true
+		}
+	}
+	return 0, false
+}
+func (m *messengerRoom) findMemberSlot(id int32) (byte, bool) {
+	for i, mm := range m.Members {
+		if mm != nil && mm.CharID == id {
+			return byte(i), true
+		}
+	}
+	return 0, false
+}
+
+// Global rooms registry
+var messengerRooms = map[int32]*messengerRoom{}
+
+// ===== Channel->World Messenger handling =====
+
 func (server *Server) handleMessengerEvent(conn mnet.Server, reader mpacket.Reader) {
 	mode := reader.ReadByte()
 	senderID := reader.ReadInt32()
@@ -487,8 +543,31 @@ func (server *Server) handleMessengerEvent(conn mnet.Server, reader mpacket.Read
 	switch mode {
 	case 0:
 		mID := reader.ReadInt32()
-		blobLen := reader.ReadInt16()
-		avatar := reader.ReadBytes(int(blobLen))
+
+		gender := reader.ReadByte()
+		skin := reader.ReadByte()
+		face := reader.ReadInt32()
+		_ = reader.ReadBool()
+		hair := reader.ReadInt32()
+
+		vis := make([]kv, 0, 16)
+		for {
+			b := reader.ReadByte()
+			if int8(b) == -1 {
+				break
+			}
+			vis = append(vis, kv{b, reader.ReadInt32()})
+		}
+		hid := make([]kv, 0, 16)
+		for {
+			b := reader.ReadByte()
+			if int8(b) == -1 {
+				break
+			}
+			hid = append(hid, kv{b, reader.ReadInt32()})
+		}
+		cashWeapon := reader.ReadInt32()
+		petAccessory := reader.ReadInt32()
 
 		room := messengerRooms[mID]
 		if mID <= 0 || room == nil {
@@ -507,14 +586,20 @@ func (server *Server) handleMessengerEvent(conn mnet.Server, reader mpacket.Read
 			return
 		}
 
-		member := &messengerMember{
+		room.Members[slot] = &messengerMember{
 			CharID:    senderID,
 			Name:      senderName,
 			ChannelID: senderChannel,
 			Slot:      slot,
-			Avatar:    avatar,
+			Gender:    gender,
+			Skin:      skin,
+			Face:      face,
+			Hair:      hair,
+			Vis:       vis,
+			Hid:       hid,
+			CashW:     cashWeapon,
+			PetAcc:    petAccessory,
 		}
-		room.Members[slot] = member
 
 		server.channelBroadcast(packetWorldMessengerSelfEnter(senderID, slot))
 
@@ -522,14 +607,13 @@ func (server *Server) handleMessengerEvent(conn mnet.Server, reader mpacket.Read
 			if mm == nil || mm.CharID == senderID {
 				continue
 			}
-			server.channelBroadcast(packetWorldMessengerEnter(senderID, mm.Slot, mm.Avatar, mm.Name, mm.ChannelID, true))
+			server.channelBroadcast(packetWorldMessengerEnterInline(senderID, mm.Slot, mm))
 		}
-
 		for _, mm := range room.Members {
 			if mm == nil || mm.CharID == senderID {
 				continue
 			}
-			server.channelBroadcast(packetWorldMessengerEnter(mm.CharID, slot, avatar, senderName, senderChannel, true))
+			server.channelBroadcast(packetWorldMessengerEnterInline(mm.CharID, slot, room.Members[slot]))
 		}
 
 	case 2:
@@ -585,20 +669,17 @@ func (server *Server) handleMessengerEvent(conn mnet.Server, reader mpacket.Read
 				ch.Conn.Send(p)
 			}
 		}
-
 		server.channelBroadcast(packetWorldMessengerInviteResult(senderID, invitee, true))
 
-	case 5: // Blocked
+	case 5:
 		receiver := reader.ReadString(reader.ReadInt16())
 		inviter := reader.ReadString(reader.ReadInt16())
-		mode := reader.ReadByte()
+		md := reader.ReadByte()
 		_ = inviter
-		server.channelBroadcast(packetWorldMessengerBlocked(senderID, receiver, mode))
+		server.channelBroadcast(packetWorldMessengerBlocked(senderID, receiver, md))
 
-	case 6: // Chat
+	case 6:
 		msg := reader.ReadString(reader.ReadInt16())
-
-		// Find room
 		var found *messengerRoom
 		for _, r := range messengerRooms {
 			if _, ok := r.findMemberSlot(senderID); ok {
@@ -609,8 +690,6 @@ func (server *Server) handleMessengerEvent(conn mnet.Server, reader mpacket.Read
 		if found == nil {
 			return
 		}
-
-		// Deliver to all except sender
 		for _, mm := range found.Members {
 			if mm == nil || mm.CharID == senderID {
 				continue
@@ -618,11 +697,32 @@ func (server *Server) handleMessengerEvent(conn mnet.Server, reader mpacket.Read
 			server.channelBroadcast(packetWorldMessengerChat(mm.CharID, msg))
 		}
 
-	case 7: // Avatar update
-		l := reader.ReadInt16()
-		avatar := reader.ReadBytes(int(l))
+	case 7:
+		gender := reader.ReadByte()
+		skin := reader.ReadByte()
+		face := reader.ReadInt32()
+		_ = reader.ReadBool()
+		hair := reader.ReadInt32()
 
-		// Find room and update member’s avatar
+		vis := make([]kv, 0, 16)
+		for {
+			b := reader.ReadByte()
+			if int8(b) == -1 {
+				break
+			}
+			vis = append(vis, kv{b, reader.ReadInt32()})
+		}
+		hid := make([]kv, 0, 16)
+		for {
+			b := reader.ReadByte()
+			if int8(b) == -1 {
+				break
+			}
+			hid = append(hid, kv{b, reader.ReadInt32()})
+		}
+		cashWeapon := reader.ReadInt32()
+		petAccessory := reader.ReadInt32()
+
 		var found *messengerRoom
 		for _, r := range messengerRooms {
 			if _, ok := r.findMemberSlot(senderID); ok {
@@ -634,17 +734,24 @@ func (server *Server) handleMessengerEvent(conn mnet.Server, reader mpacket.Read
 			return
 		}
 		slot, _ := found.findMemberSlot(senderID)
-		if found.Members[slot] != nil {
-			found.Members[slot].Avatar = avatar
-			found.Members[slot].ChannelID = senderChannel
-			found.Members[slot].Name = senderName
+		mm := found.Members[slot]
+		if mm != nil {
+			mm.Gender = gender
+			mm.Skin = skin
+			mm.Face = face
+			mm.Hair = hair
+			mm.Vis = vis
+			mm.Hid = hid
+			mm.CashW = cashWeapon
+			mm.PetAcc = petAccessory
+			mm.ChannelID = senderChannel
+			mm.Name = senderName
 		}
-		// Fan out to others
-		for _, mm := range found.Members {
-			if mm == nil || mm.CharID == senderID {
+		for _, other := range found.Members {
+			if other == nil || other.CharID == senderID {
 				continue
 			}
-			server.channelBroadcast(packetWorldMessengerAvatar(mm.CharID, slot, avatar))
+			server.channelBroadcast(packetWorldMessengerAvatarInline(other.CharID, slot, mm))
 		}
 
 	default:
@@ -652,81 +759,47 @@ func (server *Server) handleMessengerEvent(conn mnet.Server, reader mpacket.Read
 	}
 }
 
-type messengerMember struct {
-	CharID    int32
-	Name      string
-	ChannelID byte
-	Slot      byte
-	Avatar    []byte // AvatarLook blob
-}
+// ===== World->Channel packets for Messenger (inline AvatarLook fields) =====
 
-type messengerRoom struct {
-	ID      int32
-	Members [3]*messengerMember
-}
-
-func (m *messengerRoom) count() int {
-	c := 0
-	for _, mm := range m.Members {
-		if mm != nil {
-			c++
-		}
-	}
-	return c
-}
-func (m *messengerRoom) firstFreeSlot() (byte, bool) {
-	for i := 0; i < len(m.Members); i++ {
-		if m.Members[i] == nil {
-			return byte(i), true
-		}
-	}
-	return 0, false
-}
-func (m *messengerRoom) findMemberSlot(id int32) (byte, bool) {
-	for i, mm := range m.Members {
-		if mm != nil && mm.CharID == id {
-			return byte(i), true
-		}
-	}
-	return 0, false
-}
-
-// Global rooms registry
-var messengerRooms = map[int32]*messengerRoom{}
-
-// Helper: send a world->channel messenger event
 func packetWorldMessengerSelfEnter(recipientID int32, slot byte) mpacket.Packet {
 	p := mpacket.CreateInternal(opcode.ChannelPlayerMessengerEvent)
-	p.WriteByte(0x00) // SelfEnterResult
+	p.WriteByte(0x00)
 	p.WriteInt32(recipientID)
 	p.WriteByte(slot)
 	return p
 }
-func packetWorldMessengerEnter(recipientID int32, slot byte, avatarBlob []byte, name string, ch byte, announce bool) mpacket.Packet {
+func packetWorldMessengerEnterInline(recipientID int32, slot byte, m *messengerMember) mpacket.Packet {
 	p := mpacket.CreateInternal(opcode.ChannelPlayerMessengerEvent)
-	p.WriteByte(0x01) // Enter
+	p.WriteByte(0x01)
 	p.WriteInt32(recipientID)
 	p.WriteByte(slot)
-	p.WriteInt16(int16(len(avatarBlob)))
-	p.WriteBytes(avatarBlob)
-	p.WriteString(name)
-	p.WriteByte(ch)
-	p.WriteBool(announce)
+	p.WriteByte(m.Gender)
+	p.WriteByte(m.Skin)
+	p.WriteInt32(m.Face)
+	p.WriteBool(true)
+	p.WriteInt32(m.Hair)
+	for _, e := range m.Vis {
+		p.WriteByte(e.k)
+		p.WriteInt32(e.v)
+	}
+	p.WriteInt8(-1)
+	for _, e := range m.Hid {
+		p.WriteByte(e.k)
+		p.WriteInt32(e.v)
+	}
+	p.WriteInt8(-1)
+	p.WriteInt32(m.CashW)
+	p.WriteInt32(m.PetAcc)
+	p.WriteString(m.Name)
+	p.WriteByte(m.ChannelID)
+	p.WriteBool(true)
 	return p
 }
 func packetWorldMessengerLeave(recipientID int32, slot byte) mpacket.Packet {
 	p := mpacket.CreateInternal(opcode.ChannelPlayerMessengerEvent)
-	p.WriteByte(0x02) // Leave
+	p.WriteByte(0x02)
 	p.WriteInt32(recipientID)
 	p.WriteByte(slot)
-	return p
-}
-func packetWorldMessengerInvite(inviteeID int32, sender string, mID int32) mpacket.Packet {
-	p := mpacket.CreateInternal(opcode.ChannelPlayerMessengerEvent)
-	p.WriteByte(0x03) // Invite
-	p.WriteInt32(inviteeID)
-	p.WriteString(sender)
-	p.WriteInt32(mID)
 	return p
 }
 func packetWorldMessengerInviteResult(senderID int32, recipient string, ok bool) mpacket.Packet {
@@ -752,12 +825,27 @@ func packetWorldMessengerChat(recipientID int32, msg string) mpacket.Packet {
 	p.WriteString(msg)
 	return p
 }
-func packetWorldMessengerAvatar(recipientID int32, slot byte, avatarBlob []byte) mpacket.Packet {
+func packetWorldMessengerAvatarInline(recipientID int32, slot byte, m *messengerMember) mpacket.Packet {
 	p := mpacket.CreateInternal(opcode.ChannelPlayerMessengerEvent)
 	p.WriteByte(0x07)
 	p.WriteInt32(recipientID)
 	p.WriteByte(slot)
-	p.WriteInt16(int16(len(avatarBlob)))
-	p.WriteBytes(avatarBlob)
+	p.WriteByte(m.Gender)
+	p.WriteByte(m.Skin)
+	p.WriteInt32(m.Face)
+	p.WriteBool(true)
+	p.WriteInt32(m.Hair)
+	for _, e := range m.Vis {
+		p.WriteByte(e.k)
+		p.WriteInt32(e.v)
+	}
+	p.WriteInt8(-1)
+	for _, e := range m.Hid {
+		p.WriteByte(e.k)
+		p.WriteInt32(e.v)
+	}
+	p.WriteInt8(-1)
+	p.WriteInt32(m.CashW)
+	p.WriteInt32(m.PetAcc)
 	return p
 }
