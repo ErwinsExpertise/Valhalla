@@ -157,6 +157,8 @@ func (server *Server) HandleClientPacket(conn mnet.Client, reader mpacket.Reader
 		server.playerHitReactor(conn, reader)
 	case opcode.RecvChannelNpcStorage:
 		server.playerUseStorage(conn, reader)
+	case opcode.RecvChannelMessenger:
+		server.playerHandleMessenger(conn, reader)
 	default:
 		unknownPacketsTotal.Inc()
 		log.Println("UNKNOWN CLIENT PACKET(", op, "):", reader)
@@ -3260,6 +3262,8 @@ func (server *Server) HandleServerPacket(conn mnet.Server, reader mpacket.Reader
 		server.handleChangeRate(conn, reader)
 	case opcode.CashShopInfo:
 		server.handleCashShopInfo(conn, reader)
+	case opcode.ChannelPlayerMessengerEvent:
+		server.handleMessengerEvent(conn, reader)
 
 	default:
 		log.Println("UNKNOWN SERVER PACKET:", reader)
@@ -3629,6 +3633,91 @@ func (server Server) handleChatEvent(conn mnet.Server, reader mpacket.Reader) {
 		}
 	default:
 		log.Println("Unknown chat event type:", op)
+	}
+}
+
+func (server *Server) handleMessengerEvent(conn mnet.Server, reader mpacket.Reader) {
+	const (
+		sSelfEnter byte = 0
+		sEnter     byte = 1
+		sLeave     byte = 2
+		sInvite    byte = 3
+		sInviteRes byte = 4
+		sBlocked   byte = 5
+		sChat      byte = 6
+		sAvatar    byte = 7
+	)
+	op := reader.ReadByte()
+	switch op {
+	case sSelfEnter:
+		recipientID := reader.ReadInt32()
+		slot := reader.ReadByte()
+		if plr, err := server.players.getFromID(recipientID); err == nil {
+			plr.Send(packetMessengerSelfEnter(slot))
+		}
+	case sEnter:
+		recipientID := reader.ReadInt32()
+		slot := reader.ReadByte()
+		blobLen := reader.ReadInt16()
+		blob := reader.ReadBytes(int(blobLen))
+		name := reader.ReadString(reader.ReadInt16())
+		ch := reader.ReadByte()
+		announce := reader.ReadBool()
+		if plr, err := server.players.getFromID(recipientID); err == nil {
+			plr.Send(packetMessengerEnter(slot, blob, name, ch, announce))
+		}
+	case sLeave:
+		recipientID := reader.ReadInt32()
+		slot := reader.ReadByte()
+		if plr, err := server.players.getFromID(recipientID); err == nil {
+			plr.Send(packetMessengerLeave(slot))
+		}
+	case sInvite:
+		inviteeID := reader.ReadInt32()
+		sender := reader.ReadString(reader.ReadInt16())
+		mID := reader.ReadInt32()
+		nameResolution := reader.ReadBool()
+		if nameResolution {
+			targetName := reader.ReadString(reader.ReadInt16())
+			if plr, err := server.players.getFromName(targetName); err == nil {
+				plr.Send(packetMessengerInvite(sender, mID))
+			}
+			return
+		}
+		if inviteeID != 0 {
+			if plr, err := server.players.getFromID(inviteeID); err == nil {
+				plr.Send(packetMessengerInvite(sender, mID))
+			}
+		}
+	case sInviteRes:
+		senderID := reader.ReadInt32()
+		recipient := reader.ReadString(reader.ReadInt16())
+		success := reader.ReadBool()
+		if plr, err := server.players.getFromID(senderID); err == nil {
+			plr.Send(packetMessengerInviteResult(recipient, success))
+		}
+	case sBlocked:
+		senderID := reader.ReadInt32()
+		receiver := reader.ReadString(reader.ReadInt16())
+		mode := reader.ReadByte()
+		if plr, err := server.players.getFromID(senderID); err == nil {
+			plr.Send(packetMessengerBlocked(receiver, mode))
+		}
+	case sChat:
+		recipientID := reader.ReadInt32()
+		msg := reader.ReadString(reader.ReadInt16())
+		if plr, err := server.players.getFromID(recipientID); err == nil {
+			plr.Send(packetMessengerChat(msg))
+		}
+	case sAvatar:
+		recipientID := reader.ReadInt32()
+		slot := reader.ReadByte()
+		blobLen := reader.ReadInt16()
+		blob := reader.ReadBytes(int(blobLen))
+		if plr, err := server.players.getFromID(recipientID); err == nil {
+			plr.Send(packetMessengerAvatar(slot, blob))
+		}
+	default:
 	}
 }
 
@@ -4335,4 +4424,143 @@ func (server *Server) playerUseStorage(conn mnet.Client, reader mpacket.Reader) 
 	case actionExit:
 		return
 	}
+}
+
+func (server *Server) playerHandleMessenger(conn mnet.Client, reader mpacket.Reader) {
+	plr, err := server.players.getFromConn(conn)
+	if err != nil {
+		return
+	}
+
+	mode := reader.ReadByte()
+
+	p := mpacket.CreateInternal(opcode.ChannelPlayerMessengerEvent)
+	p.WriteByte(mode)
+	p.WriteInt32(plr.ID)
+	p.WriteByte(byte(server.id))
+	p.WriteString(plr.Name)
+
+	switch mode {
+	case 0:
+		messengerID := reader.ReadInt32()
+		p.WriteInt32(messengerID)
+
+		p.WriteByte(plr.gender)
+		p.WriteByte(plr.skin)
+		p.WriteInt32(plr.face)
+		p.WriteBool(true)
+		p.WriteInt32(plr.hair)
+
+		visible := make(map[byte]int32)
+		hidden := make(map[byte]int32)
+		var cashWeapon int32
+		var petAccessory int32
+
+		for _, it := range plr.equip {
+			if it.slotID >= 0 {
+				continue
+			}
+			key := byte(-it.slotID)
+			if it.cash && key == 11 {
+				cashWeapon = it.ID
+				continue
+			}
+			if it.cash {
+				if base, ok := visible[key]; ok {
+					hidden[key] = base
+				}
+				visible[key] = it.ID
+			} else {
+				if _, ok := visible[key]; !ok {
+					visible[key] = it.ID
+				} else {
+					if _, has := hidden[key]; !has {
+						hidden[key] = it.ID
+					}
+				}
+			}
+		}
+
+		for k, v := range visible {
+			p.WriteByte(k)
+			p.WriteInt32(v)
+		}
+		p.WriteInt8(-1)
+		for k, v := range hidden {
+			p.WriteByte(k)
+			p.WriteInt32(v)
+		}
+		p.WriteInt8(-1)
+		p.WriteInt32(cashWeapon)
+		p.WriteInt32(petAccessory)
+
+	case 2:
+	case 3:
+		invitee := reader.ReadString(reader.ReadInt16())
+		p.WriteString(invitee)
+	case 5:
+		invitee := reader.ReadString(reader.ReadInt16())
+		inviter := reader.ReadString(reader.ReadInt16())
+		blockMode := reader.ReadByte()
+		p.WriteString(invitee)
+		p.WriteString(inviter)
+		p.WriteByte(blockMode)
+	case 6:
+		message := reader.ReadString(reader.ReadInt16())
+		p.WriteString(message)
+	case 7:
+		p.WriteByte(plr.gender)
+		p.WriteByte(plr.skin)
+		p.WriteInt32(plr.face)
+		p.WriteBool(true)
+		p.WriteInt32(plr.hair)
+
+		visible := make(map[byte]int32)
+		hidden := make(map[byte]int32)
+		var cashWeapon int32
+		var petAccessory int32
+
+		for _, it := range plr.equip {
+			if it.slotID >= 0 {
+				continue
+			}
+			key := byte(-it.slotID)
+			if it.cash && key == 11 {
+				cashWeapon = it.ID
+				continue
+			}
+			if it.cash {
+				if base, ok := visible[key]; ok {
+					hidden[key] = base
+				}
+				visible[key] = it.ID
+			} else {
+				if _, ok := visible[key]; !ok {
+					visible[key] = it.ID
+				} else {
+					if _, has := hidden[key]; !has {
+						hidden[key] = it.ID
+					}
+				}
+			}
+		}
+
+		for k, v := range visible {
+			p.WriteByte(k)
+			p.WriteInt32(v)
+		}
+		p.WriteInt8(-1)
+		for k, v := range hidden {
+			p.WriteByte(k)
+			p.WriteInt32(v)
+		}
+		p.WriteInt8(-1)
+		p.WriteInt32(cashWeapon)
+		p.WriteInt32(petAccessory)
+
+	default:
+		return
+	}
+
+	server.world.Send(p)
 }
