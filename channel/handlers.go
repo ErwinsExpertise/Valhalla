@@ -6,6 +6,7 @@ import (
 	"log"
 	"math"
 	"math/rand"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -4568,45 +4569,79 @@ func (server *Server) playerHandleMessenger(conn mnet.Client, reader mpacket.Rea
 		p.WriteBool(true)
 		p.WriteInt32(plr.hair)
 
-		visible := make(map[byte]int32)
-		hidden := make(map[byte]int32)
-		var cashWeapon int32
 		var petAccessory int32
+		visible := [][2]int32{}
+		hidden := [][2]int32{}
+
+		base := make(map[byte]int32)
+		cash := make(map[byte]int32)
+		cashWeapon := int32(0)
 
 		for _, it := range plr.equip {
 			if it.slotID >= 0 {
 				continue
 			}
-			key := byte(-it.slotID)
-			if it.cash && key == 11 {
-				cashWeapon = it.ID
+
+			slot := byte(-it.slotID)
+			if it.slotID < -100 {
+				slot = byte(-(it.slotID + 100))
+			}
+
+			if slot == 11 {
+				if it.slotID < -100 {
+					cashWeapon = it.ID
+				}
 				continue
 			}
-			if it.cash {
-				if base, ok := visible[key]; ok {
-					hidden[key] = base
-				}
-				visible[key] = it.ID
+
+			if it.slotID < -100 {
+				cash[slot] = it.ID
 			} else {
-				if _, ok := visible[key]; !ok {
-					visible[key] = it.ID
-				} else {
-					if _, has := hidden[key]; !has {
-						hidden[key] = it.ID
-					}
+				if _, ok := base[slot]; !ok {
+					base[slot] = it.ID
 				}
 			}
 		}
 
-		for k, v := range visible {
-			p.WriteByte(k)
-			p.WriteInt32(v)
+		order := func(m map[byte]int32) []byte {
+			ks := make([]byte, 0, len(m))
+			for k := range m {
+				ks = append(ks, k)
+			}
+			sort.Slice(ks, func(i, j int) bool { return ks[i] < ks[j] })
+			return ks
+		}
+
+		for _, k := range order(base) {
+			if v, ok := cash[k]; ok {
+				visible = append(visible, [2]int32{int32(k), v})
+				hidden = append(hidden, [2]int32{int32(k), base[k]})
+			} else {
+				visible = append(visible, [2]int32{int32(k), base[k]})
+			}
+		}
+
+		for _, k := range order(cash) {
+			if _, used := base[k]; !used {
+				visible = append(visible, [2]int32{int32(k), cash[k]})
+			}
+		}
+
+		for _, kv := range visible {
+			slot := byte(kv[0])
+			id := kv[1]
+			p.WriteByte(slot)
+			p.WriteInt32(id)
 		}
 		p.WriteInt8(-1)
-		for k, v := range hidden {
-			p.WriteByte(k)
-			p.WriteInt32(v)
+
+		for _, kv := range hidden {
+			slot := byte(kv[0])
+			id := kv[1]
+			p.WriteByte(slot)
+			p.WriteInt32(id)
 		}
+
 		p.WriteInt8(-1)
 		p.WriteInt32(cashWeapon)
 		p.WriteInt32(petAccessory)
@@ -4632,45 +4667,79 @@ func (server *Server) playerHandleMessenger(conn mnet.Client, reader mpacket.Rea
 		p.WriteBool(true)
 		p.WriteInt32(plr.hair)
 
-		visible := make(map[byte]int32)
-		hidden := make(map[byte]int32)
-		var cashWeapon int32
 		var petAccessory int32
+		visible := [][2]int32{}
+		hidden := [][2]int32{}
+
+		base := make(map[byte]int32)
+		cash := make(map[byte]int32)
+		cashWeapon := int32(0)
 
 		for _, it := range plr.equip {
 			if it.slotID >= 0 {
 				continue
 			}
-			key := byte(-it.slotID)
-			if it.cash && key == 11 {
-				cashWeapon = it.ID
+
+			slot := byte(-it.slotID)
+			if it.slotID < -100 {
+				slot = byte(-(it.slotID + 100))
+			}
+
+			if slot == 11 {
+				if it.slotID < -100 {
+					cashWeapon = it.ID
+				}
 				continue
 			}
-			if it.cash {
-				if base, ok := visible[key]; ok {
-					hidden[key] = base
-				}
-				visible[key] = it.ID
+
+			if it.slotID < -100 {
+				cash[slot] = it.ID
 			} else {
-				if _, ok := visible[key]; !ok {
-					visible[key] = it.ID
-				} else {
-					if _, has := hidden[key]; !has {
-						hidden[key] = it.ID
-					}
+				if _, ok := base[slot]; !ok {
+					base[slot] = it.ID
 				}
 			}
 		}
 
-		for k, v := range visible {
-			p.WriteByte(k)
-			p.WriteInt32(v)
+		order := func(m map[byte]int32) []byte {
+			ks := make([]byte, 0, len(m))
+			for k := range m {
+				ks = append(ks, k)
+			}
+			sort.Slice(ks, func(i, j int) bool { return ks[i] < ks[j] })
+			return ks
+		}
+
+		for _, k := range order(base) {
+			if v, ok := cash[k]; ok {
+				visible = append(visible, [2]int32{int32(k), v})
+				hidden = append(hidden, [2]int32{int32(k), base[k]})
+			} else {
+				visible = append(visible, [2]int32{int32(k), base[k]})
+			}
+		}
+
+		for _, k := range order(cash) {
+			if _, used := base[k]; !used {
+				visible = append(visible, [2]int32{int32(k), cash[k]})
+			}
+		}
+
+		for _, kv := range visible {
+			slot := byte(kv[0])
+			id := kv[1]
+			p.WriteByte(slot)
+			p.WriteInt32(id)
 		}
 		p.WriteInt8(-1)
-		for k, v := range hidden {
-			p.WriteByte(k)
-			p.WriteInt32(v)
+
+		for _, kv := range hidden {
+			slot := byte(kv[0])
+			id := kv[1]
+			p.WriteByte(slot)
+			p.WriteInt32(id)
 		}
+
 		p.WriteInt8(-1)
 		p.WriteInt32(cashWeapon)
 		p.WriteInt32(petAccessory)
