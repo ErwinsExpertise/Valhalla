@@ -3638,25 +3638,15 @@ func (server Server) handleChatEvent(conn mnet.Server, reader mpacket.Reader) {
 }
 
 func (server *Server) handleMessengerEvent(conn mnet.Server, reader mpacket.Reader) {
-	const (
-		sSelfEnter byte = 0
-		sEnter     byte = 1
-		sLeave     byte = 2
-		sInvite    byte = 3
-		sInviteRes byte = 4
-		sBlocked   byte = 5
-		sChat      byte = 6
-		sAvatar    byte = 7
-	)
 	op := reader.ReadByte()
 	switch op {
-	case sSelfEnter:
+	case constant.MessengerEnter:
 		recipientID := reader.ReadInt32()
 		slot := reader.ReadByte()
 		if plr, err := server.players.getFromID(recipientID); err == nil {
 			plr.Send(packetMessengerSelfEnter(slot))
 		}
-	case sEnter:
+	case constant.MessengerEnterResult:
 		recipientID := reader.ReadInt32()
 		slot := reader.ReadByte()
 
@@ -3728,13 +3718,13 @@ func (server *Server) handleMessengerEvent(conn mnet.Server, reader mpacket.Read
 			plr.Send(p)
 		}
 
-	case sLeave:
+	case constant.MessengerLeave:
 		recipientID := reader.ReadInt32()
 		slot := reader.ReadByte()
 		if plr, err := server.players.getFromID(recipientID); err == nil {
 			plr.Send(packetMessengerLeave(slot))
 		}
-	case sInvite:
+	case constant.MessengerInvite:
 		inviteeID := reader.ReadInt32()
 		sender := reader.ReadString(reader.ReadInt16())
 		mID := reader.ReadInt32()
@@ -3751,27 +3741,27 @@ func (server *Server) handleMessengerEvent(conn mnet.Server, reader mpacket.Read
 				plr.Send(packetMessengerInvite(sender, mID))
 			}
 		}
-	case sInviteRes:
+	case constant.MessengerInviteResult:
 		senderID := reader.ReadInt32()
 		recipient := reader.ReadString(reader.ReadInt16())
 		success := reader.ReadBool()
 		if plr, err := server.players.getFromID(senderID); err == nil {
 			plr.Send(packetMessengerInviteResult(recipient, success))
 		}
-	case sBlocked:
+	case constant.MessengerBlocked:
 		senderID := reader.ReadInt32()
 		receiver := reader.ReadString(reader.ReadInt16())
 		mode := reader.ReadByte()
 		if plr, err := server.players.getFromID(senderID); err == nil {
 			plr.Send(packetMessengerBlocked(receiver, mode))
 		}
-	case sChat:
+	case constant.MessengerChat:
 		recipientID := reader.ReadInt32()
 		msg := reader.ReadString(reader.ReadInt16())
 		if plr, err := server.players.getFromID(recipientID); err == nil {
 			plr.Send(packetMessengerChat(msg))
 		}
-	case sAvatar:
+	case constant.MessengerAvatar:
 		recipientID := reader.ReadInt32()
 		slot := reader.ReadByte()
 
@@ -4555,11 +4545,11 @@ func (server *Server) playerHandleMessenger(conn mnet.Client, reader mpacket.Rea
 	p := mpacket.CreateInternal(opcode.ChannelPlayerMessengerEvent)
 	p.WriteByte(mode)
 	p.WriteInt32(plr.ID)
-	p.WriteByte(byte(server.id))
+	p.WriteByte(server.id)
 	p.WriteString(plr.Name)
 
 	switch mode {
-	case 0:
+	case constant.MessengerEnter:
 		messengerID := reader.ReadInt32()
 		p.WriteInt32(messengerID)
 
@@ -4646,21 +4636,21 @@ func (server *Server) playerHandleMessenger(conn mnet.Client, reader mpacket.Rea
 		p.WriteInt32(cashWeapon)
 		p.WriteInt32(petAccessory)
 
-	case 2:
-	case 3:
+	case constant.MessengerLeave:
+	case constant.MessengerInvite:
 		invitee := reader.ReadString(reader.ReadInt16())
 		p.WriteString(invitee)
-	case 5:
+	case constant.MessengerBlocked:
 		invitee := reader.ReadString(reader.ReadInt16())
 		inviter := reader.ReadString(reader.ReadInt16())
 		blockMode := reader.ReadByte()
 		p.WriteString(invitee)
 		p.WriteString(inviter)
 		p.WriteByte(blockMode)
-	case 6:
+	case constant.MessengerChat:
 		message := reader.ReadString(reader.ReadInt16())
 		p.WriteString(message)
-	case 7:
+	case constant.MessengerAvatar:
 		p.WriteByte(plr.gender)
 		p.WriteByte(plr.skin)
 		p.WriteInt32(plr.face)

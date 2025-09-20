@@ -283,19 +283,8 @@ func packetUseScroll(playerID int32, succeed bool, destroy bool, legendarySpirit
 
 func packetMessengerSelfEnter(slot byte) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelMessenger)
-	p.WriteByte(constant.MessengerSelfEnterResult)
+	p.WriteByte(constant.MessengerEnterResult)
 	p.WriteByte(slot)
-	return p
-}
-
-func packetMessengerEnter(slot byte, avatarBlob []byte, name string, channelID byte, announce bool) mpacket.Packet {
-	p := mpacket.CreateWithOpcode(opcode.SendChannelMessenger)
-	p.WriteByte(constant.MessengerEnter)
-	p.WriteByte(slot)
-	p.WriteBytes(avatarBlob)
-	p.WriteString(name)
-	p.WriteByte(channelID)
-	p.WriteBool(announce)
 	return p
 }
 
@@ -336,13 +325,5 @@ func packetMessengerChat(message string) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelMessenger)
 	p.WriteByte(constant.MessengerChat)
 	p.WriteString(message)
-	return p
-}
-
-func packetMessengerAvatar(slot byte, avatarBlob []byte) mpacket.Packet {
-	p := mpacket.CreateWithOpcode(opcode.SendChannelMessenger)
-	p.WriteByte(constant.MessengerAvatar)
-	p.WriteByte(slot)
-	p.WriteBytes(avatarBlob)
 	return p
 }
