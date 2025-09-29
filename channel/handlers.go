@@ -160,6 +160,16 @@ func (server *Server) HandleClientPacket(conn mnet.Client, reader mpacket.Reader
 		server.playerUseStorage(conn, reader)
 	case opcode.RecvChannelMessenger:
 		server.playerHandleMessenger(conn, reader)
+	case opcode.RecvChannelPetSpawn:
+		server.playerPetSpawn(conn, reader)
+	case opcode.RecvChannelPetMove:
+		server.playerPetMove(conn, reader)
+	case opcode.RecvChannelPetAction:
+		server.playerPetAction(conn, reader)
+	case opcode.RecvChannelPetInteraction:
+		server.playerPetInteraction(conn, reader)
+	case opcode.RecvChannelPetLoot:
+		server.playerPetLoot(conn, reader)
 	default:
 		unknownPacketsTotal.Inc()
 		log.Println("UNKNOWN CLIENT PACKET(", op, "):", reader)
@@ -3851,7 +3861,7 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 	case skill.Haste, skill.BanditHaste, skill.Bless, skill.IronWill, skill.Rage, skill.GMHaste, skill.GMBless, skill.GMHolySymbol,
 		skill.Meditation, skill.ILMeditation, skill.MesoUp, skill.HolySymbol, skill.HyperBody:
 		plr.addBuff(skillID, skillLevel, delay)
-		plr.inst.send(packetPlayerSkillAnimThirdParty(plr.ID, false, true, skillID, skillLevel))
+		plr.inst.send(packetPlayerSkillAnimation(plr.ID, false, skillID, skillLevel))
 
 		// Apply to eligible party members in same map/instance per mask
 		if plr.party != nil {
@@ -3862,7 +3872,7 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 				}
 				// Apply buff to the target member (not as a “foreign” state on the caster)
 				member.addBuff(skillID, skillLevel, delay)
-				plr.inst.send(packetPlayerSkillAnimThirdParty(member.ID, true, false, skillID, skillLevel))
+				member.inst.send(packetPlayerSkillAnimation(member.ID, true, skillID, skillLevel))
 			}
 		}
 
@@ -3882,7 +3892,7 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 		// GM Hide (mapped to invincible bit)
 		skill.Hide:
 		plr.addBuff(skillID, skillLevel, delay)
-		plr.inst.send(packetPlayerSkillAnimThirdParty(plr.ID, false, true, skillID, skillLevel))
+		plr.inst.send(packetPlayerSkillAnimation(plr.ID, false, skillID, skillLevel))
 
 	// Debuffs on mobs: [mobCount][mobIDs...][delay]
 	case skill.Threaten,
@@ -3940,12 +3950,12 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 
 		plr.addBuff(skillID, skillLevel, delay)
 		plr.addSummon(summ)
-		plr.inst.send(packetPlayerSkillAnimThirdParty(plr.ID, false, true, skillID, skillLevel))
+		plr.inst.send(packetPlayerSkillAnimation(plr.ID, false, skillID, skillLevel))
 
 	default:
 		// Always Send a self animation so client shows casting even for non-buffs.
 		plr.addBuff(skillID, skillLevel, delay)
-		plr.inst.send(packetPlayerSkillAnimThirdParty(plr.ID, false, true, skillID, skillLevel))
+		plr.inst.send(packetPlayerSkillAnimation(plr.ID, false, skillID, skillLevel))
 	}
 
 	// Apply MP cost/cooldown, if any (reuses the same flow as attack skills).
@@ -3953,8 +3963,6 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 		plr.Send(packetPlayerNoChange())
 		return
 	}
-
-	plr.Send(packetPlayerNoChange())
 }
 
 func (server *Server) playerCancelBuff(conn mnet.Client, reader mpacket.Reader) {
@@ -4624,4 +4632,66 @@ func (server *Server) playerHandleMessenger(conn mnet.Client, reader mpacket.Rea
 		return
 	}
 
+}
+
+func (server *Server) playerPetSpawn(conn mnet.Client, reader mpacket.Reader) {
+	plr, err := server.players.getFromConn(conn)
+	if err != nil {
+		return
+	}
+
+	slot := reader.ReadInt16()
+
+	petItem, err := plr.getItem(5, slot)
+	if !petItem.pet || err != nil {
+		plr.Send(packetPlayerNoChange())
+		return
+	}
+
+	server.pets[plr.ID] = &pet{
+		name:      "test",
+		itemID:    petItem.ID,
+		cashID:    petItem.dbID,
+		pos:       plr.pos,
+		level:     10,
+		closeness: 20,
+		fullness:  4,
+		deadDate:  time.Now().Add(time.Hour).UnixNano(),
+		spawnDate: time.Now().UnixNano(),
+	}
+
+	plr.Send(packetPetSpawn(plr.ID, server.pets[plr.ID]))
+}
+
+func (server *Server) playerPetMove(conn mnet.Client, reader mpacket.Reader) {
+	plr, err := server.players.getFromConn(conn)
+	if err != nil {
+		return
+	}
+
+	log.Println(plr)
+}
+
+func (server *Server) playerPetAction(conn mnet.Client, reader mpacket.Reader) {
+	plr, err := server.players.getFromConn(conn)
+	if err != nil {
+		return
+	}
+	log.Println(plr)
+}
+
+func (server *Server) playerPetInteraction(conn mnet.Client, reader mpacket.Reader) {
+	plr, err := server.players.getFromConn(conn)
+	if err != nil {
+		return
+	}
+	log.Println(plr)
+}
+
+func (server *Server) playerPetLoot(conn mnet.Client, reader mpacket.Reader) {
+	plr, err := server.players.getFromConn(conn)
+	if err != nil {
+		return
+	}
+	log.Println(plr)
 }

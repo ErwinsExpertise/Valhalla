@@ -96,6 +96,7 @@ type Server struct {
 	portalScriptStore *scriptStore
 	parties           map[int32]*party
 	guilds            map[int32]*guild
+	pets              map[int32]*pet
 	rates             rates
 }
 

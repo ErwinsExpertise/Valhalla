@@ -2071,39 +2071,21 @@ func packetPlayerReceivedDmg(charID int32, attack int8, initalAmmount, reducedAm
 func packetPlayerLevelUpAnimation(charID int32) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelPlayerAnimation)
 	p.WriteInt32(charID)
-	p.WriteByte(0x00)
+	p.WriteByte(constant.PlayerEffectLevelUp)
 
 	return p
 }
 
-func packetPlayerSkillAnimSelf(charID int32, skillID int32, level byte) mpacket.Packet {
+func packetPlayerSkillAnimation(charID int32, party bool, skillID int32, level byte) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelPlayerAnimation)
 	p.WriteInt32(charID)
-	p.WriteByte(0x01)
+	if party {
+		p.WriteByte(constant.PlayerEffectSkillOnOther)
+	} else {
+		p.WriteByte(constant.PlayerEffectSkillOnSelf)
+	}
 	p.WriteInt32(skillID)
 	p.WriteByte(level)
-	return p
-}
-
-func packetPlayerSkillAnimThirdParty(charID int32, party bool, self bool, skillID int32, level byte) mpacket.Packet {
-	var p mpacket.Packet
-	if party && self {
-		p = mpacket.CreateWithOpcode(opcode.SendChannelSkillAnimation)
-	} else {
-		p = mpacket.CreateWithOpcode(opcode.SendChannelPlayerAnimation)
-		p.WriteInt32(charID)
-	}
-
-	if party {
-		p.WriteByte(0x02)
-	} else {
-		p.WriteByte(0x01)
-	}
-	p.WriteInt32(skillID)
-	// Basis uses WriteInt for level; encode as int32 to match
-	p.WriteInt32(int32(level))
-	p.WriteUint64(0)
-	p.WriteUint64(0)
 	return p
 }
 
@@ -2139,34 +2121,6 @@ func packetPlayerGiveBuff(mask []byte, values []byte, delay int16, extra byte) m
 	return p
 }
 
-func packetPlayerGiveForeignBuff(charID int32, mask []byte, values []byte, extra byte) mpacket.Packet {
-	p := mpacket.CreateWithOpcode(opcode.SendChannelPlayerGiveForeignBuff)
-	p.WriteInt32(charID)
-
-	// Normalize to 8 bytes (low dword, high dword)
-	if len(mask) < 8 {
-		tmp := make([]byte, 8)
-		copy(tmp[8-len(mask):], mask)
-		mask = tmp
-	} else if len(mask) > 8 {
-		mask = mask[len(mask)-8:]
-	}
-
-	p.WriteBytes(mask)
-
-	// Per-stat value triples
-	p.WriteBytes(values)
-
-	// Foreign path: no delay, but still optional extra byte
-	if buffMaskNeedsExtraByte(mask) {
-		p.WriteByte(extra)
-	}
-	p.WriteInt64(0)
-	p.WriteInt64(0)
-
-	return p
-}
-
 func buffMaskNeedsExtraByte(mask []byte) bool {
 	isSetLSB := func(bit int) bool {
 		idx := bit / 8
@@ -2196,82 +2150,11 @@ func packetPlayerCancelBuff(mask []byte) mpacket.Packet {
 	return p
 }
 
-func packetPlayerGiveDebuff(mask []byte, values []byte) mpacket.Packet {
-	p := mpacket.CreateWithOpcode(opcode.SendChannelTempStatChange)
-	p.WriteInt64(0)
-	p.WriteBytes(mask)
-	p.WriteBytes(values)
-	p.WriteInt16(900)
-	p.WriteByte(1)
-
-	return p
-}
-
-func packetPlayerGiveForeignDebuff(charID int32, mask []byte, skillID, skillLevel int16) mpacket.Packet {
-	p := mpacket.CreateWithOpcode(opcode.SendChannelPlayerGiveForeignBuff)
-	p.WriteInt32(charID)
-	p.WriteInt64(0)
-	p.WriteBytes(mask)
-	p.WriteInt16(skillID)
-	p.WriteInt16(skillLevel)
-	p.WriteInt16(900)
-
-	return p
-}
-
 func packetPlayerCancelForeignBuff(charID int32, mask []byte) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelPlayerResetForeignBuff)
 	p.WriteInt32(charID)
 	p.WriteUint64(0)
 	p.WriteBytes(mask)
-	return p
-}
-
-func packetPlayerCancelDebuff(mask []byte) mpacket.Packet {
-	p := mpacket.CreateWithOpcode(opcode.SendChannelRemoveTempStat)
-	p.WriteInt64(0)
-	p.WriteBytes(mask)
-	p.WriteInt32(0)
-
-	return p
-}
-
-func packetPlayerCancelForeignDebuff(charID int32, mask []byte) mpacket.Packet {
-	p := mpacket.CreateWithOpcode(opcode.SendChannelPlayerResetForeignBuff)
-	p.WriteInt32(charID)
-	p.WriteUint64(0)
-	p.WriteBytes(mask)
-
-	return p
-}
-
-func packetPlayerShowForeignEffect(charID int32, effectID int32) mpacket.Packet {
-	p := mpacket.CreateWithOpcode(opcode.SendChannelPlayerShowForeignEffect)
-	p.WriteInt32(charID)
-	p.WriteInt32(effectID)
-
-	return p
-}
-
-func packetPlayerShowBuffEffect(charID, skillID, effectID int32, direction byte) mpacket.Packet {
-	p := mpacket.CreateWithOpcode(opcode.SendChannelPlayerShowItemGainChat)
-	p.WriteInt32(charID)
-	p.WriteInt32(effectID)
-	p.WriteInt32(skillID)
-	p.WriteByte(1)
-	if direction != 0x03 {
-		p.WriteByte(direction)
-	}
-	return p
-}
-
-func packetPlayerShowOwnBuffEffect(skillId, effectId int32) mpacket.Packet {
-	p := mpacket.CreateWithOpcode(opcode.SendChannelPlayerShowForeignEffect)
-	p.WriteInt32(0)
-	p.WriteInt32(effectId)
-	p.WriteInt32(skillId)
-	p.WriteByte(0)
-
 	return p
 }
 

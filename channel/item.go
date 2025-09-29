@@ -455,20 +455,15 @@ func (v Item) bytes(shortSlot, storage bool) []byte {
 		p.WriteString(v.creatorName)
 		p.WriteInt16(v.flag) // lock/seal, show, spikes, cape, cold protection etc ?
 	} else if v.pet {
-		p.WritePaddedString(v.creatorName, 13)
-		p.WriteByte(0)
-		p.WriteInt16(0)
-		p.WriteByte(0)
+		p.WritePaddedString(v.creatorName, 13) // pet's name lol
+		p.WriteByte(0)                         // Level
+		p.WriteInt16(0)                        // Closeness
+		p.WriteByte(0)                         // Fullness
 		p.WriteInt64(v.expireTime)
-		p.WriteInt32(0) // ?
 	} else {
 		p.WriteInt16(v.amount)
 		p.WriteString(v.creatorName)
 		p.WriteInt16(v.flag) // even (normal), odd (sealed) ?
-
-		//if v.isRechargeable() {
-		//	p.WriteInt64(0) // ?
-		//}
 	}
 
 	return p
