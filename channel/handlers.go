@@ -4649,20 +4649,40 @@ func (server *Server) playerPetSpawn(conn mnet.Client, reader mpacket.Reader) {
 		return
 	}
 
-	server.pets[plr.ID] = &pet{
-		name:      "test",
-		itemID:    petItem.ID,
-		dbID:      petItem.dbID,
-		pos:       plr.pos,
-		stance:    0,
-		level:     0,
-		closeness: 0,
-		fullness:  0,
-		deadDate:  time.Now().UnixMilli()*10000 + 116444592000000000,
-		spawnDate: 0,
+	sn, _ := nx.GetCommoditySNByItemID(petItem.ID)
+
+	petEquipped := plr.petCashID != 0
+	changePet := petEquipped && plr.petCashID == int64(sn)
+
+	if petEquipped {
+		plr.inst.send(packetPetRemove(plr.ID, petRemoveNone))
+		delete(server.pets, plr.ID)
+		plr.petCashID = 0
 	}
-	plr.inst.send(packetPetSpawn(plr.ID, server.pets[plr.ID]))
-	plr.inst.send(packetPlayerPetUpdate(petItem.dbID))
+
+	if !changePet {
+		plr.petCashID = int64(sn)
+
+		if petData, ok := server.pets[plr.ID]; !ok {
+			server.pets[plr.ID] = newPet(petItem.ID, sn)
+		} else {
+			if petData.sn != sn {
+				server.pets[plr.ID] = newPet(petItem.ID, sn)
+			}
+		}
+
+		server.pets[plr.ID].pos = plr.pos
+
+		plr.pet = server.pets[plr.ID]
+		plr.inst.send(packetPetSpawn(plr.ID, server.pets[plr.ID]))
+
+		if server.pets[plr.ID].spawnDate == 0 {
+			plr.Send(packetPlayerPetUpdate(server.pets[plr.ID].sn))
+		}
+		server.pets[plr.ID].spawnDate = time.Now().Unix()
+	}
+
+	plr.Send(packetPlayerNoChange())
 }
 
 func (server *Server) playerPetMove(conn mnet.Client, reader mpacket.Reader) {
@@ -4671,7 +4691,24 @@ func (server *Server) playerPetMove(conn mnet.Client, reader mpacket.Reader) {
 		return
 	}
 
-	log.Println(plr)
+	moveData, finalData := parseMovement(reader)
+	moveBytes := generateMovementBytes(moveData)
+
+	server.pets[plr.ID].updateMovement(finalData)
+
+	field, ok := server.fields[plr.mapID]
+
+	if !ok {
+		return
+	}
+
+	inst, err := field.getInstance(plr.inst.id)
+
+	if err != nil {
+		return
+	}
+
+	inst.movePlayerPet(plr.ID, moveBytes, plr)
 }
 
 func (server *Server) playerPetAction(conn mnet.Client, reader mpacket.Reader) {

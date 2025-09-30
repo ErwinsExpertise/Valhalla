@@ -655,6 +655,10 @@ func (inst fieldInstance) movePlayer(id int32, moveBytes []byte, plr *Player) {
 	inst.sendExcept(packetPlayerMove(id, moveBytes), plr.Conn)
 }
 
+func (inst fieldInstance) movePlayerPet(id int32, moveBytes []byte, plr *Player) {
+	inst.sendExcept(packetPetMove(id, moveBytes), plr.Conn)
+}
+
 func (inst *fieldInstance) nextID() int32 {
 	inst.idCounter++
 	return inst.idCounter

@@ -58,10 +58,10 @@ const (
 	RecvChannelGuildReject         byte = 0x52
 	RecvChannelBuddyOperation      byte = 0x55
 	RecvChannelUseMysticDoor       byte = 0x58
-	RecvChannelPetMove             byte = 0x5C
-	RecvChannelPetAction           byte = 0x5D
-	RecvChannelPetInteraction      byte = 0x5E
-	RecvChannelPetLoot             byte = 0x5F
+	RecvChannelPetMove             byte = 0x5B
+	RecvChannelPetAction           byte = 0x5C
+	RecvChannelPetInteraction      byte = 0x5D
+	RecvChannelPetLoot             byte = 0x5E
 	RecvChannelSummonMove          byte = 0x62
 	RecvChannelSummonAttack        byte = 0x63
 	RecvChannelSummonDamage        byte = 0x64

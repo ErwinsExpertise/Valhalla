@@ -127,14 +127,15 @@ type Player struct {
 	exp   int32
 	fame  int16
 
-	Name    string
-	gender  byte
-	skin    byte
-	face    int32
-	hair    int32
-	chairID int32
-	stance  byte
-	pos     pos
+	Name      string
+	gender    byte
+	skin      byte
+	face      int32
+	hair      int32
+	chairID   int32
+	petCashID int64
+	stance    byte
+	pos       pos
 
 	equipSlotSize byte
 	useSlotSize   byte
@@ -175,6 +176,7 @@ type Player struct {
 	quests quests
 
 	summons *summonState
+	pet     *pet
 
 	// Per-Player RNG for deterministic randomness
 	rng *rand.Rand
@@ -1462,6 +1464,8 @@ func LoadPlayerFromID(id int32, conn mnet.Client) Player {
 		return c
 	}
 
+	c.petCashID = 0
+
 	if err := common.DB.QueryRow("SELECT username, nx, maplepoints FROM accounts WHERE accountID=?", c.accountID).Scan(&c.accountName, &c.nx, &c.maplepoints); err != nil {
 		log.Printf("loadPlayerFromID: failed to fetch accountName for accountID=%d: %v", c.accountID, err)
 	}
@@ -2246,7 +2250,7 @@ func packetPlayerEnterGame(plr Player, channelID int32) mpacket.Packet {
 	p.WriteInt32(plr.face)
 	p.WriteInt32(plr.hair)
 
-	p.WriteInt64(0) // Pet Cash ID
+	p.WriteInt64(plr.petCashID)
 
 	p.WriteByte(plr.level)
 	p.WriteInt16(plr.job)
@@ -2647,7 +2651,7 @@ func (plr *Player) WriteCharacterInfoPacket(p *mpacket.Packet) {
 	p.WriteByte(plr.skin)
 	p.WriteInt32(plr.face)
 	p.WriteInt32(plr.hair)
-	p.WriteInt64(0) // Pet Cash ID
+	p.WriteInt64(plr.petCashID) // Pet Cash ID
 
 	p.WriteByte(plr.level)
 	p.WriteInt16(plr.job)
@@ -2776,4 +2780,14 @@ func (plr *Player) WriteCharacterInfoPacket(p *mpacket.Packet) {
 	for i := 0; i < 10; i++ {
 		p.WriteInt32(999999999) // VIP Tele rocks
 	}
+}
+
+func packetPlayerPetUpdate(sn int32) mpacket.Packet {
+	p := mpacket.CreateWithOpcode(opcode.SendChannelStatChange)
+	p.WriteBool(false)
+	p.WriteInt32(constant.PetID)
+	p.WriteUint64(uint64(sn))
+	p.WriteByte(0)
+
+	return p
 }
