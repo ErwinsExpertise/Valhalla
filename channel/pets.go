@@ -2,20 +2,22 @@ package channel
 
 import (
 	"github.com/Hucaru/Valhalla/common/opcode"
+	"github.com/Hucaru/Valhalla/constant"
 	"github.com/Hucaru/Valhalla/mpacket"
 )
 
 type pet struct {
 	name      string
 	itemID    int32
-	cashID    int64
+	dbID      int64
 	level     byte
 	closeness int16
 	fullness  byte
 	deadDate  int64
 	spawnDate int64
 
-	pos pos
+	pos    pos
+	stance byte
 }
 
 const (
@@ -33,7 +35,7 @@ const (
 	petResetStat   = petSpawn | petConnect
 )
 
-func petPetAction(charID int32, op, action byte, text string) mpacket.Packet {
+func packetPetAction(charID int32, op, action byte, text string) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelPetAction)
 	p.WriteInt32(charID)
 	p.WriteByte(op)
@@ -74,12 +76,11 @@ func packetPetSpawn(charID int32, petData *pet) mpacket.Packet {
 	p.WriteBool(true)
 	p.WriteInt32(petData.itemID)
 	p.WriteString(petData.name)
-	p.WriteInt64(petData.cashID)
+	p.WriteInt64(petData.dbID)
 	p.WriteInt16(petData.pos.x)
 	p.WriteInt16(petData.pos.y)
-	p.WriteByte(0)
+	p.WriteByte(petData.stance)
 	p.WriteInt16(petData.pos.foothold)
-
 	return p
 }
 
@@ -88,6 +89,15 @@ func packetPetRemove(charID int32, reason byte) mpacket.Packet {
 	p.WriteInt32(charID)
 	p.WriteBool(false)
 	p.WriteByte(reason)
+
+	return p
+}
+
+func packetPlayerPetUpdate(petID int64) mpacket.Packet {
+	p := mpacket.CreateWithOpcode(opcode.SendChannelStatChange)
+	p.WriteBool(false)
+	p.WriteInt32(constant.PetID)
+	p.WriteInt64(petID)
 
 	return p
 }

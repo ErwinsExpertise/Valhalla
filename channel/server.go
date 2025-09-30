@@ -168,6 +168,7 @@ func (server *Server) Initialise(work chan func(), dbuser, dbpassword, dbaddress
 
 	server.parties = make(map[int32]*party)
 	server.guilds = make(map[int32]*guild)
+	server.pets = make(map[int32]*pet)
 
 }
 

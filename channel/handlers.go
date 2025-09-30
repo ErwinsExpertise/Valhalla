@@ -55,6 +55,7 @@ func (server *Server) HandleClientPacket(conn mnet.Client, reader mpacket.Reader
 			log.Printf("panic in HandleClientPacket op=%d: %v", op, r)
 		}
 	}()
+
 	switch op {
 	case opcode.RecvPing:
 	case opcode.RecvClientMigrate:
@@ -4651,16 +4652,17 @@ func (server *Server) playerPetSpawn(conn mnet.Client, reader mpacket.Reader) {
 	server.pets[plr.ID] = &pet{
 		name:      "test",
 		itemID:    petItem.ID,
-		cashID:    petItem.dbID,
+		dbID:      petItem.dbID,
 		pos:       plr.pos,
-		level:     10,
-		closeness: 20,
-		fullness:  4,
-		deadDate:  time.Now().Add(time.Hour).UnixNano(),
-		spawnDate: time.Now().UnixNano(),
+		stance:    0,
+		level:     0,
+		closeness: 0,
+		fullness:  0,
+		deadDate:  time.Now().UnixMilli()*10000 + 116444592000000000,
+		spawnDate: 0,
 	}
-
-	plr.Send(packetPetSpawn(plr.ID, server.pets[plr.ID]))
+	plr.inst.send(packetPetSpawn(plr.ID, server.pets[plr.ID]))
+	plr.inst.send(packetPlayerPetUpdate(petItem.dbID))
 }
 
 func (server *Server) playerPetMove(conn mnet.Client, reader mpacket.Reader) {
