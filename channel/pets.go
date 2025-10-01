@@ -3,6 +3,7 @@ package channel
 import (
 	"time"
 
+	"github.com/Hucaru/Valhalla/common"
 	"github.com/Hucaru/Valhalla/common/opcode"
 	"github.com/Hucaru/Valhalla/mpacket"
 )
@@ -11,6 +12,7 @@ type pet struct {
 	name            string
 	itemID          int32
 	sn              int32
+	itemDBID        int64
 	level           byte
 	closeness       int16
 	fullness        byte
@@ -24,21 +26,55 @@ type pet struct {
 	spawned bool
 }
 
-func newPet(itemID, sn int32) *pet {
-	// Should actually load all this from DB but for now do this
+func newPet(itemID, sn int32, dbID int64) *pet {
 	return &pet{
-		name:            "test",
+		name:            "",
 		itemID:          itemID,
 		sn:              sn,
+		itemDBID:        dbID,
 		stance:          0,
 		level:           0,
 		closeness:       0,
-		fullness:        0,
-		deadDate:        time.Now().UnixMilli()*10000 + 116444592000000000,
+		fullness:        100,
+		deadDate:        (time.Now().UnixMilli()*10000 + 116444592000000000 + (time.Hour.Milliseconds() * 24 * 90)),
 		spawnDate:       0,
 		lastInteraction: 0,
 	}
 }
+
+func savePet(item *Item) error {
+	if item.petData == nil {
+		return nil
+	}
+
+	p := item.petData
+
+	_, err := common.DB.Exec(`
+		INSERT INTO pets (
+			itemID, name, sn, level, closeness, fullness,
+			deadDate, spawnDate, lastInteraction
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON DUPLICATE KEY UPDATE
+			name = VALUES(name),
+			level = VALUES(level),
+			closeness = VALUES(closeness),
+			fullness = VALUES(fullness),
+			deadDate = VALUES(deadDate),
+			spawnDate = VALUES(spawnDate),
+			lastInteraction = VALUES(lastInteraction)
+	`, item.dbID,
+		p.name,
+		p.sn,
+		p.level,
+		p.closeness,
+		p.fullness,
+		p.deadDate,
+		p.spawnDate,
+		p.lastInteraction,
+	)
+	return err
+}
+
 func (p *pet) updateMovement(frag movementFrag) {
 	p.pos.x = frag.x
 	p.pos.y = frag.y

@@ -1,6 +1,7 @@
 package channel
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -84,6 +85,7 @@ type Item struct {
 	weaponType byte
 	twoHanded  bool
 	pet        bool
+	petData    *pet
 }
 
 const neverExpire int64 = 150842304000000000
@@ -142,6 +144,40 @@ func loadInventoryFromDb(charID int32) ([]Item, []Item, []Item, []Item, []Item) 
 		if nxInfo, err := nx.GetItem(item.ID); err == nil {
 			item.cash = nxInfo.Cash
 			item.pet = nxInfo.Pet
+			if item.pet {
+				petRow := common.DB.QueryRow(`
+					SELECT name, sn, level, closeness, fullness,
+						   deadDate, spawnDate, lastInteraction
+					FROM pets WHERE itemID=?`, item.dbID)
+
+				petData := pet{
+					itemID:   item.ID,
+					itemDBID: item.dbID,
+				}
+
+				if err := petRow.Scan(
+					&petData.name,
+					&petData.sn,
+					&petData.level,
+					&petData.closeness,
+					&petData.fullness,
+					&petData.deadDate,
+					&petData.spawnDate,
+					&petData.lastInteraction,
+				); err == nil {
+					item.petData = &petData
+				} else if err == sql.ErrNoRows {
+					sn, _ := nx.GetCommoditySNByItemID(item.ID)
+					item.petData = newPet(item.ID, sn, item.dbID)
+				} else {
+					log.Println("error loading pet:", err)
+				}
+
+				err := savePet(&item)
+				if err != nil {
+					log.Println(err)
+				}
+			}
 			item.buffTime = nxInfo.Time
 		}
 
@@ -239,6 +275,14 @@ func createBiasItemFromID(id int32, amount int16, bias int8, average bool) (Item
 	newItem.reqLevel = nxInfo.ReqLevel
 	newItem.upgradeSlots = nxInfo.Tuc
 	newItem.pet = nxInfo.Pet
+	if nxInfo.Pet {
+		newItem.petData = &pet{
+			name:      "",
+			closeness: 0,
+			fullness:  0,
+			deadDate:  (time.Now().UnixMilli()*10000 + 116444592000000000 + (time.Hour.Milliseconds() * 24 * 90)),
+		}
+	}
 
 	if amount < 1 {
 		amount = 1
@@ -366,6 +410,14 @@ func (v *Item) save(charID int32) (bool, error) {
 			return false, err
 		}
 	}
+
+	if v.pet {
+		err := savePet(v)
+		if err != nil {
+			return false, err
+		}
+	}
+
 	return true, nil
 }
 
@@ -455,12 +507,12 @@ func (v Item) bytes(shortSlot, storage bool) []byte {
 		p.WriteString(v.creatorName)
 		p.WriteInt16(v.flag) // lock/seal, show, spikes, cape, cold protection etc ?
 	} else if v.pet {
-		p.WritePaddedString("test", 13)                                 // pet's name lol
-		p.WriteByte(5)                                                  // Level
-		p.WriteInt16(100)                                               // Closeness
-		p.WriteByte(100)                                                // Fullness
-		p.WriteInt64(time.Now().UnixMilli()*10000 + 116444592000000000) // Korean time woo
-		p.WriteInt32(0)                                                 // Pet flags..?
+		p.WritePaddedString(v.petData.name, 13)
+		p.WriteByte(v.petData.level)
+		p.WriteInt16(v.petData.closeness)
+		p.WriteByte(v.petData.fullness)
+		p.WriteInt64(v.petData.deadDate)
+		p.WriteInt32(0) // Pet flags?
 	} else {
 		p.WriteInt16(v.amount)
 		p.WriteString(v.creatorName)

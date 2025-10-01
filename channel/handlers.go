@@ -976,6 +976,12 @@ func (server Server) warpPlayer(plr *Player, dstField *field, dstPortal portal) 
 		dstInst.send(packetShowSummon(plr.ID, plr.summons.summon))
 	}
 
+	if plr.petCashID != 0 && plr.pet.spawned {
+		plr.pet.pos = plr.pos
+		plr.pet.pos.y -= 15
+		dstInst.send(packetPetSpawn(plr.ID, plr.pet))
+	}
+
 	return nil
 }
 
@@ -4649,39 +4655,32 @@ func (server *Server) playerPetSpawn(conn mnet.Client, reader mpacket.Reader) {
 		return
 	}
 
-	sn, _ := nx.GetCommoditySNByItemID(petItem.ID)
-
 	petEquipped := plr.petCashID != 0
-	changePet := petEquipped && plr.petCashID == int64(sn)
+	changePet := petEquipped && plr.petCashID == int64(petItem.petData.sn)
 
 	if petEquipped {
 		plr.inst.send(packetPetRemove(plr.ID, petRemoveNone))
-		delete(server.pets, plr.ID)
 		plr.petCashID = 0
 	}
 
 	if !changePet {
-		plr.petCashID = int64(sn)
+		plr.petCashID = int64(petItem.petData.sn)
 
-		if petData, ok := server.pets[plr.ID]; !ok {
-			server.pets[plr.ID] = newPet(petItem.ID, sn)
-		} else {
-			if petData.sn != sn {
-				server.pets[plr.ID] = newPet(petItem.ID, sn)
-			}
+		if plr.pet == nil || plr.pet.sn != petItem.petData.sn {
+			plr.pet = petItem.petData
 		}
 
-		server.pets[plr.ID].pos = plr.pos
+		plr.pet.pos = plr.pos
+		plr.inst.send(packetPetSpawn(plr.ID, plr.pet))
 
-		plr.pet = server.pets[plr.ID]
-		plr.inst.send(packetPetSpawn(plr.ID, server.pets[plr.ID]))
-
-		if server.pets[plr.ID].spawnDate == 0 {
-			plr.Send(packetPlayerPetUpdate(server.pets[plr.ID].sn))
+		if plr.pet.spawnDate == 0 {
+			plr.Send(packetPlayerPetUpdate(plr.pet.sn))
 		}
-		server.pets[plr.ID].spawnDate = time.Now().Unix()
+		plr.pet.spawnDate = time.Now().Unix()
+		plr.pet.spawned = true
 	}
 
+	plr.MarkDirty(DirtyPet, time.Millisecond*300)
 	plr.Send(packetPlayerNoChange())
 }
 
@@ -4694,7 +4693,7 @@ func (server *Server) playerPetMove(conn mnet.Client, reader mpacket.Reader) {
 	moveData, finalData := parseMovement(reader)
 	moveBytes := generateMovementBytes(moveData)
 
-	server.pets[plr.ID].updateMovement(finalData)
+	plr.pet.updateMovement(finalData)
 
 	field, ok := server.fields[plr.mapID]
 
@@ -4716,21 +4715,18 @@ func (server *Server) playerPetAction(conn mnet.Client, reader mpacket.Reader) {
 	if err != nil {
 		return
 	}
-	log.Println(plr)
+
+	actType := reader.ReadByte()
+	act := reader.ReadByte()
+	msg := reader.String()
+
+	plr.inst.send(packetPetAction(plr.ID, actType, act, msg))
 }
 
 func (server *Server) playerPetInteraction(conn mnet.Client, reader mpacket.Reader) {
-	plr, err := server.players.getFromConn(conn)
-	if err != nil {
-		return
-	}
-	log.Println(plr)
+	log.Println("Attempting pet interaction")
 }
 
 func (server *Server) playerPetLoot(conn mnet.Client, reader mpacket.Reader) {
-	plr, err := server.players.getFromConn(conn)
-	if err != nil {
-		return
-	}
-	log.Println(plr)
+	log.Println("Attempting pet loot")
 }

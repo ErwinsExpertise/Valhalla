@@ -1539,7 +1539,7 @@ func packetShowDrop(spawnType byte, drop fieldDrop) mpacket.Packet {
 		}
 	}
 
-	p.WriteByte(0) // Did Player drop it, used by pet with equip?
+	p.WriteByte(1) // Allow pet pickup
 
 	return p
 }

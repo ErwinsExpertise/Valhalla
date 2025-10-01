@@ -1179,7 +1179,7 @@ func (d Player) displayBytes() []byte {
 	pkt.WriteByte(d.gender)
 	pkt.WriteByte(d.skin)
 	pkt.WriteInt32(d.face)
-	pkt.WriteByte(0x00) // ?
+	pkt.WriteByte(0x00) // Messenger
 	pkt.WriteInt32(d.hair)
 
 	cashWeapon := int32(0)
@@ -2541,8 +2541,18 @@ func packetPlayerAvatarSummaryWindow(charID int32, plr Player) mpacket.Packet {
 		p.WriteString("")
 	}
 
-	p.WriteBool(false) // if has pet
-	p.WriteByte(0)     // wishlist count
+	if plr.petCashID != 0 {
+		p.WriteBool(true)
+		p.WriteInt32(plr.pet.itemID)
+		p.WriteString(plr.pet.name)
+		p.WriteByte(plr.pet.level)
+		p.WriteInt16(plr.pet.closeness)
+		p.WriteByte(plr.pet.fullness)
+		p.WriteInt32(0) // equipped items
+	} else {
+		p.WriteBool(false)
+	}
+	p.WriteByte(0) // wishlist count
 
 	return p
 }
