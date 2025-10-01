@@ -275,14 +275,6 @@ func createBiasItemFromID(id int32, amount int16, bias int8, average bool) (Item
 	newItem.reqLevel = nxInfo.ReqLevel
 	newItem.upgradeSlots = nxInfo.Tuc
 	newItem.pet = nxInfo.Pet
-	if nxInfo.Pet {
-		newItem.petData = &pet{
-			name:      "",
-			closeness: 0,
-			fullness:  0,
-			deadDate:  (time.Now().UnixMilli()*10000 + 116444592000000000 + (time.Hour.Milliseconds() * 24 * 90)),
-		}
-	}
 
 	if amount < 1 {
 		amount = 1

@@ -1,6 +1,7 @@
 package nx
 
 import (
+	"fmt"
 	"log"
 	"path/filepath"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 // Item data from nx
 type Item struct {
 	InvTabID                                                       byte
+	Name                                                           string
 	Cash, Pet                                                      bool
 	Only, TradeBlock, ExpireOnLogout, Quest, TimeLimited           int64
 	ReqLevel                                                       byte
@@ -60,10 +62,10 @@ type Item struct {
 	Interact                                                       map[byte]PetReaction
 }
 type PetReaction struct {
-	Inc      byte // inc
-	Prob     byte // prob
-	LevelMin byte // l0
-	LevelMax byte // l1
+	Inc      byte
+	Prob     byte
+	LevelMin byte
+	LevelMax byte
 }
 
 func extractItems(nodes []gonx.Node, textLookup []string) map[int32]Item {
@@ -183,6 +185,14 @@ func extractItems(nodes []gonx.Node, textLookup []string) map[int32]Item {
 
 	if !ok {
 		log.Println("Invalid node search:", petBase)
+	}
+
+	for id, it := range items {
+		name, err := itemName(id, nodes, textLookup)
+		if err == nil {
+			it.Name = name
+			items[id] = it
+		}
 	}
 
 	return items
@@ -422,7 +432,6 @@ func (itm *Item) loadPetInteract(node *gonx.Node, nodes []gonx.Node, textLookup 
 		itm.Interact = make(map[byte]PetReaction)
 	}
 
-	// only proceed once we are at ".../interact/<idx>"
 	if !strings.Contains(textLookup[node.NameID], "/interact") {
 		return
 	}
@@ -454,4 +463,17 @@ func (itm *Item) loadPetInteract(node *gonx.Node, nodes []gonx.Node, textLookup 
 		}
 		itm.Interact[byte(idx)] = react
 	}
+}
+
+func itemName(id int32, nodes []gonx.Node, textLookup []string) (string, error) {
+	groups := []string{"Cash", "Con", "Eqp", "Etc", "Ins", "Pet"}
+	for _, g := range groups {
+		path := fmt.Sprintf("/String/Item.img/%s/%07d/name", g, id)
+		var nameNode *gonx.Node
+		gonx.FindNode(path, nodes, textLookup, func(n *gonx.Node) { nameNode = n })
+		if nameNode != nil {
+			return textLookup[gonx.DataToUint32(nameNode.Data)], nil
+		}
+	}
+	return "", fmt.Errorf("no string node for %07d", id)
 }

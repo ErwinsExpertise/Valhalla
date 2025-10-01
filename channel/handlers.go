@@ -4658,9 +4658,9 @@ func (server *Server) playerPetSpawn(conn mnet.Client, reader mpacket.Reader) {
 		return
 	}
 
-	sn, _ := nx.GetCommoditySNByItemID(petItem.ID)
-	if sn != petItem.petData.sn {
-		petItem.petData.sn = sn
+	if petItem.petData == nil {
+		sn, _ := nx.GetCommoditySNByItemID(petItem.ID)
+		petItem.petData = newPet(petItem.ID, sn, petItem.dbID)
 		savePet(&petItem)
 	}
 

@@ -1,6 +1,7 @@
 package channel
 
 import (
+	"log"
 	"math/rand"
 	"time"
 
@@ -29,8 +30,13 @@ type pet struct {
 }
 
 func newPet(itemID, sn int32, dbID int64) *pet {
+	itemInfo, err := nx.GetItem(itemID)
+	if err != nil {
+		log.Println(err)
+	}
+
 	return &pet{
-		name:            "",
+		name:            itemInfo.Name,
 		itemID:          itemID,
 		sn:              sn,
 		itemDBID:        dbID,
