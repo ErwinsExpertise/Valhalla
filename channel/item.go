@@ -148,7 +148,7 @@ func loadInventoryFromDb(charID int32) ([]Item, []Item, []Item, []Item, []Item) 
 				petRow := common.DB.QueryRow(`
 					SELECT name, sn, level, closeness, fullness,
 						   deadDate, spawnDate, lastInteraction
-					FROM pets WHERE itemID=?`, item.dbID)
+					FROM pets WHERE parentID=?`, item.dbID)
 
 				petData := pet{
 					itemID:   item.ID,

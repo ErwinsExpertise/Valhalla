@@ -440,7 +440,7 @@ func (s *saver) persist(job pendingSave) bool {
 	}
 
 	if job.bits&DirtyPet != 0 {
-		query := "UPDATE pets SET name=?, sn=?, level=?, closeness=?, fullness=?, deadDate=?, spawnDate=?, lastInteraction=? WHERE itemID=?"
+		query := "UPDATE pets SET name=?, sn=?, level=?, closeness=?, fullness=?, deadDate=?, spawnDate=?, lastInteraction=? WHERE parentID=?"
 		if _, err := common.DB.Exec(query, job.snap.Pet.name, job.snap.Pet.sn, job.snap.Pet.level, job.snap.Pet.closeness, job.snap.Pet.fullness, job.snap.Pet.deadDate, job.snap.Pet.spawnDate, job.snap.Pet.lastInteraction, job.snap.Pet.itemDBID); err != nil {
 			log.Printf("saver.persist: UPDATE pets (itemID=%d) failed: %v", job.snap.Pet.itemDBID, err)
 		}

@@ -151,6 +151,10 @@ const (
 	PlayerEffectExpCharm         = 6
 	PlayerEffectPortal           = 7
 	PlayerEffectJobChange        = 8
+
+	PetRemoveNone   byte = 0
+	PetRemoveHungry byte = 1
+	PetRemoveExpire byte = 2
 )
 
 var ExpTable = [...]int32{15, 34, 57, 92, 135, 372, 560, 840, 1242, 1144, // Beginner

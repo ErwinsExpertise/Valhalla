@@ -2044,6 +2044,11 @@ func (p *Player) broadcastRemoveSummon(summonSkillID int32, reason byte) {
 	p.inst.send(packetRemoveSummon(p.ID, summonSkillID, reason))
 }
 
+func (p *Player) updatePet() {
+	p.MarkDirty(DirtyPet, time.Millisecond*300)
+	p.inst.send(packetPlayerPetUpdate(p.pet.sn))
+}
+
 func packetPlayerReceivedDmg(charID int32, attack int8, initalAmmount, reducedAmmount, spawnID, mobID, healSkillID int32,
 	stance, reflectAction byte, reflected byte, reflectX, reflectY int16) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelPlayerTakeDmg)

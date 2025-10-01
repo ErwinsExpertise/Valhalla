@@ -1,11 +1,13 @@
 package channel
 
 import (
+	"math/rand"
 	"time"
 
 	"github.com/Hucaru/Valhalla/common"
 	"github.com/Hucaru/Valhalla/common/opcode"
 	"github.com/Hucaru/Valhalla/mpacket"
+	"github.com/Hucaru/Valhalla/nx"
 )
 
 type pet struct {
@@ -33,7 +35,7 @@ func newPet(itemID, sn int32, dbID int64) *pet {
 		sn:              sn,
 		itemDBID:        dbID,
 		stance:          0,
-		level:           0,
+		level:           1,
 		closeness:       0,
 		fullness:        100,
 		deadDate:        (time.Now().UnixMilli()*10000 + 116444592000000000 + (time.Hour.Milliseconds() * 24 * 90)),
@@ -51,7 +53,7 @@ func savePet(item *Item) error {
 
 	_, err := common.DB.Exec(`
 		INSERT INTO pets (
-			itemID, name, sn, level, closeness, fullness,
+			parentID, name, sn, level, closeness, fullness,
 			deadDate, spawnDate, lastInteraction
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON DUPLICATE KEY UPDATE
@@ -82,20 +84,63 @@ func (p *pet) updateMovement(frag movementFrag) {
 	p.stance = frag.stance
 }
 
-const (
-	petRemoveNone   byte = 0
-	petRemoveHungry byte = 1
-	petRemoveExpire byte = 2
+func handlePetInteraction(plr *Player, pet *pet, interactionID byte, multiplier bool) bool {
+	itm, err := nx.GetItem(pet.itemID)
+	if err != nil || itm.Interact == nil {
+		return false
+	}
+	react, ok := itm.Interact[interactionID]
+	if !ok {
+		return false
+	}
 
-	petSpawn      byte = 1
-	petConnect    byte = 2
-	petShowRemote byte = 4
-	petChangeMap  byte = 8
+	now := time.Now().UnixMilli()
+	if now < pet.lastInteraction+15_000 || pet.level < react.LevelMin || pet.level > react.LevelMax || pet.fullness < 50 {
+		return false
+	}
 
-	petResetPos    = petSpawn | petConnect | petChangeMap
-	petResetHunger = petSpawn | petConnect
-	petResetStat   = petSpawn | petConnect
-)
+	elapsed := float64(now - pet.lastInteraction - 15_000)
+	pet.lastInteraction = now
+	plr.MarkDirty(DirtyPet, time.Millisecond*300)
+
+	mult := 1.0
+	if multiplier && pet.name != "" {
+		mult = 1.5
+	}
+	successProb := float64(react.Prob) * ((elapsed/10_000.0)*0.01 + 1) * mult
+	success := float64(rand.Intn(100)) < successProb
+	if success {
+		increasePetCloseness(plr, pet, int16(react.Inc))
+	}
+	return success
+}
+
+func increasePetCloseness(plr *Player, pet *pet, inc int16) {
+	pet.closeness += inc
+	if pet.closeness < 0 {
+		pet.closeness = 0
+	}
+	if pet.closeness > 30_000 {
+		pet.closeness = 30_000
+	}
+	old := pet.level
+	pet.level = petLevelFromCloseness(pet.closeness)
+	if pet.level > old {
+		plr.inst.send(packetPetAction(plr.ID, 0, 1, ""))
+	}
+	plr.updatePet()
+}
+
+var thresholds = []int16{0, 1, 100, 300, 600, 1000, 1800, 3100, 5000, 8000, 12000, 17000, 22000, 28000}
+
+func petLevelFromCloseness(c int16) byte {
+	for lvl := byte(len(thresholds) - 1); lvl > 0; lvl-- {
+		if c >= thresholds[lvl] {
+			return lvl
+		}
+	}
+	return 1
+}
 
 func packetPetAction(charID int32, op, action byte, text string) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelPetAction)

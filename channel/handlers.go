@@ -171,6 +171,9 @@ func (server *Server) HandleClientPacket(conn mnet.Client, reader mpacket.Reader
 		server.playerPetInteraction(conn, reader)
 	case opcode.RecvChannelPetLoot:
 		server.playerPetLoot(conn, reader)
+	case 159:
+		// I have no idea what this is but it's super spammy
+		// So let's just silently drop it
 	default:
 		unknownPacketsTotal.Inc()
 		log.Println("UNKNOWN CLIENT PACKET(", op, "):", reader)
@@ -1280,7 +1283,7 @@ func (server Server) playerPickupItem(conn mnet.Client, reader mpacket.Reader) {
 
 	}
 
-	plr.inst.dropPool.playerAttemptPickup(drop, plr)
+	plr.inst.dropPool.playerAttemptPickup(drop, plr, 2)
 
 }
 
@@ -4655,11 +4658,17 @@ func (server *Server) playerPetSpawn(conn mnet.Client, reader mpacket.Reader) {
 		return
 	}
 
+	sn, _ := nx.GetCommoditySNByItemID(petItem.ID)
+	if sn != petItem.petData.sn {
+		petItem.petData.sn = sn
+		savePet(&petItem)
+	}
+
 	petEquipped := plr.petCashID != 0
 	changePet := petEquipped && plr.petCashID == int64(petItem.petData.sn)
 
 	if petEquipped {
-		plr.inst.send(packetPetRemove(plr.ID, petRemoveNone))
+		plr.inst.send(packetPetRemove(plr.ID, constant.PetRemoveNone))
 		plr.petCashID = 0
 	}
 
@@ -4724,9 +4733,49 @@ func (server *Server) playerPetAction(conn mnet.Client, reader mpacket.Reader) {
 }
 
 func (server *Server) playerPetInteraction(conn mnet.Client, reader mpacket.Reader) {
-	log.Println("Attempting pet interaction")
+	plr, err := server.players.getFromConn(conn)
+	if err != nil {
+		return
+	}
+
+	if plr.pet == nil || !plr.pet.spawned {
+		return
+	}
+
+	doMultiplier := reader.ReadByte()
+	interactionID := reader.ReadByte()
+
+	petItem := plr.pet
+	success := handlePetInteraction(plr, petItem, interactionID, doMultiplier == 1)
+	plr.Send(packetPetInteraction(plr.ID, interactionID, success, false))
 }
 
 func (server *Server) playerPetLoot(conn mnet.Client, reader mpacket.Reader) {
-	log.Println("Attempting pet loot")
+	plr, err := server.players.getFromConn(conn)
+	if err != nil || plr.pet == nil || !plr.pet.spawned {
+		return
+	}
+
+	reader.Skip(4) // unused pos
+	dropID := reader.ReadInt32()
+
+	err, drop := plr.inst.dropPool.findDropFromID(dropID)
+	if err != nil {
+		// Pet spams pickup so just silently return :)
+		return
+	}
+
+	if drop.mesos > 0 {
+		plr.giveMesos(drop.mesos)
+	} else {
+		err = plr.GiveItem(drop.item)
+		if err != nil {
+			plr.Send(packetInventoryFull())
+			plr.Send(packetInventoryDontTake())
+			return
+		}
+
+	}
+
+	plr.inst.dropPool.playerAttemptPickup(drop, plr, 5)
 }
