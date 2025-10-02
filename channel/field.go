@@ -822,7 +822,11 @@ func packetMapPlayerEnter(plr *Player) mpacket.Packet {
 	p.WriteByte(plr.stance)
 	p.WriteInt16(plr.pos.foothold)
 
-	p.WriteBool(false) // GM Hide
+	if plr.buffs.HasGMHide() {
+		p.WriteBool(true)
+	} else {
+		p.WriteBool(false)
+	}
 
 	if plr.petCashID != 0 {
 		plr.pet.pos = plr.pos

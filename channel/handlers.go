@@ -4765,6 +4765,14 @@ func (server *Server) playerPetLoot(conn mnet.Client, reader mpacket.Reader) {
 		return
 	}
 
+	if plr.pet.pos.x-drop.finalPos.x > 800 || plr.pet.pos.y-drop.finalPos.y > 600 {
+		// Hax
+		log.Printf("Player: %s tried to pickup an Item from far away", plr.Name)
+		plr.Send(packetDropNotAvailable())
+		plr.Send(packetInventoryDontTake())
+		return
+	}
+
 	if drop.mesos > 0 {
 		plr.giveMesos(drop.mesos)
 	} else {
