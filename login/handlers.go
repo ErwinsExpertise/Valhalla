@@ -67,7 +67,34 @@ func (server *Server) handleLoginRequest(conn mnet.Client, reader mpacket.Reader
 	result := byte(0x00)
 
 	if err != nil {
-		result = 0x05
+		// Account does not exist
+		if server.autoRegister {
+			// Create new account with default values
+			res, insertErr := common.DB.Exec("INSERT INTO accounts (username, password, pin, isLogedIn, adminLevel, isBanned, gender, dob, eula, nx, maplepoints) VALUES (?, ?, '', 0, 0, 0, 0, 0, 1, 0, 0)",
+				username, hashedPassword)
+			
+			if insertErr != nil {
+				log.Println("Failed to auto-register account:", insertErr)
+				result = 0x05
+			} else {
+				// Get the newly created account ID
+				newAccountID, lastInsertErr := res.LastInsertId()
+				if lastInsertErr != nil {
+					log.Println("Failed to get new account ID:", lastInsertErr)
+					result = 0x05
+				} else {
+					accountID = int32(newAccountID)
+					gender = 0
+					adminLevel = 0
+					eula = 1
+					log.Println("Auto-registered new account:", username, "with ID:", accountID)
+					// Account created successfully, proceed with login
+					result = 0x00
+				}
+			}
+		} else {
+			result = 0x05
+		}
 	} else if hashedPassword != databasePassword {
 		result = 0x04
 	} else if isLogedIn {
