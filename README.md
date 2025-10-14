@@ -208,9 +208,9 @@ VALHALLA_LOGIN_AUTOREGISTER=true
 
 When enabled:
 - Users attempting to login with non-existent credentials will have accounts automatically created
-- New accounts are created with default values: gender=0, dob=0, eula=1, adminLevel=0
+- New accounts are created with default values: gender=0, dob=1111111, eula=1, adminLevel=0, PIN="1111"
 - The password provided during the first login attempt is hashed and stored
-- Accounts are created with empty PIN (can be set later if `withPin = true`)
+- The default PIN is "1111" and can be changed by the user later if `withPin = true`
 
 **Note:** For production environments, it's recommended to keep this disabled (`autoRegister = false`) for security reasons.
 
