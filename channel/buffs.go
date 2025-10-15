@@ -571,8 +571,9 @@ func (cb *CharacterBuffs) AddMobDebuff(skillID, level byte, durationSec int16) {
 		return
 	}
 
-	// Use the mob skill ID directly as the source
-	mobSkillID := int32(skillID)
+	// Pack skill ID and level into R value: skillID | (level << 16)
+	// This matches the reference implementation
+	rValue := int32(skillID) | (int32(level) << 16)
 	
 	// Build mask bytes
 	maskBytes := buildMaskBytes64(bits)
@@ -588,23 +589,23 @@ func (cb *CharacterBuffs) AddMobDebuff(skillID, level byte, durationSec int16) {
 			if (b & (1 << uint(bitPos))) != 0 {
 				globalBit := byteIdx*8 + bitPos
 				
-				var val int16
+				var nValue int16
 				switch globalBit {
 				case BuffSpeed:
 					// Slow: negative speed value
-					val = -int16(level * 10)
+					nValue = -int16(level * 10)
 				case BuffPoison:
-					// Poison: damage value based on level
-					val = int16(level)
+					// Poison: damage value based on level (X value from skill data)
+					nValue = int16(level)
 				default:
 					// Other debuffs: just 1
-					val = 1
+					nValue = 1
 				}
 				
-				// short value
-				out = append(out, byte(val), byte(val>>8))
-				// int32 skill ID
-				out = append(out, byte(mobSkillID), byte(mobSkillID>>8), byte(mobSkillID>>16), byte(mobSkillID>>24))
+				// short N value
+				out = append(out, byte(nValue), byte(nValue>>8))
+				// int32 R value (packed skill ID and level)
+				out = append(out, byte(rValue), byte(rValue>>8), byte(rValue>>16), byte(rValue>>24))
 				// short time (seconds)
 				out = append(out, byte(durationSec), byte(durationSec>>8))
 			}
@@ -633,16 +634,16 @@ func (cb *CharacterBuffs) AddMobDebuff(skillID, level byte, durationSec int16) {
 					speedVal := byte(-level * 10) // negative for slow
 					fout = append(fout, speedVal)
 				case BuffStun, BuffDarkness, BuffSeal, BuffWeakness:
-					// These need int32 R (skill ID)
-					fout = append(fout, byte(mobSkillID), byte(mobSkillID>>8), byte(mobSkillID>>16), byte(mobSkillID>>24))
+					// These need int32 R (packed skill ID and level)
+					fout = append(fout, byte(rValue), byte(rValue>>8), byte(rValue>>16), byte(rValue>>24))
 				case BuffPoison:
 					// Poison: write short N, int32 R
 					n := int16(level)
 					fout = append(fout, byte(n), byte(n>>8))
-					fout = append(fout, byte(mobSkillID), byte(mobSkillID>>8), byte(mobSkillID>>16), byte(mobSkillID>>24))
+					fout = append(fout, byte(rValue), byte(rValue>>8), byte(rValue>>16), byte(rValue>>24))
 				case BuffCurse:
-					// Curse: write int32 R
-					fout = append(fout, byte(mobSkillID), byte(mobSkillID>>8), byte(mobSkillID>>16), byte(mobSkillID>>24))
+					// Curse: write int32 R (packed skill ID and level)
+					fout = append(fout, byte(rValue), byte(rValue>>8), byte(rValue>>16), byte(rValue>>24))
 				}
 			}
 		}
@@ -653,12 +654,12 @@ func (cb *CharacterBuffs) AddMobDebuff(skillID, level byte, durationSec int16) {
 		cb.plr.inst.send(packetPlayerGiveForeignBuff(cb.plr.ID, maskBytes, fout, delay))
 	}
 
-	// Track the debuff with expiry
+	// Track the debuff with expiry using the packed rValue as the key
 	if durationSec > 0 {
 		expiresAtMs := time.Now().Add(time.Duration(durationSec) * time.Second).UnixMilli()
-		cb.expireAt[mobSkillID] = expiresAtMs
-		cb.scheduleExpiryLocked(mobSkillID, time.Duration(durationSec)*time.Second)
-		cb.activeSkillLevels[mobSkillID] = level
+		cb.expireAt[rValue] = expiresAtMs
+		cb.scheduleExpiryLocked(rValue, time.Duration(durationSec)*time.Second)
+		cb.activeSkillLevels[rValue] = level
 	}
 }
 
