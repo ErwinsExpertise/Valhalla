@@ -146,7 +146,7 @@ func (m monster) hasHPBar() (bool, int32, int32, int32, byte, byte) {
 	return (m.boss && m.hpBgColour > 0), m.id, m.hp, m.maxHP, m.hpFgColour, m.hpBgColour
 }
 
-func (m *monster) performSkill(delay int16, skillLevel, skillID byte) {
+func (m *monster) performSkill(delay int16, skillLevel, skillID byte, inst *fieldInstance) {
 	currentTime := time.Now().Unix()
 	m.lastSkillTime = currentTime
 	m.skillTimes[skillID] = currentTime
@@ -173,44 +173,141 @@ func (m *monster) performSkill(delay int16, skillLevel, skillID byte) {
 		m.mp = 0
 	}
 
-	// TODO: Implement effects per skillID (buffs/aoe/etc.)
+	duration := int16(skillData.Time)
+
+	// Implement effects per skillID (buffs/aoe/etc.)
 	switch skillID {
-	case skill.Mob.WeaponAttackUpAoe:
-	case skill.Mob.MagicAttackUp:
-	case skill.Mob.MagicAttackUpAoe:
-	case skill.Mob.WeaponDefenceUp:
-	case skill.Mob.WeaponDefenceUpAoe:
-	case skill.Mob.MagicDefenceUp:
-	case skill.Mob.MagicDefenceUpAoe:
+	case skill.Mob.WeaponAttackUp, skill.Mob.WeaponAttackUpAoe:
+		m.statBuff |= skill.MobStat.PowerUp
+		if inst != nil {
+			inst.send(packetMobStatSet(m.spawnID, skill.MobStat.PowerUp, skillID, skillLevel, duration, delay))
+		}
+	case skill.Mob.MagicAttackUp, skill.Mob.MagicAttackUpAoe:
+		m.statBuff |= skill.MobStat.MagicUp
+		if inst != nil {
+			inst.send(packetMobStatSet(m.spawnID, skill.MobStat.MagicUp, skillID, skillLevel, duration, delay))
+		}
+	case skill.Mob.WeaponDefenceUp, skill.Mob.WeaponDefenceUpAoe:
+		m.statBuff |= skill.MobStat.PowerGuardUp
+		if inst != nil {
+			inst.send(packetMobStatSet(m.spawnID, skill.MobStat.PowerGuardUp, skillID, skillLevel, duration, delay))
+		}
+	case skill.Mob.MagicDefenceUp, skill.Mob.MagicDefenceUpAoe:
+		m.statBuff |= skill.MobStat.MagicGuardUp
+		if inst != nil {
+			inst.send(packetMobStatSet(m.spawnID, skill.MobStat.MagicGuardUp, skillID, skillLevel, duration, delay))
+		}
 	case skill.Mob.HealAoe:
+		// Heal nearby mobs (AOE heal)
+		if inst != nil {
+			healAmount := skillData.Hp
+			if healAmount > 0 {
+				m.healMob(healAmount, 0)
+			}
+		}
 	case skill.Mob.Seal:
+		// Apply seal debuff to players in range
+		m.applyPlayerDebuff(inst, skillID, skillLevel, duration, BuffSeal)
 	case skill.Mob.Darkness:
+		// Apply darkness debuff to players in range
+		m.applyPlayerDebuff(inst, skillID, skillLevel, duration, BuffDarkness)
 	case skill.Mob.Weakness:
+		// Apply weakness debuff to players in range
+		m.applyPlayerDebuff(inst, skillID, skillLevel, duration, BuffWeakness)
 	case skill.Mob.Stun:
+		// Apply stun debuff to players in range
+		m.applyPlayerDebuff(inst, skillID, skillLevel, duration, BuffStun)
 	case skill.Mob.Curse:
+		// Apply curse debuff to players in range
+		m.applyPlayerDebuff(inst, skillID, skillLevel, duration, BuffCurse)
 	case skill.Mob.Poison:
+		// Apply poison debuff to players in range
+		m.applyPlayerDebuff(inst, skillID, skillLevel, duration, BuffPoison)
 	case skill.Mob.Slow:
+		// Apply slow debuff to players in range (reduces speed)
+		m.applyPlayerDebuff(inst, skillID, skillLevel, duration, BuffSpeed)
 	case skill.Mob.Dispel:
+		// Remove player buffs in range
+		// TODO: Implement dispel logic
 	case skill.Mob.Seduce:
+		// TODO: Implement seduce (reverse controls)
 	case skill.Mob.SendToTown:
+		// TODO: Implement send to town
 	case skill.Mob.PoisonMist:
+		// TODO: Implement poison mist (persistent AOE)
 	case skill.Mob.CrazySkull:
+		// TODO: Implement crazy skull
 	case skill.Mob.Zombify:
+		// TODO: Implement zombify
 	case skill.Mob.WeaponImmunity:
+		m.statBuff |= skill.MobStat.PhysicalImmune
+		if inst != nil {
+			inst.send(packetMobStatSet(m.spawnID, skill.MobStat.PhysicalImmune, skillID, skillLevel, duration, delay))
+		}
 	case skill.Mob.MagicImmunity:
+		m.statBuff |= skill.MobStat.MagicImmune
+		if inst != nil {
+			inst.send(packetMobStatSet(m.spawnID, skill.MobStat.MagicImmune, skillID, skillLevel, duration, delay))
+		}
 	case skill.Mob.ArmorSkill:
+		// TODO: Implement armor skill (HardSkin)
+		m.statBuff |= skill.MobStat.HardSkin
+		if inst != nil {
+			inst.send(packetMobStatSet(m.spawnID, skill.MobStat.HardSkin, skillID, skillLevel, duration, delay))
+		}
 	case skill.Mob.WeaponDamageReflect:
+		// TODO: Implement weapon damage reflect
 	case skill.Mob.MagicDamageReflect:
+		// TODO: Implement magic damage reflect
 	case skill.Mob.AnyDamageReflect:
+		// TODO: Implement any damage reflect
 	case skill.Mob.McWeaponAttackUp:
+		// Monster Carnival specific
+		m.statBuff |= skill.MobStat.PowerUp
+		if inst != nil {
+			inst.send(packetMobStatSet(m.spawnID, skill.MobStat.PowerUp, skillID, skillLevel, duration, delay))
+		}
 	case skill.Mob.McMagicAttackUp:
+		// Monster Carnival specific
+		m.statBuff |= skill.MobStat.MagicUp
+		if inst != nil {
+			inst.send(packetMobStatSet(m.spawnID, skill.MobStat.MagicUp, skillID, skillLevel, duration, delay))
+		}
 	case skill.Mob.McWeaponDefenseUp:
+		// Monster Carnival specific
+		m.statBuff |= skill.MobStat.PowerGuardUp
+		if inst != nil {
+			inst.send(packetMobStatSet(m.spawnID, skill.MobStat.PowerGuardUp, skillID, skillLevel, duration, delay))
+		}
 	case skill.Mob.McMagicDefenseUp:
+		// Monster Carnival specific
+		m.statBuff |= skill.MobStat.MagicGuardUp
+		if inst != nil {
+			inst.send(packetMobStatSet(m.spawnID, skill.MobStat.MagicGuardUp, skillID, skillLevel, duration, delay))
+		}
 	case skill.Mob.McAccuracyUp:
+		// Monster Carnival specific
+		m.statBuff |= skill.MobStat.Accurrency
+		if inst != nil {
+			inst.send(packetMobStatSet(m.spawnID, skill.MobStat.Accurrency, skillID, skillLevel, duration, delay))
+		}
 	case skill.Mob.McAvoidUp:
+		// Monster Carnival specific
+		m.statBuff |= skill.MobStat.Evasion
+		if inst != nil {
+			inst.send(packetMobStatSet(m.spawnID, skill.MobStat.Evasion, skillID, skillLevel, duration, delay))
+		}
 	case skill.Mob.McSpeedUp:
+		// Monster Carnival specific
+		m.statBuff |= skill.MobStat.Speed
+		if inst != nil {
+			inst.send(packetMobStatSet(m.spawnID, skill.MobStat.Speed, skillID, skillLevel, duration, delay))
+		}
 	case skill.Mob.McSeal:
+		// Monster Carnival specific - seal players
+		m.applyPlayerDebuff(inst, skillID, skillLevel, duration, BuffSeal)
 	case skill.Mob.Summon:
+		// TODO: Implement summon (spawn additional mobs)
 	}
 }
 
@@ -280,7 +377,7 @@ func (m monster) displayBytes() []byte {
 		p.WriteInt32(m.summonOption) // when -3 used to link mob to a death using spawnID
 	}
 
-	p.WriteInt32(0) // encode mob status
+	p.WriteInt32(m.statBuff) // encode mob status (buffs)
 	return p
 }
 
@@ -437,6 +534,72 @@ func (m monster) calculateHeal() (hp int32, mp int32) {
 	return hp, mp
 }
 
+// applyPlayerDebuff applies a debuff to all players in range of the mob
+func (m *monster) applyPlayerDebuff(inst *fieldInstance, skillID byte, skillLevel byte, duration int16, buffBit int) {
+	if inst == nil {
+		return
+	}
+
+	// Get all players in the instance
+	// TODO: Check if players are in range (for now, apply to all in map)
+	for _, plr := range inst.players {
+		if plr == nil {
+			continue
+		}
+
+		// Send debuff packet directly to player
+		// The mob skill ID is used as the source of the debuff
+		plr.Send(packetPlayerMobDebuff(int32(skillID), buffBit, duration))
+		
+		// Also broadcast to other players
+		inst.sendExcept(packetPlayerMobDebuffForeign(plr.ID, int32(skillID), buffBit, duration), plr.Conn)
+	}
+}
+
+// packetPlayerMobDebuff sends a debuff to the player
+func packetPlayerMobDebuff(skillID int32, buffBit int, duration int16) mpacket.Packet {
+	p := mpacket.CreateWithOpcode(opcode.SendChannelTempStatChange)
+	
+	// Build mask for the specific debuff
+	mask := make([]byte, 8)
+	if buffBit >= 0 && buffBit < 64 {
+		byteIdx := buffBit / 8
+		shift := uint(buffBit % 8)
+		mask[byteIdx] |= (1 << shift)
+	}
+	p.WriteBytes(mask)
+	
+	// Write the debuff value and duration
+	// For debuffs like Seal, Darkness, etc., we write the skill ID and duration
+	p.WriteInt16(1)              // Effect value (usually 1 for debuffs)
+	p.WriteInt32(skillID)        // Source skill ID
+	p.WriteInt16(duration)       // Duration in seconds
+	
+	p.WriteInt16(0) // Delay
+	
+	return p
+}
+
+// packetPlayerMobDebuffForeign broadcasts a debuff on another player
+func packetPlayerMobDebuffForeign(charID int32, skillID int32, buffBit int, duration int16) mpacket.Packet {
+	p := mpacket.CreateWithOpcode(opcode.SendChannelPlayerGiveForeignBuff)
+	p.WriteInt32(charID)
+	
+	// Build mask for the specific debuff
+	mask := make([]byte, 8)
+	if buffBit >= 0 && buffBit < 64 {
+		byteIdx := buffBit / 8
+		shift := uint(buffBit % 8)
+		mask[byteIdx] |= (1 << shift)
+	}
+	p.WriteBytes(mask)
+	
+	// Write the debuff value
+	p.WriteInt32(skillID) // Source skill ID
+	
+	return p
+}
+
 func packetMobControl(m monster, chase bool) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelControlMob)
 	if chase {
@@ -475,6 +638,27 @@ func packetMobShowHpChange(spawnID int32, dmg int32) mpacket.Packet {
 	p.WriteInt32(spawnID)
 	p.WriteByte(0)
 	p.WriteInt32(dmg)
+
+	return p
+}
+
+// packetMobStatSet sends mob stat changes (buffs) to clients
+func packetMobStatSet(spawnID int32, statMask int32, skillID byte, skillLevel byte, duration int16, delay int16) mpacket.Packet {
+	p := mpacket.CreateWithOpcode(opcode.SendChannelMobStatSet)
+	p.WriteInt32(spawnID)
+	p.WriteInt32(statMask)
+
+	// For each bit set in statMask, write the skill value
+	// The value to write depends on the stat type
+	// For simplicity, we write skillID and duration for each stat
+	if statMask != 0 {
+		// Write skill effect value (typically the X value from NX data)
+		p.WriteInt16(int16(skillLevel)) // Effect strength
+		p.WriteInt32(int32(skillID))    // Skill ID
+		p.WriteInt16(duration)          // Duration in seconds
+	}
+
+	p.WriteInt16(delay) // Delay
 
 	return p
 }

@@ -246,7 +246,7 @@ func (pool *lifePool) mobAcknowledge(poolID int32, plr *Player, moveID int16, sk
 
 			// Perform either skill or attack
 			if actualAction >= 21 && actualAction <= 25 {
-				pool.mobs[i].performSkill(skillDelay, skillLevel, skillID)
+				pool.mobs[i].performSkill(skillDelay, skillLevel, skillID, pool.instance)
 			} else if actualAction > 12 && actualAction < 20 {
 				attackID := byte(actualAction - 12)
 

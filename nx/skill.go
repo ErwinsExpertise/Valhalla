@@ -41,6 +41,9 @@ type MobSkill struct {
 	MobID           []int64
 	SummonEffect    int64
 	Time            int64
+	X               int64 // Buff/debuff value (e.g., stat increase amount)
+	Y               int64 // Secondary value (if applicable)
+	Prop            int64 // Probability/chance (0-100)
 }
 
 func extractSkills(nodes []gonx.Node, textLookup []string) (map[int32][]PlayerSkill, map[byte][]MobSkill) {
@@ -255,9 +258,12 @@ func getMobSkill(node *gonx.Node, nodes []gonx.Node, textLookup []string) MobSki
 		case "rb":
 		case "effect":
 		case "x":
+			skill.X = gonx.DataToInt64(option.Data)
 		case "y":
+			skill.Y = gonx.DataToInt64(option.Data)
 		case "tile":
 		case "prop":
+			skill.Prop = gonx.DataToInt64(option.Data)
 		case "affected":
 		case "mob":
 		case "mob0":
