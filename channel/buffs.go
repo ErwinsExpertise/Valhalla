@@ -414,6 +414,9 @@ func (cb *CharacterBuffs) AddItemBuff(it Item) {
 		return
 	}
 
+	// Handle debuff curing first
+	cb.cureDebuffs(meta)
+
 	bits := make([]int, 0, 6)
 	if meta.ACC > 0 {
 		bits = append(bits, BuffAccuracy)
@@ -471,6 +474,62 @@ func (cb *CharacterBuffs) AddItemBuff(it Item) {
 		exp := time.Now().Add(time.Duration(durationSec) * time.Second).UnixMilli()
 		cb.expireAt[sourceID] = exp
 		cb.scheduleExpiryLocked(sourceID, time.Duration(durationSec)*time.Second)
+	}
+}
+
+// cureDebuffs removes debuffs based on the cure flags in the item
+func (cb *CharacterBuffs) cureDebuffs(meta nx.Item) {
+	if cb.plr == nil {
+		return
+	}
+
+	// Check which debuffs this item can cure
+	var debuffsToCure []int
+	
+	if meta.Poison > 0 {
+		debuffsToCure = append(debuffsToCure, BuffPoison)
+	}
+	if meta.Weakness > 0 {
+		debuffsToCure = append(debuffsToCure, BuffWeakness)
+	}
+	if meta.Curse > 0 {
+		debuffsToCure = append(debuffsToCure, BuffCurse)
+	}
+	if meta.Darkness > 0 {
+		debuffsToCure = append(debuffsToCure, BuffDarkness)
+	}
+	if meta.Seal > 0 {
+		debuffsToCure = append(debuffsToCure, BuffSeal)
+	}
+
+	if len(debuffsToCure) == 0 {
+		return
+	}
+
+	// Find and remove active debuffs that match
+	var toRemove []int32
+	for skillID := range cb.activeSkillLevels {
+		// Check if this is a mob debuff (rValue format: skillID | (level << 16))
+		baseSkillID := skillID & 0xFFFF
+		if baseSkillID >= 100 && baseSkillID <= 200 {
+			// This is a mob debuff, check if we should cure it
+			bits, ok := skillBuffBits[skillID]
+			if ok {
+				for _, bit := range bits {
+					for _, cureBit := range debuffsToCure {
+						if bit == cureBit {
+							toRemove = append(toRemove, skillID)
+							break
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Remove the debuffs
+	for _, skillID := range toRemove {
+		cb.expireBuffNow(skillID)
 	}
 }
 
