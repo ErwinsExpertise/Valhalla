@@ -342,11 +342,11 @@ func (pool *lifePool) applyMobDebuffToPlayers(mob *monster, skillID, skillLevel 
 			continue
 		}
 
-		// Apply the debuff using a special mob skill ID (encode as negative to distinguish from player skills)
-		// The duration is in the skill data Time field (in milliseconds typically)
+		// Apply the debuff
+		// The duration is in the skill data Time field (in seconds)
 		durationSec := int16(0)
 		if skillData.Time > 0 {
-			durationSec = int16((skillData.Time + 999) / 1000) // Convert ms to seconds, round up
+			durationSec = int16(skillData.Time) // Time is already in seconds
 		}
 
 		// Use AddMobDebuff which we'll add to CharacterBuffs

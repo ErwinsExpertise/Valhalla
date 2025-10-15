@@ -1893,7 +1893,7 @@ func (server Server) mobDamagePlayer(conn mnet.Client, reader mpacket.Reader, mo
 			skillData := levels[mobSkillLevel-1]
 			durationSec := int16(0)
 			if skillData.Time > 0 {
-				durationSec = int16((skillData.Time + 999) / 1000)
+				durationSec = int16(skillData.Time) // Time is already in seconds
 			}
 			plr.addMobDebuff(mobSkillID, mobSkillLevel, durationSec)
 		}
