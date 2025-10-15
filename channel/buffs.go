@@ -545,23 +545,33 @@ func (cb *CharacterBuffs) AddMobDebuff(skillID, level byte, durationSec int16) {
 		return
 	}
 
-	// Map mob skill IDs to buff bit positions
+	// Map mob skill IDs to buff bit positions and determine debuff values
 	var bits []int
+	var debuffValues map[int]int16 = make(map[int]int16)
+	
 	switch skillID {
 	case skill.Mob.Seal:
 		bits = []int{BuffSeal}
+		debuffValues[BuffSeal] = 1
 	case skill.Mob.Darkness:
 		bits = []int{BuffDarkness}
+		debuffValues[BuffDarkness] = 1
 	case skill.Mob.Weakness:
 		bits = []int{BuffWeakness}
+		debuffValues[BuffWeakness] = 1
 	case skill.Mob.Stun:
 		bits = []int{BuffStun}
+		debuffValues[BuffStun] = 1
 	case skill.Mob.Curse:
 		bits = []int{BuffCurse}
+		debuffValues[BuffCurse] = 1
 	case skill.Mob.Poison:
 		bits = []int{BuffPoison}
+		debuffValues[BuffPoison] = 1
 	case skill.Mob.Slow:
-		bits = []int{BuffSpeed} // Slow reduces speed
+		// Slow reduces speed - send negative value
+		bits = []int{BuffSpeed}
+		debuffValues[BuffSpeed] = -int16(level * 10) // Reduce speed by level * 10
 	default:
 		return
 	}
@@ -578,9 +588,9 @@ func (cb *CharacterBuffs) AddMobDebuff(skillID, level byte, durationSec int16) {
 	
 	// Build value triples for the debuff
 	out := make([]byte, 0, 16)
-	for range bits {
-		// Value for debuff (typically 1 or the actual debuff value)
-		val := int16(1)
+	for _, bit := range bits {
+		// Get the debuff value for this bit
+		val := debuffValues[bit]
 		out = append(out, byte(val), byte(val>>8))
 		
 		// Source ID (negative mob skill ID)
