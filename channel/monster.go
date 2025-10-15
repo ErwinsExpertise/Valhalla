@@ -51,7 +51,8 @@ type monster struct {
 
 	skillID    byte
 	skillLevel byte
-	statBuff   int32
+	statBuff   int32 // Bitmask of active buffs (from skill.MobStat constants)
+	// TODO: Add buff expiration tracking (map[int32]int64 for statBit -> expireTime)
 
 	dmgTaken map[*Player]int32
 
@@ -238,9 +239,25 @@ func (m *monster) performSkill(delay int16, skillLevel, skillID byte, inst *fiel
 		m.applyPlayerDebuff(inst, skillID, skillLevel, duration, BuffSpeed)
 	case skill.Mob.Dispel:
 		// Remove player buffs in range
-		// TODO: Implement dispel logic
+		if inst != nil {
+			for _, plr := range inst.players {
+				if plr == nil {
+					continue
+				}
+				// Clear all active buffs from the player
+				// This is a simplified implementation - in a full implementation,
+				// we'd check range and only clear certain buff types
+				for skillID := range plr.buffs.activeSkillLevels {
+					plr.buffs.ClearBuff(skillID, 0)
+				}
+			}
+		}
 	case skill.Mob.Seduce:
-		// TODO: Implement seduce (reverse controls)
+		// Apply seduce debuff to players in range (reverse controls)
+		// Seduce is typically treated as a special debuff that reverses movement
+		// For now, we'll treat it similar to other debuffs
+		// TODO: Full implementation requires client-side control reversal
+		m.applyPlayerDebuff(inst, skillID, skillLevel, duration, BuffSeal)
 	case skill.Mob.SendToTown:
 		// TODO: Implement send to town
 	case skill.Mob.PoisonMist:
