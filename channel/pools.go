@@ -315,6 +315,25 @@ func (pool *lifePool) applyMobDebuffToPlayers(mob *monster, skillID, skillLevel 
 			}
 		}
 		return
+	// Mob self-buffs
+	case skill.Mob.WeaponAttackUp, skill.Mob.WeaponAttackUpAoe:
+		mob.statBuff |= skill.MobStat.PowerUp
+		return
+	case skill.Mob.MagicAttackUp, skill.Mob.MagicAttackUpAoe:
+		mob.statBuff |= skill.MobStat.MagicUp
+		return
+	case skill.Mob.WeaponDefenceUp, skill.Mob.WeaponDefenceUpAoe:
+		mob.statBuff |= skill.MobStat.PowerGuardUp
+		return
+	case skill.Mob.MagicDefenceUp, skill.Mob.MagicDefenceUpAoe:
+		mob.statBuff |= skill.MobStat.MagicGuardUp
+		return
+	case skill.Mob.WeaponImmunity:
+		mob.statBuff |= skill.MobStat.PhysicalImmune
+		return
+	case skill.Mob.MagicImmunity:
+		mob.statBuff |= skill.MobStat.MagicImmune
+		return
 	}
 
 	// Get all players in the field instance

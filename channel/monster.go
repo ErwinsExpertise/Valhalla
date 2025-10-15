@@ -182,14 +182,13 @@ func (m *monster) performSkill(delay int16, skillLevel, skillID byte) (byte, byt
 	// Special skills that need special handling
 	case skill.Mob.Dispel, skill.Mob.HealAoe:
 		return skillID, skillLevel, skillData
-	// Mob self-buffs (not yet implemented)
-	case skill.Mob.WeaponAttackUpAoe:
-	case skill.Mob.MagicAttackUp:
-	case skill.Mob.MagicAttackUpAoe:
-	case skill.Mob.WeaponDefenceUp:
-	case skill.Mob.WeaponDefenceUpAoe:
-	case skill.Mob.MagicDefenceUp:
-	case skill.Mob.MagicDefenceUpAoe:
+	// Mob self-buffs
+	case skill.Mob.WeaponAttackUp, skill.Mob.WeaponAttackUpAoe,
+		skill.Mob.MagicAttackUp, skill.Mob.MagicAttackUpAoe,
+		skill.Mob.WeaponDefenceUp, skill.Mob.WeaponDefenceUpAoe,
+		skill.Mob.MagicDefenceUp, skill.Mob.MagicDefenceUpAoe,
+		skill.Mob.WeaponImmunity, skill.Mob.MagicImmunity:
+		return skillID, skillLevel, skillData
 	// Other skills (not yet implemented)
 	case skill.Mob.Seduce:
 	case skill.Mob.SendToTown:
