@@ -577,28 +577,38 @@ func (cb *CharacterBuffs) AddMobDebuff(skillID, level byte, durationSec int16) {
 	// Build mask bytes
 	maskBytes := buildMaskBytes64(bits)
 	
-	// Build value triples for the self packet
+	// Build value triples for the self packet - scan mask in wire order
 	out := make([]byte, 0, 32)
-	for _, bit := range bits {
-		var val int16
-		switch bit {
-		case BuffSpeed:
-			// Slow: negative speed value
-			val = -int16(level * 10)
-		case BuffPoison:
-			// Poison: damage value based on level
-			val = int16(level)
-		default:
-			// Other debuffs: just 1
-			val = 1
+	for byteIdx := 0; byteIdx < 8 && byteIdx < len(maskBytes); byteIdx++ {
+		b := maskBytes[byteIdx]
+		if b == 0 {
+			continue
 		}
-		
-		// short value
-		out = append(out, byte(val), byte(val>>8))
-		// int32 skill ID
-		out = append(out, byte(mobSkillID), byte(mobSkillID>>8), byte(mobSkillID>>16), byte(mobSkillID>>24))
-		// short time (seconds)
-		out = append(out, byte(durationSec), byte(durationSec>>8))
+		for bitPos := 0; bitPos < 8; bitPos++ {
+			if (b & (1 << uint(bitPos))) != 0 {
+				globalBit := byteIdx*8 + bitPos
+				
+				var val int16
+				switch globalBit {
+				case BuffSpeed:
+					// Slow: negative speed value
+					val = -int16(level * 10)
+				case BuffPoison:
+					// Poison: damage value based on level
+					val = int16(level)
+				default:
+					// Other debuffs: just 1
+					val = 1
+				}
+				
+				// short value
+				out = append(out, byte(val), byte(val>>8))
+				// int32 skill ID
+				out = append(out, byte(mobSkillID), byte(mobSkillID>>8), byte(mobSkillID>>16), byte(mobSkillID>>24))
+				// short time (seconds)
+				out = append(out, byte(durationSec), byte(durationSec>>8))
+			}
+		}
 	}
 
 	// Send to self
@@ -606,22 +616,35 @@ func (cb *CharacterBuffs) AddMobDebuff(skillID, level byte, durationSec int16) {
 	const delay int16 = 0
 	cb.plr.Send(packetPlayerGiveBuff(maskBytes, out, delay, extra))
 
-	// Build foreign buff values for broadcasting
+	// Build foreign buff values for broadcasting - scan mask in wire order
 	fout := make([]byte, 0, 16)
-	for _, bit := range bits {
-		switch bit {
-		case BuffStun, BuffDarkness, BuffSeal, BuffWeakness:
-			// These need int32 R (skill ID)
-			fout = append(fout, byte(mobSkillID), byte(mobSkillID>>8), byte(mobSkillID>>16), byte(mobSkillID>>24))
-		case BuffPoison:
-			// Poison: write short N, int32 R
-			n := int16(level)
-			fout = append(fout, byte(n), byte(n>>8))
-			fout = append(fout, byte(mobSkillID), byte(mobSkillID>>8), byte(mobSkillID>>16), byte(mobSkillID>>24))
-		case BuffCurse:
-			// Curse: write int32 R
-			fout = append(fout, byte(mobSkillID), byte(mobSkillID>>8), byte(mobSkillID>>16), byte(mobSkillID>>24))
-		// Speed/Slow doesn't need foreign buff data
+	for byteIdx := 0; byteIdx < 8 && byteIdx < len(maskBytes); byteIdx++ {
+		b := maskBytes[byteIdx]
+		if b == 0 {
+			continue
+		}
+		for bitPos := 0; bitPos < 8; bitPos++ {
+			if (b & (1 << uint(bitPos))) != 0 {
+				globalBit := byteIdx*8 + bitPos
+				
+				switch globalBit {
+				case BuffSpeed:
+					// Speed/Slow: write byte N (speed value)
+					speedVal := byte(-level * 10) // negative for slow
+					fout = append(fout, speedVal)
+				case BuffStun, BuffDarkness, BuffSeal, BuffWeakness:
+					// These need int32 R (skill ID)
+					fout = append(fout, byte(mobSkillID), byte(mobSkillID>>8), byte(mobSkillID>>16), byte(mobSkillID>>24))
+				case BuffPoison:
+					// Poison: write short N, int32 R
+					n := int16(level)
+					fout = append(fout, byte(n), byte(n>>8))
+					fout = append(fout, byte(mobSkillID), byte(mobSkillID>>8), byte(mobSkillID>>16), byte(mobSkillID>>24))
+				case BuffCurse:
+					// Curse: write int32 R
+					fout = append(fout, byte(mobSkillID), byte(mobSkillID>>8), byte(mobSkillID>>16), byte(mobSkillID>>24))
+				}
+			}
 		}
 	}
 	
