@@ -173,12 +173,16 @@ func (m *monster) performSkill(delay int16, skillLevel, skillID byte) (byte, byt
 		m.mp = 0
 	}
 
-	// Return skill info for debuff application by caller
-	// Debuffs that should be applied to players
+	// Return skill info for debuff/buff application by caller
 	switch skillID {
+	// Debuffs that should be applied to players
 	case skill.Mob.Seal, skill.Mob.Darkness, skill.Mob.Weakness,
 		skill.Mob.Stun, skill.Mob.Curse, skill.Mob.Poison, skill.Mob.Slow:
 		return skillID, skillLevel, skillData
+	// Special skills that need special handling
+	case skill.Mob.Dispel, skill.Mob.HealAoe:
+		return skillID, skillLevel, skillData
+	// Mob self-buffs (not yet implemented)
 	case skill.Mob.WeaponAttackUpAoe:
 	case skill.Mob.MagicAttackUp:
 	case skill.Mob.MagicAttackUpAoe:
@@ -186,8 +190,7 @@ func (m *monster) performSkill(delay int16, skillLevel, skillID byte) (byte, byt
 	case skill.Mob.WeaponDefenceUpAoe:
 	case skill.Mob.MagicDefenceUp:
 	case skill.Mob.MagicDefenceUpAoe:
-	case skill.Mob.HealAoe:
-	case skill.Mob.Dispel:
+	// Other skills (not yet implemented)
 	case skill.Mob.Seduce:
 	case skill.Mob.SendToTown:
 	case skill.Mob.PoisonMist:

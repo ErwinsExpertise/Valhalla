@@ -16,6 +16,7 @@ import (
 
 	"github.com/Hucaru/Valhalla/common/opcode"
 	"github.com/Hucaru/Valhalla/constant"
+	"github.com/Hucaru/Valhalla/constant/skill"
 	"github.com/Hucaru/Valhalla/mpacket"
 	"github.com/Hucaru/Valhalla/nx"
 )
@@ -291,6 +292,28 @@ func (pool *lifePool) mobAcknowledge(poolID int32, plr *Player, moveID int16, sk
 
 func (pool *lifePool) applyMobDebuffToPlayers(mob *monster, skillID, skillLevel byte, skillData nx.MobSkill) {
 	if pool.instance == nil {
+		return
+	}
+
+	// Handle special skills first
+	switch skillID {
+	case skill.Mob.Dispel:
+		// Dispel removes all buffs from players
+		for _, plr := range pool.instance.players {
+			if plr == nil || plr.buffs == nil {
+				continue
+			}
+			plr.buffs.DispelAllBuffs()
+		}
+		return
+	case skill.Mob.HealAoe:
+		// Heal all mobs in the area
+		healAmount := skillData.Hp
+		for _, m := range pool.mobs {
+			if m != nil {
+				m.healMob(healAmount, 0)
+			}
+		}
 		return
 	}
 

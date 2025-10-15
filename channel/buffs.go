@@ -820,6 +820,27 @@ func (cb *CharacterBuffs) ClearBuff(skillID int32, _ uint32) {
 	}
 }
 
+// DispelAllBuffs removes all active buffs from the player (used by mob Dispel skill)
+func (cb *CharacterBuffs) DispelAllBuffs() {
+	if cb.plr == nil {
+		return
+	}
+	
+	// Collect all active skill IDs to remove
+	toRemove := make([]int32, 0, len(cb.activeSkillLevels))
+	for skillID := range cb.activeSkillLevels {
+		// Don't dispel debuffs (negative skill IDs from mobs)
+		if skillID > 0 {
+			toRemove = append(toRemove, skillID)
+		}
+	}
+	
+	// Remove each buff
+	for _, skillID := range toRemove {
+		cb.expireBuffNow(skillID)
+	}
+}
+
 func (cb *CharacterBuffs) AuditAndExpireStaleBuffs() {
 	now := time.Now().UnixMilli()
 	toExpire := make([]int32, 0, 4)
