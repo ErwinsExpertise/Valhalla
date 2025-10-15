@@ -174,35 +174,45 @@ func (m *monster) performSkill(delay int16, skillLevel, skillID byte, inst *fiel
 	}
 
 	duration := int16(skillData.Time)
+	effectValue := int16(skillData.X) // X value from NX data is the effect strength
 
 	// Implement effects per skillID (buffs/aoe/etc.)
 	switch skillID {
 	case skill.Mob.WeaponAttackUp, skill.Mob.WeaponAttackUpAoe:
 		m.statBuff |= skill.MobStat.PowerUp
 		if inst != nil {
-			inst.send(packetMobStatSet(m.spawnID, skill.MobStat.PowerUp, skillID, skillLevel, duration, delay))
+			inst.send(packetMobStatSetWithValue(m.spawnID, skill.MobStat.PowerUp, skillID, effectValue, duration, delay))
 		}
 	case skill.Mob.MagicAttackUp, skill.Mob.MagicAttackUpAoe:
 		m.statBuff |= skill.MobStat.MagicUp
 		if inst != nil {
-			inst.send(packetMobStatSet(m.spawnID, skill.MobStat.MagicUp, skillID, skillLevel, duration, delay))
+			inst.send(packetMobStatSetWithValue(m.spawnID, skill.MobStat.MagicUp, skillID, effectValue, duration, delay))
 		}
 	case skill.Mob.WeaponDefenceUp, skill.Mob.WeaponDefenceUpAoe:
 		m.statBuff |= skill.MobStat.PowerGuardUp
 		if inst != nil {
-			inst.send(packetMobStatSet(m.spawnID, skill.MobStat.PowerGuardUp, skillID, skillLevel, duration, delay))
+			inst.send(packetMobStatSetWithValue(m.spawnID, skill.MobStat.PowerGuardUp, skillID, effectValue, duration, delay))
 		}
 	case skill.Mob.MagicDefenceUp, skill.Mob.MagicDefenceUpAoe:
 		m.statBuff |= skill.MobStat.MagicGuardUp
 		if inst != nil {
-			inst.send(packetMobStatSet(m.spawnID, skill.MobStat.MagicGuardUp, skillID, skillLevel, duration, delay))
+			inst.send(packetMobStatSetWithValue(m.spawnID, skill.MobStat.MagicGuardUp, skillID, effectValue, duration, delay))
 		}
 	case skill.Mob.HealAoe:
 		// Heal nearby mobs (AOE heal)
 		if inst != nil {
 			healAmount := skillData.Hp
 			if healAmount > 0 {
+				// Heal self
 				m.healMob(healAmount, 0)
+				
+				// Heal other mobs in the map (AOE)
+				// TODO: Add range checking
+				for _, mob := range inst.lifePool.mobs {
+					if mob != nil && mob.spawnID != m.spawnID {
+						mob.healMob(healAmount, 0)
+					}
+				}
 			}
 		}
 	case skill.Mob.Seal:
@@ -242,18 +252,18 @@ func (m *monster) performSkill(delay int16, skillLevel, skillID byte, inst *fiel
 	case skill.Mob.WeaponImmunity:
 		m.statBuff |= skill.MobStat.PhysicalImmune
 		if inst != nil {
-			inst.send(packetMobStatSet(m.spawnID, skill.MobStat.PhysicalImmune, skillID, skillLevel, duration, delay))
+			inst.send(packetMobStatSetWithValue(m.spawnID, skill.MobStat.PhysicalImmune, skillID, effectValue, duration, delay))
 		}
 	case skill.Mob.MagicImmunity:
 		m.statBuff |= skill.MobStat.MagicImmune
 		if inst != nil {
-			inst.send(packetMobStatSet(m.spawnID, skill.MobStat.MagicImmune, skillID, skillLevel, duration, delay))
+			inst.send(packetMobStatSetWithValue(m.spawnID, skill.MobStat.MagicImmune, skillID, effectValue, duration, delay))
 		}
 	case skill.Mob.ArmorSkill:
 		// TODO: Implement armor skill (HardSkin)
 		m.statBuff |= skill.MobStat.HardSkin
 		if inst != nil {
-			inst.send(packetMobStatSet(m.spawnID, skill.MobStat.HardSkin, skillID, skillLevel, duration, delay))
+			inst.send(packetMobStatSetWithValue(m.spawnID, skill.MobStat.HardSkin, skillID, effectValue, duration, delay))
 		}
 	case skill.Mob.WeaponDamageReflect:
 		// TODO: Implement weapon damage reflect
@@ -265,43 +275,43 @@ func (m *monster) performSkill(delay int16, skillLevel, skillID byte, inst *fiel
 		// Monster Carnival specific
 		m.statBuff |= skill.MobStat.PowerUp
 		if inst != nil {
-			inst.send(packetMobStatSet(m.spawnID, skill.MobStat.PowerUp, skillID, skillLevel, duration, delay))
+			inst.send(packetMobStatSetWithValue(m.spawnID, skill.MobStat.PowerUp, skillID, effectValue, duration, delay))
 		}
 	case skill.Mob.McMagicAttackUp:
 		// Monster Carnival specific
 		m.statBuff |= skill.MobStat.MagicUp
 		if inst != nil {
-			inst.send(packetMobStatSet(m.spawnID, skill.MobStat.MagicUp, skillID, skillLevel, duration, delay))
+			inst.send(packetMobStatSetWithValue(m.spawnID, skill.MobStat.MagicUp, skillID, effectValue, duration, delay))
 		}
 	case skill.Mob.McWeaponDefenseUp:
 		// Monster Carnival specific
 		m.statBuff |= skill.MobStat.PowerGuardUp
 		if inst != nil {
-			inst.send(packetMobStatSet(m.spawnID, skill.MobStat.PowerGuardUp, skillID, skillLevel, duration, delay))
+			inst.send(packetMobStatSetWithValue(m.spawnID, skill.MobStat.PowerGuardUp, skillID, effectValue, duration, delay))
 		}
 	case skill.Mob.McMagicDefenseUp:
 		// Monster Carnival specific
 		m.statBuff |= skill.MobStat.MagicGuardUp
 		if inst != nil {
-			inst.send(packetMobStatSet(m.spawnID, skill.MobStat.MagicGuardUp, skillID, skillLevel, duration, delay))
+			inst.send(packetMobStatSetWithValue(m.spawnID, skill.MobStat.MagicGuardUp, skillID, effectValue, duration, delay))
 		}
 	case skill.Mob.McAccuracyUp:
 		// Monster Carnival specific
 		m.statBuff |= skill.MobStat.Accurrency
 		if inst != nil {
-			inst.send(packetMobStatSet(m.spawnID, skill.MobStat.Accurrency, skillID, skillLevel, duration, delay))
+			inst.send(packetMobStatSetWithValue(m.spawnID, skill.MobStat.Accurrency, skillID, effectValue, duration, delay))
 		}
 	case skill.Mob.McAvoidUp:
 		// Monster Carnival specific
 		m.statBuff |= skill.MobStat.Evasion
 		if inst != nil {
-			inst.send(packetMobStatSet(m.spawnID, skill.MobStat.Evasion, skillID, skillLevel, duration, delay))
+			inst.send(packetMobStatSetWithValue(m.spawnID, skill.MobStat.Evasion, skillID, effectValue, duration, delay))
 		}
 	case skill.Mob.McSpeedUp:
 		// Monster Carnival specific
 		m.statBuff |= skill.MobStat.Speed
 		if inst != nil {
-			inst.send(packetMobStatSet(m.spawnID, skill.MobStat.Speed, skillID, skillLevel, duration, delay))
+			inst.send(packetMobStatSetWithValue(m.spawnID, skill.MobStat.Speed, skillID, effectValue, duration, delay))
 		}
 	case skill.Mob.McSeal:
 		// Monster Carnival specific - seal players
@@ -642,20 +652,24 @@ func packetMobShowHpChange(spawnID int32, dmg int32) mpacket.Packet {
 	return p
 }
 
-// packetMobStatSet sends mob stat changes (buffs) to clients
-func packetMobStatSet(spawnID int32, statMask int32, skillID byte, skillLevel byte, duration int16, delay int16) mpacket.Packet {
+// packetMobStatSetWithValue sends mob stat changes (buffs) to clients with explicit effect value
+func packetMobStatSetWithValue(spawnID int32, statMask int32, skillID byte, effectValue int16, duration int16, delay int16) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelMobStatSet)
 	p.WriteInt32(spawnID)
 	p.WriteInt32(statMask)
 
-	// For each bit set in statMask, write the skill value
-	// The value to write depends on the stat type
-	// For simplicity, we write skillID and duration for each stat
+	// For each bit set in statMask, write the buff data
+	// Each buff entry consists of: value (int16), skillID (int32), duration (int16)
 	if statMask != 0 {
-		// Write skill effect value (typically the X value from NX data)
-		p.WriteInt16(int16(skillLevel)) // Effect strength
-		p.WriteInt32(int32(skillID))    // Skill ID
-		p.WriteInt16(duration)          // Duration in seconds
+		// Iterate through each bit in the mask
+		for i := int32(0); i < 32; i++ {
+			if (statMask & (1 << uint(i))) != 0 {
+				// Write effect value (typically from X field in NX data)
+				p.WriteInt16(effectValue)    // Effect strength from NX data
+				p.WriteInt32(int32(skillID)) // Skill ID
+				p.WriteInt16(duration)       // Duration in seconds
+			}
+		}
 	}
 
 	p.WriteInt16(delay) // Delay
