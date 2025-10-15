@@ -561,70 +561,33 @@ func (m monster) calculateHeal() (hp int32, mp int32) {
 	return hp, mp
 }
 
-// applyPlayerDebuff applies a debuff to all players in range of the mob
+// applyPlayerDebuff applies a debuff to all players in range of the mob using the CharacterBuffs system
 func (m *monster) applyPlayerDebuff(inst *fieldInstance, skillID byte, skillLevel byte, duration int16, buffBit int) {
 	if inst == nil {
 		return
 	}
 
+	// Create a mob skill ID by using a negative number to distinguish from player skills
+	// Convention: -100 - skillID
+	mobSkillID := int32(-100 - int32(skillID))
+
+	// Calculate expiration time from duration
+	expiresAtMs := int64(0)
+	if duration > 0 {
+		expiresAtMs = time.Now().Add(time.Duration(duration) * time.Second).UnixMilli()
+	}
+
 	// Get all players in the instance
 	// TODO: Check if players are in range (for now, apply to all in map)
 	for _, plr := range inst.players {
-		if plr == nil {
+		if plr == nil || plr.buffs == nil {
 			continue
 		}
 
-		// Send debuff packet directly to player
-		// The mob skill ID is used as the source of the debuff
-		plr.Send(packetPlayerMobDebuff(int32(skillID), buffBit, duration))
-
-		// Also broadcast to other players
-		inst.sendExcept(packetPlayerMobDebuffForeign(plr.ID, int32(skillID), buffBit, duration), plr.Conn)
+		// Use AddBuffFromCC which doesn't require NX skill lookup
+		// This properly handles packets, expiration, and tracking
+		plr.buffs.AddBuffFromCC(plr.ID, mobSkillID, expiresAtMs, skillLevel, false, 0)
 	}
-}
-
-// packetPlayerMobDebuff sends a debuff to the player
-func packetPlayerMobDebuff(skillID int32, buffBit int, duration int16) mpacket.Packet {
-	p := mpacket.CreateWithOpcode(opcode.SendChannelTempStatChange)
-
-	// Build mask for the specific debuff
-	mask := make([]byte, 8)
-	if buffBit >= 0 && buffBit < 64 {
-		byteIdx := buffBit / 8
-		shift := uint(buffBit % 8)
-		mask[byteIdx] |= (1 << shift)
-	}
-	p.WriteBytes(mask)
-
-	// Write the debuff value and duration
-	// For debuffs like Seal, Darkness, etc., we write the skill ID and duration
-	p.WriteInt16(1)        // Effect value (usually 1 for debuffs)
-	p.WriteInt32(skillID)  // Source skill ID
-	p.WriteInt16(duration) // Duration in seconds
-
-	p.WriteInt16(0) // Delay
-
-	return p
-}
-
-// packetPlayerMobDebuffForeign broadcasts a debuff on another player
-func packetPlayerMobDebuffForeign(charID int32, skillID int32, buffBit int, duration int16) mpacket.Packet {
-	p := mpacket.CreateWithOpcode(opcode.SendChannelPlayerGiveForeignBuff)
-	p.WriteInt32(charID)
-
-	// Build mask for the specific debuff
-	mask := make([]byte, 8)
-	if buffBit >= 0 && buffBit < 64 {
-		byteIdx := buffBit / 8
-		shift := uint(buffBit % 8)
-		mask[byteIdx] |= (1 << shift)
-	}
-	p.WriteBytes(mask)
-
-	// Write the debuff value
-	p.WriteInt32(skillID) // Source skill ID
-
-	return p
 }
 
 func packetMobControl(m monster, chase bool) mpacket.Packet {

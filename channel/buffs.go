@@ -150,6 +150,18 @@ func LoadBuffs() {
 	AddSkillBuff(int32(skill.Puppet), BuffPickPocketMesoUP)
 	AddSkillBuff(int32(skill.SniperPuppet), BuffPickPocketMesoUP)
 	AddSkillBuff(int32(skill.SummonDragon), BuffComboAttack)
+
+	// Mob debuff skills (using negative IDs: -100 - mobSkillID)
+	// These map mob skills to the appropriate player debuff bits
+	AddSkillBuff(int32(-100-int32(skill.Mob.Seal)), BuffSeal)
+	AddSkillBuff(int32(-100-int32(skill.Mob.Darkness)), BuffDarkness)
+	AddSkillBuff(int32(-100-int32(skill.Mob.Weakness)), BuffWeakness)
+	AddSkillBuff(int32(-100-int32(skill.Mob.Stun)), BuffStun)
+	AddSkillBuff(int32(-100-int32(skill.Mob.Curse)), BuffCurse)
+	AddSkillBuff(int32(-100-int32(skill.Mob.Poison)), BuffPoison)
+	AddSkillBuff(int32(-100-int32(skill.Mob.Slow)), BuffSpeed) // Slow reduces speed
+	AddSkillBuff(int32(-100-int32(skill.Mob.Seduce)), BuffSeal) // Seduce treated as seal for now
+	AddSkillBuff(int32(-100-int32(skill.Mob.McSeal)), BuffSeal) // Monster Carnival seal
 }
 
 func init() {
@@ -249,11 +261,20 @@ func buildMaskBytes64(bits []int) []byte {
 // Emit triples by scanning maskBytes in the same wire order we Send:
 // bytes 0..7, bits 0..7 (LSB-first).
 func (cb *CharacterBuffs) buildBuffTriplesWireOrder(skillID int32, level byte, maskBytes []byte, remainSec int16) []byte {
-	levels, err := nx.GetPlayerSkill(skillID)
-	if err != nil || level == 0 || int(level) > len(levels) {
-		return nil
+	// Check if this is a mob debuff skill (negative ID)
+	isMobSkill := skillID < 0
+	
+	var sl nx.PlayerSkill
+	if !isMobSkill {
+		levels, err := nx.GetPlayerSkill(skillID)
+		if err != nil || level == 0 || int(level) > len(levels) {
+			return nil
+		}
+		sl = levels[level-1]
+	} else {
+		// For mob skills, use default values (debuffs typically just need X=1)
+		sl = nx.PlayerSkill{X: 1}
 	}
-	sl := levels[level-1]
 
 	val := func(bit int) int16 {
 		switch bit {
@@ -617,11 +638,20 @@ func (cb *CharacterBuffs) AddBuffFromCC(charId, skillID int32, expiresAtMs int64
 }
 
 func (cb *CharacterBuffs) buildForeignBuffMaskAndValues(skillID int32, level byte, skillBits []int) ([]byte, []byte) {
-	levels, err := nx.GetPlayerSkill(skillID)
-	if err != nil || level == 0 || int(level) > len(levels) {
-		return nil, nil
+	// Check if this is a mob debuff skill (negative ID)
+	isMobSkill := skillID < 0
+	
+	var sl nx.PlayerSkill
+	if !isMobSkill {
+		levels, err := nx.GetPlayerSkill(skillID)
+		if err != nil || level == 0 || int(level) > len(levels) {
+			return nil, nil
+		}
+		sl = levels[level-1]
+	} else {
+		// For mob skills, use default values (debuffs typically just need X=1)
+		sl = nx.PlayerSkill{X: 1}
 	}
-	sl := levels[level-1]
 
 	// Helper to check if this skill sets a given bit
 	hasBit := func(bit int) bool {
