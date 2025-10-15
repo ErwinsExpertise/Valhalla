@@ -539,6 +539,87 @@ func (cb *CharacterBuffs) AddItemBuffFromCC(itemID int32, expiresAtMs int64) {
 	}
 }
 
+// AddMobDebuff applies a debuff from a mob skill to the player
+func (cb *CharacterBuffs) AddMobDebuff(skillID, level byte, durationSec int16) {
+	if cb.plr == nil {
+		return
+	}
+
+	// Map mob skill IDs to buff bit positions
+	var bits []int
+	switch skillID {
+	case skill.Mob.Seal:
+		bits = []int{BuffSeal}
+	case skill.Mob.Darkness:
+		bits = []int{BuffDarkness}
+	case skill.Mob.Weakness:
+		bits = []int{BuffWeakness}
+	case skill.Mob.Stun:
+		bits = []int{BuffStun}
+	case skill.Mob.Curse:
+		bits = []int{BuffCurse}
+	case skill.Mob.Poison:
+		bits = []int{BuffPoison}
+	case skill.Mob.Slow:
+		bits = []int{BuffSpeed} // Slow reduces speed
+	default:
+		return
+	}
+
+	if len(bits) == 0 {
+		return
+	}
+
+	// Build mask bytes
+	maskBytes := buildMaskBytes64(bits)
+	
+	// Encode mob skill as negative to distinguish from player skills
+	mobSkillID := -int32(skillID)
+	
+	// Build value triples for the debuff
+	out := make([]byte, 0, 16)
+	for range bits {
+		// Value for debuff (typically 1 or the actual debuff value)
+		val := int16(1)
+		out = append(out, byte(val), byte(val>>8))
+		
+		// Source ID (negative mob skill ID)
+		out = append(out, byte(mobSkillID), byte(mobSkillID>>8), byte(mobSkillID>>16), byte(mobSkillID>>24))
+		
+		// Duration in seconds
+		out = append(out, byte(durationSec), byte(durationSec>>8))
+	}
+
+	// Send to self
+	const extra byte = 0
+	const delay int16 = 0
+	cb.plr.Send(packetPlayerGiveBuff(maskBytes, out, delay, extra))
+
+	// Broadcast to others in the instance
+	if cb.plr.inst != nil {
+		// Build foreign buff values (simplified for mob debuffs)
+		fout := make([]byte, 0, 8)
+		for _, bit := range bits {
+			switch bit {
+			case BuffDarkness, BuffSeal, BuffWeakness:
+				// These need int32 R (skill ID)
+				fout = append(fout, byte(mobSkillID), byte(mobSkillID>>8), byte(mobSkillID>>16), byte(mobSkillID>>24))
+			}
+		}
+		if len(fout) > 0 {
+			cb.plr.inst.send(packetPlayerGiveForeignBuff(cb.plr.ID, maskBytes, fout, delay))
+		}
+	}
+
+	// Track the debuff with expiry
+	if durationSec > 0 {
+		expiresAtMs := time.Now().Add(time.Duration(durationSec) * time.Second).UnixMilli()
+		cb.expireAt[mobSkillID] = expiresAtMs
+		cb.scheduleExpiryLocked(mobSkillID, time.Duration(durationSec)*time.Second)
+		cb.activeSkillLevels[mobSkillID] = level
+	}
+}
+
 func (cb *CharacterBuffs) AddBuffFromCC(charId, skillID int32, expiresAtMs int64, level byte, foreign bool, delay int16) {
 	if skillID == 0 || level == 0 {
 		return
