@@ -575,6 +575,9 @@ func (cb *CharacterBuffs) AddMobDebuff(skillID, level byte, durationSec int16) {
 	// This matches the reference implementation
 	rValue := int32(skillID) | (int32(level) << 16)
 	
+	// Register the mob debuff in skillBuffBits so expiration can find it
+	skillBuffBits[rValue] = bits
+	
 	// Build mask bytes
 	maskBytes := buildMaskBytes64(bits)
 	
@@ -1007,6 +1010,14 @@ func (cb *CharacterBuffs) expireBuffNow(skillID int32) {
 	}
 
 	delete(cb.activeSkillLevels, skillID)
+	
+	// Clean up mob debuff from skillBuffBits (rValue format: skillID | (level << 16))
+	// Only clean up if it looks like a mob debuff (skill ID 100-200 range)
+	baseSkillID := skillID & 0xFFFF
+	if baseSkillID >= 100 && baseSkillID <= 200 {
+		delete(skillBuffBits, skillID)
+	}
+	
 	cb.despawnSummonIfMatches(skillID)
 }
 
