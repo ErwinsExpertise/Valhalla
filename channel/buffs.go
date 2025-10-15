@@ -545,33 +545,24 @@ func (cb *CharacterBuffs) AddMobDebuff(skillID, level byte, durationSec int16) {
 		return
 	}
 
-	// Map mob skill IDs to buff bit positions and determine debuff values
+	// Map mob skill IDs to buff bit positions
 	var bits []int
-	var debuffValues map[int]int16 = make(map[int]int16)
 	
 	switch skillID {
 	case skill.Mob.Seal:
 		bits = []int{BuffSeal}
-		debuffValues[BuffSeal] = 1
 	case skill.Mob.Darkness:
 		bits = []int{BuffDarkness}
-		debuffValues[BuffDarkness] = 1
 	case skill.Mob.Weakness:
 		bits = []int{BuffWeakness}
-		debuffValues[BuffWeakness] = 1
 	case skill.Mob.Stun:
 		bits = []int{BuffStun}
-		debuffValues[BuffStun] = 1
 	case skill.Mob.Curse:
 		bits = []int{BuffCurse}
-		debuffValues[BuffCurse] = 1
 	case skill.Mob.Poison:
 		bits = []int{BuffPoison}
-		debuffValues[BuffPoison] = 1
 	case skill.Mob.Slow:
-		// Slow reduces speed - send negative value
 		bits = []int{BuffSpeed}
-		debuffValues[BuffSpeed] = -int16(level * 10) // Reduce speed by level * 10
 	default:
 		return
 	}
@@ -580,23 +571,33 @@ func (cb *CharacterBuffs) AddMobDebuff(skillID, level byte, durationSec int16) {
 		return
 	}
 
+	// Use the mob skill ID directly as the source
+	mobSkillID := int32(skillID)
+	
 	// Build mask bytes
 	maskBytes := buildMaskBytes64(bits)
 	
-	// Encode mob skill as negative to distinguish from player skills
-	mobSkillID := -int32(skillID)
-	
-	// Build value triples for the debuff
-	out := make([]byte, 0, 16)
+	// Build value triples for the self packet
+	out := make([]byte, 0, 32)
 	for _, bit := range bits {
-		// Get the debuff value for this bit
-		val := debuffValues[bit]
+		var val int16
+		switch bit {
+		case BuffSpeed:
+			// Slow: negative speed value
+			val = -int16(level * 10)
+		case BuffPoison:
+			// Poison: damage value based on level
+			val = int16(level)
+		default:
+			// Other debuffs: just 1
+			val = 1
+		}
+		
+		// short value
 		out = append(out, byte(val), byte(val>>8))
-		
-		// Source ID (negative mob skill ID)
+		// int32 skill ID
 		out = append(out, byte(mobSkillID), byte(mobSkillID>>8), byte(mobSkillID>>16), byte(mobSkillID>>24))
-		
-		// Duration in seconds
+		// short time (seconds)
 		out = append(out, byte(durationSec), byte(durationSec>>8))
 	}
 
@@ -605,20 +606,28 @@ func (cb *CharacterBuffs) AddMobDebuff(skillID, level byte, durationSec int16) {
 	const delay int16 = 0
 	cb.plr.Send(packetPlayerGiveBuff(maskBytes, out, delay, extra))
 
+	// Build foreign buff values for broadcasting
+	fout := make([]byte, 0, 16)
+	for _, bit := range bits {
+		switch bit {
+		case BuffStun, BuffDarkness, BuffSeal, BuffWeakness:
+			// These need int32 R (skill ID)
+			fout = append(fout, byte(mobSkillID), byte(mobSkillID>>8), byte(mobSkillID>>16), byte(mobSkillID>>24))
+		case BuffPoison:
+			// Poison: write short N, int32 R
+			n := int16(level)
+			fout = append(fout, byte(n), byte(n>>8))
+			fout = append(fout, byte(mobSkillID), byte(mobSkillID>>8), byte(mobSkillID>>16), byte(mobSkillID>>24))
+		case BuffCurse:
+			// Curse: write int32 R
+			fout = append(fout, byte(mobSkillID), byte(mobSkillID>>8), byte(mobSkillID>>16), byte(mobSkillID>>24))
+		// Speed/Slow doesn't need foreign buff data
+		}
+	}
+	
 	// Broadcast to others in the instance
-	if cb.plr.inst != nil {
-		// Build foreign buff values (simplified for mob debuffs)
-		fout := make([]byte, 0, 8)
-		for _, bit := range bits {
-			switch bit {
-			case BuffDarkness, BuffSeal, BuffWeakness:
-				// These need int32 R (skill ID)
-				fout = append(fout, byte(mobSkillID), byte(mobSkillID>>8), byte(mobSkillID>>16), byte(mobSkillID>>24))
-			}
-		}
-		if len(fout) > 0 {
-			cb.plr.inst.send(packetPlayerGiveForeignBuff(cb.plr.ID, maskBytes, fout, delay))
-		}
+	if cb.plr.inst != nil && len(fout) > 0 {
+		cb.plr.inst.send(packetPlayerGiveForeignBuff(cb.plr.ID, maskBytes, fout, delay))
 	}
 
 	// Track the debuff with expiry
@@ -829,8 +838,9 @@ func (cb *CharacterBuffs) DispelAllBuffs() {
 	// Collect all active skill IDs to remove
 	toRemove := make([]int32, 0, len(cb.activeSkillLevels))
 	for skillID := range cb.activeSkillLevels {
-		// Don't dispel debuffs (negative skill IDs from mobs)
-		if skillID > 0 {
+		// Remove all positive skill IDs (player buffs)
+		// Mob debuffs use skill IDs 120-126, so we check if it's a typical player skill
+		if skillID >= 1000 {
 			toRemove = append(toRemove, skillID)
 		}
 	}
