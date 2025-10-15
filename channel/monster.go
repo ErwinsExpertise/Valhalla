@@ -206,7 +206,7 @@ func (m *monster) performSkill(delay int16, skillLevel, skillID byte, inst *fiel
 			if healAmount > 0 {
 				// Heal self
 				m.healMob(healAmount, 0)
-				
+
 				// Heal other mobs in the map (AOE)
 				// TODO: Add range checking
 				for _, mob := range inst.lifePool.mobs {
@@ -577,7 +577,7 @@ func (m *monster) applyPlayerDebuff(inst *fieldInstance, skillID byte, skillLeve
 		// Send debuff packet directly to player
 		// The mob skill ID is used as the source of the debuff
 		plr.Send(packetPlayerMobDebuff(int32(skillID), buffBit, duration))
-		
+
 		// Also broadcast to other players
 		inst.sendExcept(packetPlayerMobDebuffForeign(plr.ID, int32(skillID), buffBit, duration), plr.Conn)
 	}
@@ -586,7 +586,7 @@ func (m *monster) applyPlayerDebuff(inst *fieldInstance, skillID byte, skillLeve
 // packetPlayerMobDebuff sends a debuff to the player
 func packetPlayerMobDebuff(skillID int32, buffBit int, duration int16) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelTempStatChange)
-	
+
 	// Build mask for the specific debuff
 	mask := make([]byte, 8)
 	if buffBit >= 0 && buffBit < 64 {
@@ -595,15 +595,15 @@ func packetPlayerMobDebuff(skillID int32, buffBit int, duration int16) mpacket.P
 		mask[byteIdx] |= (1 << shift)
 	}
 	p.WriteBytes(mask)
-	
+
 	// Write the debuff value and duration
 	// For debuffs like Seal, Darkness, etc., we write the skill ID and duration
-	p.WriteInt16(1)              // Effect value (usually 1 for debuffs)
-	p.WriteInt32(skillID)        // Source skill ID
-	p.WriteInt16(duration)       // Duration in seconds
-	
+	p.WriteInt16(1)        // Effect value (usually 1 for debuffs)
+	p.WriteInt32(skillID)  // Source skill ID
+	p.WriteInt16(duration) // Duration in seconds
+
 	p.WriteInt16(0) // Delay
-	
+
 	return p
 }
 
@@ -611,7 +611,7 @@ func packetPlayerMobDebuff(skillID int32, buffBit int, duration int16) mpacket.P
 func packetPlayerMobDebuffForeign(charID int32, skillID int32, buffBit int, duration int16) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelPlayerGiveForeignBuff)
 	p.WriteInt32(charID)
-	
+
 	// Build mask for the specific debuff
 	mask := make([]byte, 8)
 	if buffBit >= 0 && buffBit < 64 {
@@ -620,10 +620,10 @@ func packetPlayerMobDebuffForeign(charID int32, skillID int32, buffBit int, dura
 		mask[byteIdx] |= (1 << shift)
 	}
 	p.WriteBytes(mask)
-	
+
 	// Write the debuff value
 	p.WriteInt32(skillID) // Source skill ID
-	
+
 	return p
 }
 
