@@ -131,7 +131,7 @@ func packetMessageWhiteBar(msg string) mpacket.Packet {
 // PacketMessageBroadcastChannel - Need to figure out how to display the username and  atm it bastardises it.
 func packetMessageBroadcastChannel(senderName string, msg string, channel byte, ear bool) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelBroadcastMessage)
-	p.WriteByte(2) // Megaphone type
+	p.WriteByte(constant.BroadcastMegaphone)
 	p.WriteString(senderName + " : " + msg)
 	p.WriteByte(channel)
 	if ear {
@@ -145,7 +145,7 @@ func packetMessageBroadcastChannel(senderName string, msg string, channel byte, 
 
 func packetMessageBroadcastSuper(senderName string, msg string, channel byte, ear bool) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelBroadcastMessage)
-	p.WriteByte(3) // Super megaphone type
+	p.WriteByte(constant.BroadcastSuperMegaphone)
 	p.WriteString(senderName + " : " + msg)
 	p.WriteByte(channel)
 	if ear {
