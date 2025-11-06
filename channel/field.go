@@ -936,9 +936,8 @@ func packetEnvironmentChange(setting int32, value string) mpacket.Packet {
 	return p
 }
 
-func packetMapEffect(effectType byte, itemID int32, msg string) mpacket.Packet {
-	p := mpacket.CreateWithOpcode(opcode.SendChannelMapEffect)
-	p.WriteByte(effectType)
+func packetBlowWeather(itemID int32, msg string) mpacket.Packet {
+	p := mpacket.CreateWithOpcode(opcode.SendChannelBlowWeather)
 	p.WriteInt32(itemID)
 	p.WriteString(msg)
 	return p

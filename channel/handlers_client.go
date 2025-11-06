@@ -1483,9 +1483,9 @@ func (server *Server) playerUseCash(conn mnet.Client, reader mpacket.Reader) {
 		// Read message from packet
 		msg := reader.ReadString(reader.ReadInt16())
 		
-		// Create weather effect on current map
+		// Create weather effect on current map using blow weather opcode
 		if plr.inst != nil {
-			plr.inst.send(packetMapEffect(3, itemID, msg))
+			plr.inst.send(packetBlowWeather(itemID, msg))
 			used = true
 		}
 
