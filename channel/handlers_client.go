@@ -1338,10 +1338,9 @@ func (server *Server) playerUseCash(conn mnet.Client, reader mpacket.Reader) {
 
 	switch itemID {
 	case constant.ItemSafetyCharm:
-		// Safety charm prevents exp loss on death - stored in player state
-		// Implementation would require death handling modification
-		log.Printf("Safety Charm not fully implemented")
-		// Do not mark as used until implementation is complete
+		// Safety charm prevents exp loss on death - set flag
+		plr.hasSafetyCharm = true
+		used = true
 
 	case constant.ItemAPReset:
 		// Read stat up and stat down from packet
@@ -1399,9 +1398,25 @@ func (server *Server) playerUseCash(conn mnet.Client, reader mpacket.Reader) {
 		skillUp := reader.ReadInt32()
 		skillDown := reader.ReadInt32()
 		
-		// Implementation would require skill validation and adjustment
-		// For now, mark as not used until skill system is verified
-		log.Printf("SP Reset not fully implemented: up=%d down=%d", skillUp, skillDown)
+		// Get the skills and validate they exist
+		skillUpData, okUp := plr.skills[skillUp]
+		skillDownData, okDown := plr.skills[skillDown]
+		
+		if okUp && okDown && skillDownData.Level > 0 {
+			// Remove 1 level from skill down
+			skillDownData.Level--
+			if skillDownData.Level == 0 {
+				delete(plr.skills, skillDown)
+			} else {
+				plr.updateSkill(skillDownData)
+			}
+			
+			// Add 1 level to skill up
+			skillUpData.Level++
+			plr.updateSkill(skillUpData)
+			
+			used = true
+		}
 
 	case constant.ItemVIPTeleportRock, constant.ItemRegTeleportRock:
 		// Read teleport mode and data
@@ -1410,15 +1425,76 @@ func (server *Server) playerUseCash(conn mnet.Client, reader mpacket.Reader) {
 		if mode == 0x01 {
 			// Teleport to player - read player name
 			targetName := reader.ReadString(reader.ReadInt16())
-			log.Printf("Teleport Rock to player not implemented: target=%s", targetName)
+			
+			// Find target player on this channel
+			targetPlr, err := server.players.GetFromName(targetName)
+			if err != nil {
+				// Player not found on this channel
+				plr.Send(packetPlayerNoChange())
+				return
+			}
+			
+			// Get target player's map
+			targetField, ok := server.fields[targetPlr.mapID]
+			if !ok {
+				plr.Send(packetPlayerNoChange())
+				return
+			}
+			
+			// Get a portal from the target map
+			targetInst, err := targetField.getInstance(targetPlr.inst.id)
+			if err != nil {
+				plr.Send(packetPlayerNoChange())
+				return
+			}
+			
+			portal, err := targetInst.getRandomSpawnPortal()
+			if err != nil {
+				plr.Send(packetPlayerNoChange())
+				return
+			}
+			
+			// Warp to the target player's map
+			if err := server.warpPlayer(plr, targetField, portal, false); err != nil {
+				log.Println("Teleport rock warp error:", err)
+				plr.Send(packetPlayerNoChange())
+				return
+			}
+			
+			used = true
 		} else {
 			// Teleport to saved map - read map ID
 			mapID := reader.ReadInt32()
-			log.Printf("Teleport Rock to map not implemented: mapID=%d", mapID)
+			
+			// Get the destination map
+			targetField, ok := server.fields[mapID]
+			if !ok {
+				plr.Send(packetPlayerNoChange())
+				return
+			}
+			
+			// Get a portal from the target map
+			targetInst, err := targetField.getInstance(0)
+			if err != nil {
+				plr.Send(packetPlayerNoChange())
+				return
+			}
+			
+			portal, err := targetInst.getRandomSpawnPortal()
+			if err != nil {
+				plr.Send(packetPlayerNoChange())
+				return
+			}
+			
+			// Warp to the saved map
+			if err := server.warpPlayer(plr, targetField, portal, false); err != nil {
+				log.Println("Teleport rock warp error:", err)
+				plr.Send(packetPlayerNoChange())
+				return
+			}
+			
+			used = true
 		}
-		
-		// Implementation would require map change logic
-		// For now, mark as not used until map change is verified
 
 	case constant.ItemPetNameTag:
 		// Read new pet name from packet
@@ -1428,6 +1504,9 @@ func (server *Server) playerUseCash(conn mnet.Client, reader mpacket.Reader) {
 		if plr.pet != nil && plr.pet.spawned {
 			// Update pet name
 			plr.pet.name = newName
+			
+			// Mark dirty for database persistence
+			plr.MarkDirty(DirtyPet, time.Millisecond*300)
 			
 			// Broadcast name change to field
 			if plr.inst != nil {
@@ -1456,7 +1535,7 @@ func (server *Server) playerUseCash(conn mnet.Client, reader mpacket.Reader) {
 			// Note: whisper flag determines if ears appear on the megaphone message
 			// For now, we send it to world server for proper handling
 			p := mpacket.CreateInternal(opcode.ChannelPlayerChatEvent)
-			p.WriteByte(0x04) // megaphone broadcast
+			p.WriteByte(internal.OpChatMegaphone) // megaphone broadcast
 			p.WriteString(plr.Name)
 			p.WriteString(msg)
 			p.WriteBool(whisper)
@@ -1471,7 +1550,7 @@ func (server *Server) playerUseCash(conn mnet.Client, reader mpacket.Reader) {
 		
 		// Broadcast to all channels via world server with icon
 		p := mpacket.CreateInternal(opcode.ChannelPlayerChatEvent)
-		p.WriteByte(0x04) // megaphone broadcast
+		p.WriteByte(internal.OpChatMegaphone) // megaphone broadcast
 		p.WriteString(plr.Name)
 		p.WriteString(msg)
 		p.WriteBool(whisper)

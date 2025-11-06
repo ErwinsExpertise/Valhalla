@@ -938,6 +938,7 @@ func packetEnvironmentChange(setting int32, value string) mpacket.Packet {
 
 func packetBlowWeather(itemID int32, msg string) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelBlowWeather)
+	p.WriteBool(false) // isAdmin flag
 	p.WriteInt32(itemID)
 	p.WriteString(msg)
 	return p
