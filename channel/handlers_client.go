@@ -1340,7 +1340,8 @@ func (server *Server) playerUseCash(conn mnet.Client, reader mpacket.Reader) {
 	case constant.ItemSafetyCharm:
 		// Safety charm prevents exp loss on death - stored in player state
 		// Implementation would require death handling modification
-		used = true
+		log.Printf("Safety Charm not fully implemented")
+		// Do not mark as used until implementation is complete
 
 	case constant.ItemAPReset:
 		// Read stat up and stat down from packet
@@ -1403,12 +1404,21 @@ func (server *Server) playerUseCash(conn mnet.Client, reader mpacket.Reader) {
 		log.Printf("SP Reset not fully implemented: up=%d down=%d", skillUp, skillDown)
 
 	case constant.ItemVIPTeleportRock, constant.ItemRegTeleportRock:
-		// Read teleport mode
+		// Read teleport mode and data
 		mode := reader.ReadByte()
+		
+		if mode == 0x01 {
+			// Teleport to player - read player name
+			targetName := reader.ReadString(reader.ReadInt16())
+			log.Printf("Teleport Rock to player not implemented: target=%s", targetName)
+		} else {
+			// Teleport to saved map - read map ID
+			mapID := reader.ReadInt32()
+			log.Printf("Teleport Rock to map not implemented: mapID=%d", mapID)
+		}
 		
 		// Implementation would require map change logic
 		// For now, mark as not used until map change is verified
-		log.Printf("Teleport Rock not fully implemented: mode=%d", mode)
 
 	case constant.ItemPetNameTag:
 		// Read new pet name from packet
@@ -1443,6 +1453,8 @@ func (server *Server) playerUseCash(conn mnet.Client, reader mpacket.Reader) {
 		} else {
 			// Super megaphone - broadcast to all channels via world server
 			whisper := reader.ReadBool()
+			// Note: whisper flag determines if ears appear on the megaphone message
+			// For now, we send it to world server for proper handling
 			p := mpacket.CreateInternal(opcode.ChannelPlayerChatEvent)
 			p.WriteByte(0x04) // megaphone broadcast
 			p.WriteString(plr.Name)
