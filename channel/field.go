@@ -936,6 +936,14 @@ func packetEnvironmentChange(setting int32, value string) mpacket.Packet {
 	return p
 }
 
+func packetMapEffect(effectType byte, itemID int32, msg string) mpacket.Packet {
+	p := mpacket.CreateWithOpcode(opcode.SendChannelMapEffect)
+	p.WriteByte(effectType)
+	p.WriteInt32(itemID)
+	p.WriteString(msg)
+	return p
+}
+
 func packetMapPortal(srcMap, dstmap int32, pos pos) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(0x2d)
 	p.WriteByte(26)

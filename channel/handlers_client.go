@@ -1334,17 +1334,148 @@ func (server *Server) playerUseCash(conn mnet.Client, reader mpacket.Reader) {
 	slot := reader.ReadInt16()
 	itemID := reader.ReadInt32()
 
+	used := false
+
 	switch itemID {
 	case constant.ItemSafetyCharm:
+		// Safety charm prevents exp loss on death - stored in player state
+		// Implementation would require death handling modification
+		used = true
+
 	case constant.ItemAPReset:
+		// Read stat up and stat down from packet
+		statUp := reader.ReadInt32()
+		statDown := reader.ReadInt32()
+		
+		// Validate stats are valid
+		if (statUp == constant.StrID || statUp == constant.DexID || statUp == constant.IntID || statUp == constant.LukID) &&
+			(statDown == constant.StrID || statDown == constant.DexID || statDown == constant.IntID || statDown == constant.LukID) &&
+			statUp != statDown {
+			// Basic validation: ensure we have points to take from statDown
+			canReset := false
+			switch statDown {
+			case constant.StrID:
+				canReset = plr.str > 4
+			case constant.DexID:
+				canReset = plr.dex > 4
+			case constant.IntID:
+				canReset = plr.intt > 4
+			case constant.LukID:
+				canReset = plr.luk > 4
+			}
+
+			if canReset {
+				// Remove 1 from stat down
+				switch statDown {
+				case constant.StrID:
+					plr.setStr(plr.str - 1)
+				case constant.DexID:
+					plr.setDex(plr.dex - 1)
+				case constant.IntID:
+					plr.setInt(plr.intt - 1)
+				case constant.LukID:
+					plr.setLuk(plr.luk - 1)
+				}
+
+				// Add 1 to stat up
+				switch statUp {
+				case constant.StrID:
+					plr.setStr(plr.str + 1)
+				case constant.DexID:
+					plr.setDex(plr.dex + 1)
+				case constant.IntID:
+					plr.setInt(plr.intt + 1)
+				case constant.LukID:
+					plr.setLuk(plr.luk + 1)
+				}
+
+				used = true
+			}
+		}
+
 	case constant.ItemSPResetFirstJob, constant.ItemSPResetSecondJob, constant.ItemSPResetThirdJob:
+		// Read skill up and skill down from packet
+		skillUp := reader.ReadInt32()
+		skillDown := reader.ReadInt32()
+		
+		// Implementation would require skill validation and adjustment
+		// For now, mark as not used until skill system is verified
+		log.Printf("SP Reset not fully implemented: up=%d down=%d", skillUp, skillDown)
+
 	case constant.ItemVIPTeleportRock, constant.ItemRegTeleportRock:
+		// Read teleport mode
+		mode := reader.ReadByte()
+		
+		// Implementation would require map change logic
+		// For now, mark as not used until map change is verified
+		log.Printf("Teleport Rock not fully implemented: mode=%d", mode)
+
 	case constant.ItemPetNameTag:
+		// Read new pet name from packet
+		newName := reader.ReadString(reader.ReadInt16())
+		
+		// Check if player has a spawned pet
+		if plr.pet != nil && plr.pet.spawned {
+			// Update pet name
+			plr.pet.name = newName
+			
+			// Broadcast name change to field
+			if plr.inst != nil {
+				plr.inst.send(packetPetNameChange(plr.ID, newName))
+			}
+			
+			used = true
+		}
+
 	case constant.ItemWaterOfLife:
+		// Water of Life revives dead pet
+		// Implementation would require pet revival logic
+		log.Printf("Water of Life not fully implemented")
+
 	case constant.ItemMegaphone, constant.ItemSuperMegaphone:
+		// Read message from packet
+		msg := reader.ReadString(reader.ReadInt16())
+		
+		if itemID == constant.ItemMegaphone {
+			// Regular megaphone - broadcast to current channel
+			server.players.broadcast(packetMessageBroadcastChannel(plr.Name, msg, server.id, false))
+			used = true
+		} else {
+			// Super megaphone - broadcast to all channels via world server
+			whisper := reader.ReadBool()
+			p := mpacket.CreateInternal(opcode.ChannelPlayerChatEvent)
+			p.WriteByte(0x04) // megaphone broadcast
+			p.WriteString(plr.Name)
+			p.WriteString(msg)
+			p.WriteBool(whisper)
+			server.world.Send(p)
+			used = true
+		}
+
 	case constant.ItemHeartSMegaphone, constant.ItemSkullSMegaphone:
+		// Read message from packet
+		msg := reader.ReadString(reader.ReadInt16())
+		whisper := reader.ReadBool()
+		
+		// Broadcast to all channels via world server with icon
+		p := mpacket.CreateInternal(opcode.ChannelPlayerChatEvent)
+		p.WriteByte(0x04) // megaphone broadcast
+		p.WriteString(plr.Name)
+		p.WriteString(msg)
+		p.WriteBool(whisper)
+		server.world.Send(p)
+		used = true
+
 	case constant.ItemWeatherCandy, constant.ItemWeatherFlower, constant.ItemWeatherFireworks, constant.ItemWeatherSoap, constant.ItemWeatherSnow, constant.ItemWeatherSnowFlakes,
 		constant.ItemWeatherPresents, constant.ItemWeatherLeaves, constant.ItemWeatherChocolate:
+		// Read message from packet
+		msg := reader.ReadString(reader.ReadInt16())
+		
+		// Create weather effect on current map
+		if plr.inst != nil {
+			plr.inst.send(packetMapEffect(3, itemID, msg))
+			used = true
+		}
 
 	default:
 		log.Printf("Unhandled Cash Item Use: %d", itemID)
@@ -1352,10 +1483,14 @@ func (server *Server) playerUseCash(conn mnet.Client, reader mpacket.Reader) {
 		return
 	}
 
-	_, err = plr.takeItem(itemID, slot, 1, 5)
-	if err != nil {
-		log.Println(err)
-		return
+	if used {
+		_, err = plr.takeItem(itemID, slot, 1, 5)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+	} else {
+		plr.Send(packetPlayerNoChange())
 	}
 }
 
