@@ -132,7 +132,7 @@ func packetMessageWhiteBar(msg string) mpacket.Packet {
 func packetMessageBroadcastChannel(senderName string, msg string, channel byte, ear bool) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelBroadcastMessage)
 	p.WriteByte(3)
-	p.WriteString(senderName)
+	p.WriteString(senderName + " : " + msg)
 	p.WriteByte(channel)
 	if ear {
 		p.WriteByte(0x01)

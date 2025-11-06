@@ -399,6 +399,13 @@ func (server Server) handleChatEvent(conn mnet.Server, reader mpacket.Reader) {
 
 			plr.Send(packetMessageBubblessChat(2, fromName, msg))
 		}
+	case 0x04: // Super megaphone broadcast from world server
+		fromName := reader.ReadString(reader.ReadInt16())
+		msg := reader.ReadString(reader.ReadInt16())
+		whisper := reader.ReadBool()
+		
+		// Broadcast to all players on this channel
+		server.players.broadcast(packetMessageBroadcastChannel(fromName, msg, server.id, whisper))
 	default:
 		log.Println("Unknown chat event type:", op)
 	}
