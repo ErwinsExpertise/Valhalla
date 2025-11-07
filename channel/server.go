@@ -227,7 +227,10 @@ func (server *Server) ClientDisconnected(conn mnet.Client) {
 
 	plr.Logout()
 
-	delete(server.npcChat, conn)
+	if _, ok := server.npcChat[conn]; ok {
+		delete(server.npcChat, conn)
+		server.updateNPCInteractionMetric(-1)
+	}
 
 	if remPlrErr := server.players.RemoveFromConn(conn); remPlrErr != nil {
 		log.Println(remPlrErr)

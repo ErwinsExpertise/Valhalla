@@ -1343,9 +1343,11 @@ func (server *Server) gmCommand(conn mnet.Client, msg string) {
 		}
 
 		server.npcChat[conn] = controller
+		server.updateNPCInteractionMetric(1)
 
 		if controller.run() {
 			delete(server.npcChat, conn)
+			server.updateNPCInteractionMetric(-1)
 		}
 	case "guildDisband":
 		plr, err := server.players.GetFromConn(conn)
