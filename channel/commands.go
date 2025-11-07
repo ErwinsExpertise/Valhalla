@@ -58,13 +58,13 @@ func (server *Server) gmCommand(conn mnet.Client, msg string) {
 		server.world.Send(mFunc(float32(r)))
 	case "setLoginRibbon":
 		if len(command) < 2 {
-			conn.Send(packetMessageRedText("Command structure is /setLoginRibbon <0|1>"))
+			conn.Send(packetMessageRedText("Command structure is /setLoginRibbon <ribbon_number> [message]"))
 			return
 		}
 
 		ribbon, err := strconv.Atoi(command[1])
-		if err != nil || ribbon < 0 || ribbon > 255 {
-			conn.Send(packetMessageRedText("<ribbon> should be 0 (normal) or 1 (event)"))
+		if err != nil || ribbon < 0 {
+			conn.Send(packetMessageRedText("Invalid ribbon number"))
 			return
 		}
 
