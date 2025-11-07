@@ -63,7 +63,7 @@ func (server *Server) gmCommand(conn mnet.Client, msg string) {
 		}
 
 		ribbon, err := strconv.Atoi(command[1])
-		if err != nil || (ribbon != 0 && ribbon != 1) {
+		if err != nil || ribbon < 0 || ribbon > 255 {
 			conn.Send(packetMessageRedText("<ribbon> should be 0 (normal) or 1 (event)"))
 			return
 		}
