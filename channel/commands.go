@@ -56,9 +56,9 @@ func (server *Server) gmCommand(conn mnet.Client, msg string) {
 		}
 
 		server.world.Send(mFunc(float32(r)))
-	case "setLoginRibbon":
+	case "setWorldMessage":
 		if len(command) < 2 {
-			conn.Send(packetMessageRedText("Command structure is /setLoginRibbon <ribbon_number> [message]"))
+			conn.Send(packetMessageRedText("Command structure is /setWorldMessage <ribbon_number> [message]"))
 			return
 		}
 

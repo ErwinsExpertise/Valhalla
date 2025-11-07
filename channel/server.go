@@ -107,7 +107,6 @@ func (server *Server) Initialise(work chan func(), dbuser, dbpassword, dbaddress
 		prometheus.MustRegister(common.MetricsGauges["player_count"])
 	}
 
-	// Register new metrics
 	if _, ok := common.MetricsCounters["monster_kills_total"]; !ok {
 		common.MetricsCounters["monster_kills_total"] = prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "monster_kills_total",

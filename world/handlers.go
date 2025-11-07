@@ -778,7 +778,7 @@ func (server *Server) handleCharacterDeleted(conn mnet.Server, reader mpacket.Re
 	for partyID, party := range server.parties {
 		for i, playerID := range party.PlayerID {
 			if playerID == charID {
-				// Remove from party
+				// Zero out the party slot
 				party.ChannelID[i] = 0
 				party.PlayerID[i] = 0
 				party.Name[i] = ""
