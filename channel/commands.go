@@ -56,6 +56,26 @@ func (server *Server) gmCommand(conn mnet.Client, msg string) {
 		}
 
 		server.world.Send(mFunc(float32(r)))
+	case "setLoginRibbon":
+		if len(command) < 2 {
+			conn.Send(packetMessageRedText("Command structure is /setLoginRibbon <0|1>"))
+			return
+		}
+
+		ribbon, err := strconv.Atoi(command[1])
+		if err != nil || (ribbon != 0 && ribbon != 1) {
+			conn.Send(packetMessageRedText("<ribbon> should be 0 (normal) or 1 (event)"))
+			return
+		}
+
+		message := ""
+		if len(command) >= 3 {
+			message = strings.Join(command[2:], " ")
+		}
+
+		server.world.Send(internal.PacketUpdateLoginInfo(byte(ribbon), message))
+		conn.Send(packetMessageNotice(fmt.Sprintf("Login info updated: Ribbon=%d, Message=%s", ribbon, message)))
+
 	case "showRates":
 		conn.Send(packetMessageNotice(fmt.Sprintf("Exp: x%.2f, Drop: x%.2f, Mesos: x%.2f", server.rates.exp, server.rates.drop, server.rates.mesos)))
 

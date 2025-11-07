@@ -367,6 +367,11 @@ func (pool *lifePool) mobDamaged(poolID int32, damager *Player, dmg ...int32) {
 					damager.onMobKilled(v.id)
 				}
 
+				// Update mob kill metric
+				if pool.instance != nil && pool.instance.server != nil {
+					pool.instance.server.updateMobKillMetric()
+				}
+
 				for _, id := range v.revives {
 					spawnID, err := pool.nextMobID()
 
