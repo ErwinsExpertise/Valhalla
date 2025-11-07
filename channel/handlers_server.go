@@ -1617,7 +1617,6 @@ func (server *Server) playerPetLoot(conn mnet.Client, reader mpacket.Reader) {
 
 func (server *Server) handleCharacterDeleted(conn mnet.Server, reader mpacket.Reader) {
 	charID := reader.ReadInt32()
-	log.Printf("Processing deletion of character %d", charID)
 
 	// Remove from any party
 	for _, party := range server.parties {
@@ -1626,7 +1625,6 @@ func (server *Server) handleCharacterDeleted(conn mnet.Server, reader mpacket.Re
 				// Remove from party
 				party.players[i] = nil
 				party.broadcast(packetPartyLeave(party.ID, charID, true, false, party.Name[i], party))
-				log.Printf("Removed deleted character %d from party %d", charID, party.ID)
 				break
 			}
 		}
@@ -1637,7 +1635,6 @@ func (server *Server) handleCharacterDeleted(conn mnet.Server, reader mpacket.Re
 		for i, playerID := range guild.playerID {
 			if playerID == charID {
 				guild.removePlayer(charID, false, guild.names[i])
-				log.Printf("Removed deleted character %d from guild %d", charID, guild.id)
 				break
 			}
 		}

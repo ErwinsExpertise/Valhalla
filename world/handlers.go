@@ -778,20 +778,55 @@ func (server *Server) handleCharacterDeleted(conn mnet.Server, reader mpacket.Re
 	for partyID, party := range server.parties {
 		for i, playerID := range party.PlayerID {
 			if playerID == charID {
-				// Zero out the party slot
-				party.ChannelID[i] = 0
-				party.PlayerID[i] = 0
-				party.Name[i] = ""
-				party.MapID[i] = 0
-				party.Job[i] = 0
-				party.Level[i] = 0
+				isLeader := i == 0
 
-				destroy := i == 0 // If leader, destroy party
-				server.channelBroadcast(internal.PacketWorldPartyLeave(partyID, destroy, false, int32(i), party))
+				if isLeader {
+					// Find highest level member to promote to leader
+					highestLevelIndex := -1
+					highestLevel := int32(-1)
 
-				if destroy {
-					server.reusablePartyIDs = append(server.reusablePartyIDs, partyID)
-					delete(server.parties, partyID)
+					for j := 1; j < constant.MaxPartySize; j++ {
+						if party.PlayerID[j] != 0 && party.Level[j] > highestLevel {
+							highestLevel = party.Level[j]
+							highestLevelIndex = j
+						}
+					}
+
+					if highestLevelIndex != -1 {
+						// Promote highest level member to leader (slot 0)
+						party.PlayerID[0] = party.PlayerID[highestLevelIndex]
+						party.ChannelID[0] = party.ChannelID[highestLevelIndex]
+						party.Name[0] = party.Name[highestLevelIndex]
+						party.MapID[0] = party.MapID[highestLevelIndex]
+						party.Job[0] = party.Job[highestLevelIndex]
+						party.Level[0] = party.Level[highestLevelIndex]
+
+						// Clear the old slot
+						party.PlayerID[highestLevelIndex] = 0
+						party.ChannelID[highestLevelIndex] = 0
+						party.Name[highestLevelIndex] = ""
+						party.MapID[highestLevelIndex] = 0
+						party.Job[highestLevelIndex] = 0
+						party.Level[highestLevelIndex] = 0
+
+						// Broadcast party update with new leader
+						server.channelBroadcast(internal.PacketWorldPartyLeave(partyID, false, false, int32(i), party))
+					} else {
+						// No other members, destroy party
+						server.channelBroadcast(internal.PacketWorldPartyLeave(partyID, true, false, int32(i), party))
+						server.reusablePartyIDs = append(server.reusablePartyIDs, partyID)
+						delete(server.parties, partyID)
+					}
+				} else {
+					// Not leader, just remove from party
+					party.ChannelID[i] = 0
+					party.PlayerID[i] = 0
+					party.Name[i] = ""
+					party.MapID[i] = 0
+					party.Job[i] = 0
+					party.Level[i] = 0
+
+					server.channelBroadcast(internal.PacketWorldPartyLeave(partyID, false, false, int32(i), party))
 				}
 				break
 			}
