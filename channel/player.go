@@ -1186,6 +1186,10 @@ func (d *Player) useSkill(id int32, level byte, projectileID int32) error {
 		return nil
 	}
 
+	if d.buffs.hasMobDebuff(skill.Mob.Seal) {
+		return errors.New("character is currently sealed")
+	}
+
 	if skillUsed.Level != level {
 		d.Conn.Send(packetMessageRedText("skill level mismatch"))
 		return errors.New("skill level mismatch")
@@ -1216,6 +1220,7 @@ func (d *Player) useSkill(id int32, level byte, projectileID int32) error {
 			need = 1
 		}
 		if !d.consumeItemsByID(itemID, need) {
+			d.inst.send(packetSkillStop(d.ID, id))
 			d.Conn.Send(packetMessageRedText("not enough items to use this skill"))
 			return errors.New("not enough required items")
 		}
@@ -1314,6 +1319,16 @@ func (d Player) Logout() {
 		if pos, err := d.inst.calculateNearestSpawnPortalID(d.pos); err == nil {
 			d.mapPos = pos
 		}
+	}
+
+	currentMap, err := nx.GetMap(d.mapID)
+	if err != nil {
+		log.Println(err)
+	}
+
+	if currentMap.ForcedReturn != 999999999 {
+		d.mapID = currentMap.ForcedReturn
+		d.MarkDirty(DirtyMap, time.Millisecond*100)
 	}
 
 	flushNow(&d)
@@ -3207,5 +3222,12 @@ func packetSkillMagic(char Player, ad attackData) mpacket.Packet {
 		}
 	}
 
+	return p
+}
+
+func packetSkillStop(plrID, skillID int32) mpacket.Packet {
+	p := mpacket.CreateWithOpcode(opcode.SendChannelPlayerStopSkill)
+	p.WriteInt32(plrID)
+	p.WriteInt32(skillID)
 	return p
 }
