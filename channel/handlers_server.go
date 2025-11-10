@@ -699,6 +699,25 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 		skill.Doom:
 		readMobListAndDelay()
 
+	// Mystic Door: Read client position but use server-side position for security
+	case skill.MysticDoor:
+		// Read x, y from packet to keep stream in sync, but ignore them (anti-hack)
+		_ = reader.ReadInt16() // client x
+		_ = reader.ReadInt16() // client y
+
+		// Use server-side player position instead of client-provided coordinates
+		doorPos := plr.pos
+
+		// Generate a unique spawn ID for the door
+		doorSpawnID := plr.inst.idCounter
+		plr.inst.idCounter++
+
+		// Show skill animation to all players in the field
+		plr.inst.send(packetPlayerSkillAnimation(plr.ID, false, skillID, skillLevel))
+
+		// Spawn the door at the player's current position
+		plr.inst.send(packetMapSpawnMysticDoor(doorSpawnID, doorPos, true))
+
 	// Summons and puppet:
 	case skill.SummonDragon,
 		skill.SilverHawk, skill.GoldenEagle,
