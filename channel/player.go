@@ -255,6 +255,12 @@ type Player struct {
 	summons *summonState
 	pet     *pet
 
+	// Mystic Door tracking
+	doorMapID   int32 // Map where the door was created
+	doorSpawnID int32 // Spawn ID of the door in the source map
+	townDoorMapID int32 // Map ID where the town portal was created (return map)
+	townDoorSpawnID int32 // Spawn ID of the town portal
+
 	// Per-Player RNG for deterministic randomness
 	rng *rand.Rand
 

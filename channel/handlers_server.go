@@ -705,18 +705,102 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 		_ = reader.ReadInt16() // client x
 		_ = reader.ReadInt16() // client y
 
+		// Remove existing door if player already has one
+		if plr.doorMapID != 0 {
+			if doorField, ok := server.fields[plr.doorMapID]; ok {
+				if doorInst, err := doorField.getInstance(plr.inst.id); err == nil {
+					doorInst.send(packetMapRemoveMysticDoor(plr.doorSpawnID, true))
+				}
+			}
+			// Remove town portal from return map
+			if plr.townDoorMapID != 0 {
+				if townField, ok := server.fields[plr.townDoorMapID]; ok {
+					// Town portals are typically in instance 0
+					if townInst, err := townField.getInstance(0); err == nil {
+						townInst.send(packetMapRemoveMysticDoor(plr.townDoorSpawnID, true))
+					}
+				}
+			}
+		}
+
 		// Use server-side player position instead of client-provided coordinates
 		doorPos := plr.pos
 
-		// Generate a unique spawn ID for the door
+		// Generate unique spawn IDs for both doors
 		doorSpawnID := plr.inst.idCounter
 		plr.inst.idCounter++
+
+		// Get skill duration from skill data
+		var duration int64 = 60 // default 60 seconds
+		if data, err := nx.GetPlayerSkill(skillID); err == nil {
+			idx := int(skillLevel) - 1
+			if idx >= 0 && idx < len(data) && data[idx].Time > 0 {
+				duration = data[idx].Time
+			}
+		}
+
+		// Store door information on player
+		plr.doorMapID = plr.mapID
+		plr.doorSpawnID = doorSpawnID
 
 		// Show skill animation to all players in the field
 		plr.inst.send(packetPlayerSkillAnimation(plr.ID, false, skillID, skillLevel))
 
 		// Spawn the door at the player's current position
 		plr.inst.send(packetMapSpawnMysticDoor(doorSpawnID, doorPos, true))
+
+		// Create town portal in return map
+		returnMapID := plr.inst.returnMapID
+		if returnMapID > 0 {
+			if returnField, ok := server.fields[returnMapID]; ok {
+				// Town maps typically use instance 0
+				if returnInst, err := returnField.getInstance(0); err == nil {
+					townDoorSpawnID := returnInst.idCounter
+					returnInst.idCounter++
+
+					plr.townDoorMapID = returnMapID
+					plr.townDoorSpawnID = townDoorSpawnID
+
+					// Spawn town portal showing where it leads (current map + position)
+					returnInst.send(packetMapSpawnTownMysticDoor(plr.mapID, doorPos))
+				}
+			}
+		}
+
+		// Set timer to remove doors when skill expires
+		go func(pID int32, srcMapID, srcSpawnID, dstMapID, dstSpawnID int32, dur int64, inst *fieldInstance) {
+			time.Sleep(time.Duration(dur) * time.Second)
+			// Use dispatch pattern for thread safety
+			if inst != nil && inst.dispatch != nil {
+				inst.dispatch <- func() {
+					// Find player and clear door data
+					if p, err := server.players.GetFromID(pID); err == nil {
+						if p.doorMapID == srcMapID && p.doorSpawnID == srcSpawnID {
+							p.doorMapID = 0
+							p.doorSpawnID = 0
+							p.townDoorMapID = 0
+							p.townDoorSpawnID = 0
+						}
+					}
+
+					// Remove door from source map
+					if srcField, ok := server.fields[srcMapID]; ok {
+						if srcInst, err := srcField.getInstance(inst.id); err == nil {
+							srcInst.send(packetMapRemoveMysticDoor(srcSpawnID, false))
+						}
+					}
+
+					// Remove town portal from destination map
+					if dstMapID > 0 {
+						if dstField, ok := server.fields[dstMapID]; ok {
+							if dstInst, err := dstField.getInstance(0); err == nil {
+								dstInst.send(packetMapRemoveMysticDoor(dstSpawnID, false))
+							}
+						}
+					}
+				}
+			}
+		}(plr.ID, plr.mapID, doorSpawnID, returnMapID, plr.townDoorSpawnID, duration, plr.inst)
 
 	// Summons and puppet:
 	case skill.SummonDragon,
