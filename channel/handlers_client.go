@@ -471,8 +471,8 @@ func (server Server) playerUseMysticDoor(conn mnet.Client, reader mpacket.Reader
 
 	for ownerID, door := range plr.inst.mysticDoors {
 		// Calculate distance from player to door
-		dx := plr.pos.x - door.pos.x
-		dy := plr.pos.y - door.pos.y
+		dx := int32(plr.pos.x - door.pos.x)
+		dy := int32(plr.pos.y - door.pos.y)
 		dist := dx*dx + dy*dy // Squared distance (avoid sqrt for performance)
 		
 		if dist < minDist {
@@ -483,7 +483,7 @@ func (server Server) playerUseMysticDoor(conn mnet.Client, reader mpacket.Reader
 	}
 
 	if doorInfo == nil {
-		log.Printf("[Mystic Door] ERROR: No doors found in map %d instance %d", plr.mapID, plr.inst.InstanceID)
+		log.Printf("[Mystic Door] ERROR: No doors found in map %d instance %d", plr.mapID, plr.inst.id)
 		conn.Send(packetPlayerNoChange())
 		return
 	}
@@ -501,7 +501,6 @@ func (server Server) playerUseMysticDoor(conn mnet.Client, reader mpacket.Reader
 	// Determine which map has the door we're looking at and which is the destination
 	var destMapID int32
 	var destPortalIdx int
-	var found bool = true // Already found above
 
 	if fromTown {
 		// Player is in town, using a town door to go to source map
