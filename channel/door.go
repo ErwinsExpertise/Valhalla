@@ -4,12 +4,12 @@ import (
 	"log"
 	"time"
 
-	"github.com/ErwinsExpertise/Valhalla/nx"
+	"github.com/Hucaru/Valhalla/nx"
 )
 
 // createMysticDoor creates a mystic door for the player
 // Following reference: https://github.com/sewil/OpenMG/blob/main/WvsBeta.Game/GameObjects/Door.cs#L71
-func createMysticDoor(plr *player, skillID int32, skillLevel byte) {
+func createMysticDoor(plr *Player, skillID int32, skillLevel byte) {
 	// Remove existing door if player already has one
 	if plr.doorMapID != 0 {
 		removeMysticDoor(plr)
@@ -36,7 +36,7 @@ func createMysticDoor(plr *player, skillID int32, skillLevel byte) {
 	// Create town portal in return map
 	returnMapID := plr.inst.returnMapID
 	if returnMapID > 0 {
-		if returnField, ok := plr.server.fields[returnMapID]; ok {
+		if returnField, ok := plr.inst.server.fields[returnMapID]; ok {
 			if returnInst, err := returnField.getInstance(0); err == nil {
 				createTownDoor(plr, returnInst, doorPos)
 			}
@@ -50,19 +50,19 @@ func createMysticDoor(plr *player, skillID int32, skillLevel byte) {
 		// Dispatch to field goroutine for thread safety
 		if field, ok := server.fields[sourceMapID]; ok {
 			if inst, err := field.getInstance(0); err == nil {
-				inst.dispatch(func() {
+				inst.dispatch <- func() {
 					mysticDoorExpired(playerID, sourceMapID, townMapID, server)
-				})
+				}
 			}
 		}
-	}(plr.ID, plr.mapID, returnMapID, duration, plr.server)
+	}(plr.ID, plr.mapID, returnMapID, duration, plr.inst.server)
 }
 
 // removeMysticDoor removes a player's existing mystic door
-func removeMysticDoor(plr *player) {
+func removeMysticDoor(plr *Player) {
 	// Remove source door
 	if plr.doorMapID != 0 {
-		if doorField, ok := plr.server.fields[plr.doorMapID]; ok {
+		if doorField, ok := plr.inst.server.fields[plr.doorMapID]; ok {
 			if doorInst, err := doorField.getInstance(plr.inst.id); err == nil {
 				// Remove door visual
 				doorInst.send(packetMapRemoveMysticDoor(plr.doorSpawnID, true))
@@ -76,7 +76,7 @@ func removeMysticDoor(plr *player) {
 
 	// Remove town door
 	if plr.townDoorMapID != 0 {
-		if townField, ok := plr.server.fields[plr.townDoorMapID]; ok {
+		if townField, ok := plr.inst.server.fields[plr.townDoorMapID]; ok {
 			if townInst, err := townField.getInstance(0); err == nil {
 				// Remove town door visual
 				townInst.send(packetMapRemoveMysticDoor(plr.townDoorSpawnID, true))
@@ -110,7 +110,7 @@ func removeMysticDoor(plr *player) {
 }
 
 // createSourceDoor creates the door in the source map
-func createSourceDoor(plr *player, doorPos pos) {
+func createSourceDoor(plr *Player, doorPos pos) {
 	// Generate spawn ID
 	doorSpawnID := plr.inst.idCounter
 	plr.inst.idCounter++
@@ -159,7 +159,7 @@ func createSourceDoor(plr *player, doorPos pos) {
 }
 
 // createTownDoor creates the door in the town map
-func createTownDoor(plr *player, townInst *fieldInstance, doorPos pos) {
+func createTownDoor(plr *Player, townInst *fieldInstance, doorPos pos) {
 	// Find available town portal
 	townPortalIdx, townPortal, err := townInst.findAvailableTownPortal()
 	if err != nil {
@@ -178,7 +178,7 @@ func createTownDoor(plr *player, townInst *fieldInstance, doorPos pos) {
 
 	// Modify existing portal to point to source map
 	townInst.portals[townPortalIdx].destFieldID = plr.mapID
-	townInst.portals[townPortalIdx].destName = ""
+	townInst.portals[townPortalIdx].destName = "sp"
 
 	// Register in mystic doors map
 	townInst.mysticDoors[plr.ID] = &mysticDoorInfo{
@@ -187,10 +187,11 @@ func createTownDoor(plr *player, townInst *fieldInstance, doorPos pos) {
 		portalIndex: townPortalIdx,
 		pos:         townPortal.pos,
 		destMapID:   plr.mapID,
+		townPortal:  true,
 	}
 
 	// Send town door visual to entire instance
-	townInst.send(packetMapSpawnTownMysticDoor(townInst.fieldID, plr.mapID, townPortal.pos))
+	townInst.send(packetMapSpawnMysticDoor(townInst.mysticDoors[plr.ID].spawnID, townPortal.pos, false))
 
 	// Send portal enable packet
 	// If in party: Send to all party members in town
@@ -214,7 +215,7 @@ func mysticDoorExpired(playerID, sourceMapID, townMapID int32, server *Server) {
 	log.Printf("[Mystic Door] Door expired for player %d", playerID)
 
 	// Try to find the player
-	var plr *player
+	var plr *Player
 
 	// Search in source map
 	if sourceField, ok := server.fields[sourceMapID]; ok {

@@ -574,6 +574,7 @@ type mysticDoorInfo struct {
 	portalIndex int
 	pos         pos
 	destMapID   int32
+	townPortal  bool
 }
 
 func (inst fieldInstance) String() string {
@@ -705,26 +706,24 @@ func (inst *fieldInstance) showMysticDoorsTo(plr *Player) {
 		if canSee {
 			log.Printf("[Mystic Door] Showing door to player %d (%s): ownerID=%d, pos=(%d,%d), currentMap=%d, destMap=%d, portalIdx=%d",
 				plr.ID, plr.Name, ownerID, doorInfo.pos.x, doorInfo.pos.y, inst.fieldID, doorInfo.destMapID, doorInfo.portalIndex)
-			
+
 			// Check if player is authorized (owner or party member)
 			canUse := false
-			if owner != nil {
-				if owner.ID == plr.ID {
-					canUse = true
-				} else if owner.party != nil && plr.party != nil && owner.party == plr.party {
+			if doorInfo != nil {
+				if doorInfo.ownerID == plr.ID {
 					canUse = true
 				}
 			}
-			
+
 			if !canUse {
 				continue // Skip doors player can't use
 			}
-			
+
 			// Send both packets - client handles them based on context
-			plr.Send(packetMapSpawnMysticDoor(doorInfo.spawnID, doorInfo.pos, false))
+			plr.Send(packetMapSpawnMysticDoor(doorInfo.spawnID, doorInfo.pos, true))
 			plr.Send(packetMapPortal(inst.fieldID, doorInfo.destMapID, doorInfo.pos))
-			
-			log.Printf("[Mystic Door] Showed door to player %d: map=%d->%d, pos=(%d,%d)", 
+
+			log.Printf("[Mystic Door] Showed door to player %d: map=%d->%d, pos=(%d,%d)",
 				plr.ID, inst.fieldID, doorInfo.destMapID, doorInfo.pos.x, doorInfo.pos.y)
 		}
 	}
@@ -863,7 +862,7 @@ func (inst *fieldInstance) addPortal(p portal) int {
 
 // findAvailableTownPortal finds an unused "tp" portal in the instance
 // Returns the portal index and the portal, or -1 and error if none available
-func (inst *fieldInstance) findAvailableTownPortal() (int, portal, error) {
+func (inst *fieldInstance) findAvailableTownPortal() (int, *portal, error) {
 	// Get all "tp" portal indices that are already in use
 	usedIndices := make(map[int]bool)
 	for _, doorInfo := range inst.mysticDoors {
@@ -873,11 +872,11 @@ func (inst *fieldInstance) findAvailableTownPortal() (int, portal, error) {
 	// Find first unused "tp" portal
 	for i, p := range inst.portals {
 		if p.name == "tp" && !usedIndices[i] {
-			return i, p, nil
+			return i, &p, nil
 		}
 	}
 
-	return -1, portal{}, fmt.Errorf("No available town portals")
+	return -1, &portal{}, fmt.Errorf("No available town portals")
 }
 
 // removePortalAtIndex removes a portal at the specified index
@@ -1011,8 +1010,8 @@ func packetMapSpawnMysticDoor(spawnID int32, pos pos, instant bool) mpacket.Pack
 
 func packetMapSpawnTownMysticDoor(townMap, dstMap int32, destPos pos) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelTownPortal)
-	p.WriteInt32(dstMap)    // Destination map (where the portal leads)
-	p.WriteInt32(townMap)   // Source map (where the portal is located)
+	p.WriteInt32(dstMap)  // Destination map (where the portal leads)
+	p.WriteInt32(townMap) // Source map (where the portal is located)
 	p.WriteInt16(destPos.x)
 	p.WriteInt16(destPos.y)
 
