@@ -724,8 +724,8 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 					if townInst, err := townField.getInstance(0); err == nil {
 						// Remove town door visual
 						townInst.send(packetMapRemoveMysticDoor(plr.townDoorSpawnID, true))
-						// Remove actual portal
-						townInst.removePortalAtIndex(plr.townPortalIndex)
+						// Don't remove the portal itself - it's a permanent "tp" portal, just reset it
+						// The portal will be reused by the next mystic door
 						// Remove from mystic doors map
 						delete(townInst.mysticDoors, plr.ID)
 					}
@@ -806,25 +806,37 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 						destMapID:   returnMapID,
 					}
 
-					// Create actual portal in town map that leads back to source
-					townPortal := portal{
-						id:          0, // Temporary portals don't need unique IDs
-						pos:         doorPos,
-						name:        "tp", // Town portal name for mystic doors
-						destFieldID: plr.mapID,
-						destName:    "", // Will spawn at nearest portal to original position
-						temporary:   true,
+					// Find an available "tp" portal in town map instead of creating a new one
+					townPortalIdx, townPortalData, err := returnInst.findAvailableTownPortal()
+					if err != nil {
+						// No available town portals - can't create door
+						// Remove the source door we just created
+						plr.inst.send(packetMapRemoveMysticDoor(doorSpawnID, true))
+						plr.inst.removePortalAtIndex(plr.doorPortalIndex)
+						delete(plr.inst.mysticDoors, plr.ID)
+						plr.Send(packetPlayerNoChange())
+						return
 					}
-					plr.townPortalIndex = returnInst.addPortal(townPortal)
 
-					// Register town door in town instance
+					// Use the existing town portal's position and modify it to point to source map
+					plr.townPortalIndex = townPortalIdx
+					plr.townDoorSpawnID = townDoorSpawnID
+
+					// Update the town portal to point to source map
+					returnInst.portals[townPortalIdx].destFieldID = plr.mapID
+					returnInst.portals[townPortalIdx].destName = ""
+
+					// Register town door in town instance using the existing portal
 					returnInst.mysticDoors[plr.ID] = &mysticDoorInfo{
 						ownerID:     plr.ID,
 						spawnID:     townDoorSpawnID,
-						portalIndex: plr.townPortalIndex,
-						pos:         doorPos,
+						portalIndex: townPortalIdx,
+						pos:         townPortalData.pos, // Use existing portal position
 						destMapID:   plr.mapID,
 					}
+
+					// Spawn town door visual at the existing portal's position
+					returnInst.send(packetMapSpawnTownMysticDoor(plr.mapID, townPortalData.pos))
 
 					// Send portal packets using regular packetMapPortal (access controlled by sending only to party)
 					// Send to owner first
@@ -842,9 +854,9 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 								member.Send(packetMapPortal(plr.mapID, returnMapID, doorPos))
 							}
 
-							// Send town portal to members in town map
+							// Send town portal to members in town map (use existing portal position)
 							if member.mapID == returnMapID {
-								member.Send(packetMapPortal(returnMapID, plr.mapID, doorPos))
+								member.Send(packetMapPortal(returnMapID, plr.mapID, townPortalData.pos))
 							}
 						}
 					}
@@ -882,12 +894,12 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 						}
 					}
 
-					// Remove town door visual and portal from destination map
+					// Remove town door visual from destination map
 					if dstMapID > 0 {
 						if dstField, ok := server.fields[dstMapID]; ok {
 							if dstInst, err := dstField.getInstance(0); err == nil {
 								dstInst.send(packetMapRemoveMysticDoor(dstSpawnID, false))
-								dstInst.removePortalAtIndex(dstPortalIdx)
+								// Don't remove the portal - it's a permanent "tp" portal
 								// Remove from mystic doors map
 								delete(dstInst.mysticDoors, pID)
 							}

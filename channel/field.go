@@ -842,6 +842,25 @@ func (inst *fieldInstance) addPortal(p portal) int {
 	return len(inst.portals) - 1
 }
 
+// findAvailableTownPortal finds an unused "tp" portal in the instance
+// Returns the portal index and the portal, or -1 and error if none available
+func (inst *fieldInstance) findAvailableTownPortal() (int, portal, error) {
+	// Get all "tp" portal indices that are already in use
+	usedIndices := make(map[int]bool)
+	for _, doorInfo := range inst.mysticDoors {
+		usedIndices[doorInfo.portalIndex] = true
+	}
+
+	// Find first unused "tp" portal
+	for i, p := range inst.portals {
+		if p.name == "tp" && !usedIndices[i] {
+			return i, p, nil
+		}
+	}
+
+	return -1, portal{}, fmt.Errorf("No available town portals")
+}
+
 // removePortalAtIndex removes a portal at the specified index
 func (inst *fieldInstance) removePortalAtIndex(index int) {
 	if index >= 0 && index < len(inst.portals) {
