@@ -790,6 +790,9 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 						plr.Send(packetPlayerNoChange())
 						return
 					}
+					
+					log.Printf("[Mystic Door] Found available town portal: idx=%d, pos=(%d,%d), name=%s, originalDest=%d",
+						townPortalIdx, townPortalData.pos.x, townPortalData.pos.y, townPortalData.name, townPortalData.destFieldID)
 
 					// Create actual portal in source map that leads to town (at player's position)
 					sourcePortal := portal{
@@ -797,7 +800,7 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 						pos:         doorPos,
 						name:        "tp", // Town portal name for mystic doors
 						destFieldID: returnMapID,
-						destName:    "tp", // Points to the specific tp portal in town
+						destName:    "sp", // When entering town, spawn at "sp" (spawn point)
 						temporary:   true,
 					}
 					plr.doorPortalIndex = plr.inst.addPortal(sourcePortal)
@@ -815,8 +818,13 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 					plr.townPortalIndex = townPortalIdx
 
 					// Update the town portal IN MEMORY to point to source map
+					// Store original values for restoration later
+					originalTownDest := returnInst.portals[townPortalIdx].destFieldID
 					returnInst.portals[townPortalIdx].destFieldID = plr.mapID
-					returnInst.portals[townPortalIdx].destName = "tp" // Use tp as destination to spawn at source door
+					returnInst.portals[townPortalIdx].destName = "" // Empty means spawn at default location
+					
+					log.Printf("[Mystic Door] Modified town portal %d: originalDest=%d -> newDest=%d", 
+						townPortalIdx, originalTownDest, plr.mapID)
 
 					// Register town door in town instance using the existing portal
 					returnInst.mysticDoors[plr.ID] = &mysticDoorInfo{
