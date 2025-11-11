@@ -804,40 +804,27 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 					}
 					plr.townPortalIndex = returnInst.addPortal(townPortal)
 
-					// Send party-specific portal packets (only party members + owner can use)
+					// Send portal packets using regular packetMapPortal (access controlled by sending only to party)
+					// Send to owner first
+					plr.Send(packetMapPortal(plr.mapID, returnMapID, doorPos))
+
+					// Send portal packets to party members if in party
 					if plr.party != nil {
-						// Find owner's index in party
-						var ownerIdx byte = 0
-						for i, pid := range plr.party.PlayerID {
-							if pid == plr.ID {
-								ownerIdx = byte(i)
-								break
-							}
-						}
-
-						// Send portal packets to all party members
-						for i, member := range plr.party.players {
-							if member == nil {
-								continue
+						for _, member := range plr.party.players {
+							if member == nil || member.ID == plr.ID {
+								continue // Skip nil members and owner (already sent)
 							}
 
-							// Source map portal (send to members in source map)
+							// Send source map portal to members in source map
 							if member.mapID == plr.mapID {
-								member.Send(packetMapPortalParty(ownerIdx, plr.mapID, returnMapID, doorPos))
+								member.Send(packetMapPortal(plr.mapID, returnMapID, doorPos))
 							}
 
-							// Town map portal (send to members in town)
+							// Send town portal to members in town map
 							if member.mapID == returnMapID {
-								member.Send(packetMapPortalParty(ownerIdx, returnMapID, plr.mapID, doorPos))
+								member.Send(packetMapPortal(returnMapID, plr.mapID, doorPos))
 							}
-
-							// If member is in a different map, they'll see the portal when they enter
-							// Store party index for later use
-							_ = i
 						}
-					} else {
-						// No party - only owner can use the portal
-						plr.Send(packetMapPortalParty(0, plr.mapID, returnMapID, doorPos))
 					}
 				}
 			}
