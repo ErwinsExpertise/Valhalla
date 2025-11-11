@@ -448,8 +448,94 @@ func (server Server) playerEmote(conn mnet.Client, reader mpacket.Reader) {
 }
 
 func (server Server) playerUseMysticDoor(conn mnet.Client, reader mpacket.Reader) {
-	// doorID := reader.ReadInt32()
-	// fromTown := reader.ReadBool()
+	plr, err := server.players.GetFromConn(conn)
+	if err != nil {
+		return
+	}
+
+	doorOwnerID := reader.ReadInt32()
+	fromTown := reader.ReadBool()
+
+	// Find the door in the current instance
+	doorInfo, exists := plr.inst.mysticDoors[doorOwnerID]
+	if !exists {
+		conn.Send(packetPlayerNoChange())
+		return
+	}
+
+	// Check if player can use this door (owner or party member)
+	canUse := false
+	if plr.ID == doorOwnerID {
+		canUse = true
+	} else if plr.party != nil {
+		// Check if door owner is in player's party
+		for _, pid := range plr.party.PlayerID {
+			if pid == doorOwnerID {
+				canUse = true
+				break
+			}
+		}
+	}
+
+	if !canUse {
+		conn.Send(packetPlayerNoChange())
+		return
+	}
+
+	// Determine destination based on which side we're entering from
+	var destMapID int32
+	var destPos pos
+
+	if fromTown {
+		// Entering from town, go to source map
+		destMapID = doorInfo.destMapID
+		destPos = doorInfo.pos
+	} else {
+		// Entering from source map, go to town
+		// Need to find the town door to get its position
+		destMapID = plr.inst.returnMapID
+		
+		// Find the town door for this owner
+		if destField, ok := server.fields[destMapID]; ok {
+			if destInst, err := destField.getInstance(0); err == nil {
+				if townDoorInfo, exists := destInst.mysticDoors[doorOwnerID]; exists {
+					destPos = townDoorInfo.pos
+				} else {
+					conn.Send(packetPlayerNoChange())
+					return
+				}
+			} else {
+				conn.Send(packetPlayerNoChange())
+				return
+			}
+		} else {
+			conn.Send(packetPlayerNoChange())
+			return
+		}
+	}
+
+	// Get destination field
+	dstField, ok := server.fields[destMapID]
+	if !ok {
+		conn.Send(packetPlayerNoChange())
+		return
+	}
+
+	// Create a temporary portal at the destination position for warping
+	dstPortal := portal{
+		id:          0,
+		pos:         destPos,
+		name:        "tp",
+		destFieldID: destMapID,
+		destName:    "",
+		temporary:   true,
+	}
+
+	// Warp the player
+	if err := server.warpPlayer(plr, dstField, dstPortal, true); err != nil {
+		conn.Send(packetPlayerNoChange())
+		return
+	}
 }
 
 func (server Server) playerAddStatPoint(conn mnet.Client, reader mpacket.Reader) {
