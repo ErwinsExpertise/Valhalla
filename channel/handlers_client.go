@@ -454,41 +454,57 @@ func (server Server) playerUseMysticDoor(conn mnet.Client, reader mpacket.Reader
 		return
 	}
 
-	// Debug: Log remaining packet bytes
-	remainingBytes := reader.GetRestAsBytes()
-	log.Printf("[Mystic Door] DEBUG: Remaining packet bytes (%d): % X", len(remainingBytes), remainingBytes)
-	
-	doorOwnerID := reader.ReadInt32()
+	// Client sends doorOwnerID but it's often 0 or an index, not the actual player ID
+	// We need to find the door based on player's proximity instead
+	_ = reader.ReadInt32() // Read but ignore doorOwnerID from client
 	fromTown := reader.ReadBool()
 	
-	log.Printf("[Mystic Door] DEBUG: Read doorOwnerID=%d, fromTown=%v", doorOwnerID, fromTown)
-	log.Printf("[Mystic Door] DEBUG: Player ID who cast door should be: %d", plr.ID)
+	log.Printf("[Mystic Door] Player %d (%s) attempting to use door, fromTown=%v, currentMap=%d, pos=(%d,%d)",
+		plr.ID, plr.Name, fromTown, plr.mapID, plr.pos.x, plr.pos.y)
 
-	log.Printf("[Mystic Door] Player %d (%s) attempting to use door owned by %d, fromTown=%v, currentMap=%d",
-		plr.ID, plr.Name, doorOwnerID, fromTown, plr.mapID)
+	// Find the closest door to the player in the current instance
+	// Client doesn't send accurate owner ID, so we use proximity
+	var doorInfo *mysticDoorInfo
+	var doorOwnerID int32
+	var minDist int32 = 999999
+	const maxDoorDist int32 = 200 // Max distance to use a door (in pixels)
+
+	for ownerID, door := range plr.inst.mysticDoors {
+		// Calculate distance from player to door
+		dx := plr.pos.x - door.pos.x
+		dy := plr.pos.y - door.pos.y
+		dist := dx*dx + dy*dy // Squared distance (avoid sqrt for performance)
+		
+		if dist < minDist {
+			minDist = dist
+			doorInfo = door
+			doorOwnerID = ownerID
+		}
+	}
+
+	if doorInfo == nil {
+		log.Printf("[Mystic Door] ERROR: No doors found in map %d instance %d", plr.mapID, plr.inst.InstanceID)
+		conn.Send(packetPlayerNoChange())
+		return
+	}
+	
+	// Check if player is close enough to the door
+	if minDist > maxDoorDist*maxDoorDist {
+		log.Printf("[Mystic Door] Player %d too far from nearest door (dist^2=%d, max=%d)", 
+			plr.ID, minDist, maxDoorDist*maxDoorDist)
+		conn.Send(packetPlayerNoChange())
+		return
+	}
+
+	log.Printf("[Mystic Door] Found door owned by %d at distance^2=%d from player", doorOwnerID, minDist)
 
 	// Determine which map has the door we're looking at and which is the destination
 	var destMapID int32
-	var doorInfo *mysticDoorInfo
 	var destPortalIdx int
-	var found bool
+	var found bool = true // Already found above
 
 	if fromTown {
 		// Player is in town, using a town door to go to source map
-		// Find the door in town's mysticDoors
-		doorInfo, found = plr.inst.mysticDoors[doorOwnerID]
-		if !found {
-			log.Printf("[Mystic Door] ERROR: Town door not found for owner %d in map %d", doorOwnerID, plr.mapID)
-			log.Printf("[Mystic Door] Available doors in town instance: %v", func() []int32 {
-				keys := make([]int32, 0, len(plr.inst.mysticDoors))
-				for k := range plr.inst.mysticDoors {
-					keys = append(keys, k)
-				}
-				return keys
-			}())
-			conn.Send(packetPlayerNoChange())
-			return
-		}
 		destMapID = doorInfo.destMapID
 		
 		log.Printf("[Mystic Door] Found town door, destination map: %d", destMapID)
@@ -540,20 +556,6 @@ func (server Server) playerUseMysticDoor(conn mnet.Client, reader mpacket.Reader
 		}
 	} else {
 		// Player is in source map, using source door to go to town
-		doorInfo, found = plr.inst.mysticDoors[doorOwnerID]
-		if !found {
-			log.Printf("[Mystic Door] ERROR: Source door not found for owner %d in map %d instance %d",
-				doorOwnerID, plr.mapID, plr.inst.id)
-			log.Printf("[Mystic Door] Available doors in source instance: %v", func() []int32 {
-				keys := make([]int32, 0, len(plr.inst.mysticDoors))
-				for k := range plr.inst.mysticDoors {
-					keys = append(keys, k)
-				}
-				return keys
-			}())
-			conn.Send(packetPlayerNoChange())
-			return
-		}
 		destMapID = doorInfo.destMapID
 		
 		log.Printf("[Mystic Door] Found source door, destination map: %d", destMapID)
