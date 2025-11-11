@@ -323,6 +323,7 @@ func (f *field) createInstance(rates *rates, server *Server) int {
 		returnMapID: f.Data.ReturnMap,
 		timeLimit:   f.Data.TimeLimit,
 		properties:  make(map[string]interface{}),
+		mysticDoors: make(map[int32]*mysticDoorInfo),
 		fhHist:      f.fhHist,
 		server:      server,
 	}
@@ -539,6 +540,9 @@ type fieldInstance struct {
 	portals []portal
 	players []*Player
 
+	// Mystic doors in this instance (key: player ID)
+	mysticDoors map[int32]*mysticDoorInfo
+
 	idCounter int32
 	town      bool
 
@@ -561,6 +565,15 @@ type fieldInstance struct {
 	fhHist fhHistogram
 
 	server *Server // reference to server for metrics
+}
+
+// mysticDoorInfo tracks information about a mystic door in a field
+type mysticDoorInfo struct {
+	ownerID     int32
+	spawnID     int32
+	portalIndex int
+	pos         pos
+	destMapID   int32
 }
 
 func (inst fieldInstance) String() string {
@@ -656,6 +669,9 @@ func (inst *fieldInstance) addPlayer(plr *Player) error {
 		plr.Send(packetBgmChange(inst.bgm))
 	}
 
+	// Show any existing mystic doors to the player
+	inst.showMysticDoorsTo(plr)
+
 	switch inst.fieldID {
 	case constant.MapStationEllinia:
 		fallthrough
@@ -667,6 +683,32 @@ func (inst *fieldInstance) addPlayer(plr *Player) error {
 	}
 
 	return nil
+}
+
+// showMysticDoorsTo shows all mystic doors in this instance to a player
+func (inst *fieldInstance) showMysticDoorsTo(plr *Player) {
+	for ownerID, doorInfo := range inst.mysticDoors {
+		// Check if player can see this door (owner or party member)
+		canSee := false
+		if plr.ID == ownerID {
+			canSee = true
+		} else if plr.party != nil {
+			// Check if door owner is in player's party
+			for _, pid := range plr.party.PlayerID {
+				if pid == ownerID {
+					canSee = true
+					break
+				}
+			}
+		}
+
+		if canSee {
+			// Send door visual
+			plr.Send(packetMapSpawnMysticDoor(doorInfo.spawnID, doorInfo.pos, false))
+			// Send portal packet
+			plr.Send(packetMapPortal(inst.fieldID, doorInfo.destMapID, doorInfo.pos))
+		}
+	}
 }
 
 func (inst *fieldInstance) removePlayer(plr *Player, usedPortal bool) error {

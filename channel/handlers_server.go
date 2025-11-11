@@ -713,6 +713,8 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 					doorInst.send(packetMapRemoveMysticDoor(plr.doorSpawnID, true))
 					// Remove actual portal
 					doorInst.removePortalAtIndex(plr.doorPortalIndex)
+					// Remove from mystic doors map
+					delete(doorInst.mysticDoors, plr.ID)
 				}
 			}
 			// Remove town portal from return map
@@ -724,6 +726,8 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 						townInst.send(packetMapRemoveMysticDoor(plr.townDoorSpawnID, true))
 						// Remove actual portal
 						townInst.removePortalAtIndex(plr.townPortalIndex)
+						// Remove from mystic doors map
+						delete(townInst.mysticDoors, plr.ID)
 					}
 				}
 			}
@@ -793,6 +797,15 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 					}
 					plr.doorPortalIndex = plr.inst.addPortal(sourcePortal)
 
+					// Register door in source instance
+					plr.inst.mysticDoors[plr.ID] = &mysticDoorInfo{
+						ownerID:     plr.ID,
+						spawnID:     doorSpawnID,
+						portalIndex: plr.doorPortalIndex,
+						pos:         doorPos,
+						destMapID:   returnMapID,
+					}
+
 					// Create actual portal in town map that leads back to source
 					townPortal := portal{
 						id:          0, // Temporary portals don't need unique IDs
@@ -803,6 +816,15 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 						temporary:   true,
 					}
 					plr.townPortalIndex = returnInst.addPortal(townPortal)
+
+					// Register town door in town instance
+					returnInst.mysticDoors[plr.ID] = &mysticDoorInfo{
+						ownerID:     plr.ID,
+						spawnID:     townDoorSpawnID,
+						portalIndex: plr.townPortalIndex,
+						pos:         doorPos,
+						destMapID:   plr.mapID,
+					}
 
 					// Send portal packets using regular packetMapPortal (access controlled by sending only to party)
 					// Send to owner first
@@ -855,6 +877,8 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 						if srcInst, err := srcField.getInstance(inst.id); err == nil {
 							srcInst.send(packetMapRemoveMysticDoor(srcSpawnID, false))
 							srcInst.removePortalAtIndex(srcPortalIdx)
+							// Remove from mystic doors map
+							delete(srcInst.mysticDoors, pID)
 						}
 					}
 
@@ -864,6 +888,8 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 							if dstInst, err := dstField.getInstance(0); err == nil {
 								dstInst.send(packetMapRemoveMysticDoor(dstSpawnID, false))
 								dstInst.removePortalAtIndex(dstPortalIdx)
+								// Remove from mystic doors map
+								delete(dstInst.mysticDoors, pID)
 							}
 						}
 					}
