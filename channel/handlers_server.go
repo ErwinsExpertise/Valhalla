@@ -836,7 +836,7 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 					}
 
 					// Spawn town door visual at the existing portal's position
-					returnInst.send(packetMapSpawnTownMysticDoor(plr.mapID, townPortalData.pos))
+					returnInst.send(packetMapSpawnTownMysticDoor(returnMapID, plr.mapID, townPortalData.pos))
 
 					// Send portal packets using regular packetMapPortal to enable/update the portals
 					// Send to owner first - source portal at player position leads to town "tp"

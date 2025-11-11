@@ -997,10 +997,10 @@ func packetMapSpawnMysticDoor(spawnID int32, pos pos, instant bool) mpacket.Pack
 	return p
 }
 
-func packetMapSpawnTownMysticDoor(dstMap int32, destPos pos) mpacket.Packet {
+func packetMapSpawnTownMysticDoor(townMap, dstMap int32, destPos pos) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelTownPortal)
-	p.WriteInt32(dstMap)
-	p.WriteInt32(dstMap)
+	p.WriteInt32(dstMap)    // Destination map (where the portal leads)
+	p.WriteInt32(townMap)   // Source map (where the portal is located)
 	p.WriteInt16(destPos.x)
 	p.WriteInt16(destPos.y)
 
