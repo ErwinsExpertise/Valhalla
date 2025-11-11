@@ -454,8 +454,15 @@ func (server Server) playerUseMysticDoor(conn mnet.Client, reader mpacket.Reader
 		return
 	}
 
+	// Debug: Log remaining packet bytes
+	remainingBytes := reader.GetRestAsBytes()
+	log.Printf("[Mystic Door] DEBUG: Remaining packet bytes (%d): % X", len(remainingBytes), remainingBytes)
+	
 	doorOwnerID := reader.ReadInt32()
 	fromTown := reader.ReadBool()
+	
+	log.Printf("[Mystic Door] DEBUG: Read doorOwnerID=%d, fromTown=%v", doorOwnerID, fromTown)
+	log.Printf("[Mystic Door] DEBUG: Player ID who cast door should be: %d", plr.ID)
 
 	log.Printf("[Mystic Door] Player %d (%s) attempting to use door owned by %d, fromTown=%v, currentMap=%d",
 		plr.ID, plr.Name, doorOwnerID, fromTown, plr.mapID)
