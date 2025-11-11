@@ -999,12 +999,23 @@ func packetBlowWeather(itemID int32, msg string) mpacket.Packet {
 	return p
 }
 
-func packetMapPortal(srcMap, dstmap int32, pos pos) mpacket.Packet {
-	p := mpacket.CreateWithOpcode(0x2d)
-	p.WriteByte(26)
-	p.WriteByte(0) // ?
+func packetMapPortal(srcMap, dstMap int32, pos pos) mpacket.Packet {
+	p := mpacket.CreateWithOpcode(opcode.SendChannelTownPortal)
+	p.WriteInt32(dstMap)
 	p.WriteInt32(srcMap)
-	p.WriteInt32(dstmap)
+	p.WriteInt16(pos.x)
+	p.WriteInt16(pos.y)
+
+	return p
+}
+
+// packetMapPortalParty creates a party-specific portal packet (only party members can use)
+func packetMapPortalParty(ownerIdIdx byte, srcMap, dstMap int32, pos pos) mpacket.Packet {
+	p := mpacket.CreateWithOpcode(opcode.SendChannelPartyInfo)
+	p.WriteByte(26) // door change
+	p.WriteByte(ownerIdIdx)
+	p.WriteInt32(dstMap)
+	p.WriteInt32(srcMap)
 	p.WriteInt16(pos.x)
 	p.WriteInt16(pos.y)
 
