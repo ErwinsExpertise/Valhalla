@@ -703,16 +703,31 @@ func (inst *fieldInstance) showMysticDoorsTo(plr *Player) {
 		}
 
 		if canSee {
-			log.Printf("[Mystic Door] Showing door to player %d (%s): ownerID=%d, pos=(%d,%d), srcMap=%d, dstMap=%d, portalIdx=%d",
+			log.Printf("[Mystic Door] Showing door to player %d (%s): ownerID=%d, pos=(%d,%d), currentMap=%d, destMap=%d, portalIdx=%d",
 				plr.ID, plr.Name, ownerID, doorInfo.pos.x, doorInfo.pos.y, inst.fieldID, doorInfo.destMapID, doorInfo.portalIndex)
 			
-			// Send door visual
-			plr.Send(packetMapSpawnMysticDoor(doorInfo.spawnID, doorInfo.pos, false))
+			// Determine door type: doors are stored in the map where they visually appear
+			// Each instance's mysticDoors map contains doors IN that map
+			// So if we're in the return/town map and showing a door, it's a town door
+			// The destMapID tells us where it leads
 			
-			// Send portal packet to enable the portal
-			plr.Send(packetMapPortal(inst.fieldID, doorInfo.destMapID, doorInfo.pos))
+			// Check if this is a town portal by seeing if the destination is NOT a town
+			// Town maps typically have IDs like 100000000, 101000000, 102000000, 103000000, 104000000
+			// Remote maps typically have IDs like 104040000
+			isTownMap := inst.fieldID < 110000000 && (inst.fieldID % 1000000) == 0
 			
-			log.Printf("[Mystic Door] Sent portal packet: srcMap=%d, dstMap=%d, pos=(%d,%d)", 
+			if isTownMap {
+				// We're in a town, showing a town portal that leads to a remote map
+				log.Printf("[Mystic Door] Showing TOWN portal - using packetMapSpawnTownMysticDoor")
+				plr.Send(packetMapSpawnTownMysticDoor(inst.fieldID, doorInfo.destMapID, doorInfo.pos))
+			} else {
+				// We're in a remote map, showing a source door that leads to town
+				log.Printf("[Mystic Door] Showing SOURCE door - using packetMapSpawnMysticDoor + packetMapPortal")
+				plr.Send(packetMapSpawnMysticDoor(doorInfo.spawnID, doorInfo.pos, false))
+				plr.Send(packetMapPortal(inst.fieldID, doorInfo.destMapID, doorInfo.pos))
+			}
+			
+			log.Printf("[Mystic Door] Sent door packets: currentMap=%d, destMap=%d, pos=(%d,%d)", 
 				inst.fieldID, doorInfo.destMapID, doorInfo.pos.x, doorInfo.pos.y)
 		}
 	}
