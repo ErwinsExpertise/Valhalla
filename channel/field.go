@@ -703,10 +703,17 @@ func (inst *fieldInstance) showMysticDoorsTo(plr *Player) {
 		}
 
 		if canSee {
+			log.Printf("[Mystic Door] Showing door to player %d (%s): ownerID=%d, pos=(%d,%d), srcMap=%d, dstMap=%d, portalIdx=%d",
+				plr.ID, plr.Name, ownerID, doorInfo.pos.x, doorInfo.pos.y, inst.fieldID, doorInfo.destMapID, doorInfo.portalIndex)
+			
 			// Send door visual
 			plr.Send(packetMapSpawnMysticDoor(doorInfo.spawnID, doorInfo.pos, false))
-			// Send portal packet
+			
+			// Send portal packet to enable the portal
 			plr.Send(packetMapPortal(inst.fieldID, doorInfo.destMapID, doorInfo.pos))
+			
+			log.Printf("[Mystic Door] Sent portal packet: srcMap=%d, dstMap=%d, pos=(%d,%d)", 
+				inst.fieldID, doorInfo.destMapID, doorInfo.pos.x, doorInfo.pos.y)
 		}
 	}
 }
