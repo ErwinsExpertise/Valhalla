@@ -727,6 +727,18 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 					}
 				}
 			}
+
+			// Send portal removal packets to party members or owner
+			portalRemovePacket := packetMapRemovePortal()
+			if plr.party != nil {
+				for _, member := range plr.party.players {
+					if member != nil {
+						member.Send(portalRemovePacket)
+					}
+				}
+			} else {
+				plr.Send(portalRemovePacket)
+			}
 		}
 
 		// Use server-side player position instead of client-provided coordinates
@@ -837,9 +849,11 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 			// Use dispatch pattern for thread safety
 			if inst != nil && inst.dispatch != nil {
 				inst.dispatch <- func() {
-					// Find player and clear door data
+					// Find player and send portal removal packets to party
+					var partyToNotify *party
 					if p, err := server.players.GetFromID(pID); err == nil {
 						if p.doorMapID == srcMapID && p.doorSpawnID == srcSpawnID {
+							partyToNotify = p.party
 							p.doorMapID = 0
 							p.doorSpawnID = 0
 							p.doorPortalIndex = 0
@@ -864,6 +878,21 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 								dstInst.send(packetMapRemoveMysticDoor(dstSpawnID, false))
 								dstInst.removePortalAtIndex(dstPortalIdx)
 							}
+						}
+					}
+
+					// Send portal removal packets to party members
+					if partyToNotify != nil {
+						portalRemovePacket := packetMapRemovePortal()
+						for _, member := range partyToNotify.players {
+							if member != nil {
+								member.Send(portalRemovePacket)
+							}
+						}
+					} else {
+						// No party - send to owner only
+						if p, err := server.players.GetFromID(pID); err == nil {
+							p.Send(packetMapRemovePortal())
 						}
 					}
 				}

@@ -1022,6 +1022,15 @@ func packetMapPortalParty(ownerIdIdx byte, srcMap, dstMap int32, pos pos) mpacke
 	return p
 }
 
+// packetMapRemovePortal removes a portal (town portal/mystic door)
+func packetMapRemovePortal() mpacket.Packet {
+	p := mpacket.CreateWithOpcode(opcode.SendChannelTownPortal)
+	p.WriteInt32(constant.InvalidMap)
+	p.WriteInt32(constant.InvalidMap)
+
+	return p
+}
+
 func packetMapReactorEnterField(spawnID int32, reactorID int32, state byte, x int16, y int16, facesLeft bool) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelReactorEnterField)
 	p.WriteInt32(spawnID)   // unique object id in field
