@@ -814,9 +814,9 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 					// Use the existing town portal's position and modify it to point to source map
 					plr.townPortalIndex = townPortalIdx
 
-					// Update the town portal to point to source map
+					// Update the town portal IN MEMORY to point to source map
 					returnInst.portals[townPortalIdx].destFieldID = plr.mapID
-					returnInst.portals[townPortalIdx].destName = ""
+					returnInst.portals[townPortalIdx].destName = "tp" // Use tp as destination to spawn at source door
 
 					// Register town door in town instance using the existing portal
 					returnInst.mysticDoors[plr.ID] = &mysticDoorInfo{
@@ -830,9 +830,13 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 					// Spawn town door visual at the existing portal's position
 					returnInst.send(packetMapSpawnTownMysticDoor(plr.mapID, townPortalData.pos))
 
-					// Send portal packets using regular packetMapPortal (access controlled by sending only to party)
-					// Send to owner first - source portal at player position
+					// Send portal packets using regular packetMapPortal to enable/update the portals
+					// Send to owner first - source portal at player position leads to town "tp"
 					plr.Send(packetMapPortal(plr.mapID, returnMapID, doorPos))
+					
+					// IMPORTANT: Send town portal packet to update town portal for owner AND anyone already in town
+					// This enables the town portal and sets its destination
+					plr.Send(packetMapPortal(returnMapID, plr.mapID, townPortalData.pos))
 
 					// Send portal packets to party members if in party
 					if plr.party != nil {
@@ -847,6 +851,7 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 							}
 
 							// Send town portal to members in town map (use existing portal position)
+							// This enables the town portal for party members already in town
 							if member.mapID == returnMapID {
 								member.Send(packetMapPortal(returnMapID, plr.mapID, townPortalData.pos))
 							}

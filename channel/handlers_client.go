@@ -659,16 +659,41 @@ func (server Server) playerUseMysticDoor(conn mnet.Client, reader mpacket.Reader
 		dstPortal := dstInst.portals[destPortalIdx]
 		
 		log.Printf("[Mystic Door] Using portal index %d in destination (total portals: %d)", destPortalIdx, len(dstInst.portals))
-		log.Printf("[Mystic Door] Portal position: (%d, %d), destFieldID: %d", dstPortal.pos.x, dstPortal.pos.y, dstPortal.destFieldID)
+		log.Printf("[Mystic Door] Portal position: (%d, %d), destFieldID: %d, name: %s, destName: %s", 
+			dstPortal.pos.x, dstPortal.pos.y, dstPortal.destFieldID, dstPortal.name, dstPortal.destName)
 		
-		// Warp the player using the existing portal
-		if err := server.warpPlayer(plr, dstField, dstPortal, true); err != nil {
+		// When going from source to town, we need to warp to the correct spawn point
+		// The destName on the source portal tells us which portal to spawn at in town
+		var finalPortal portal
+		if !fromTown && dstPortal.destName != "" {
+			// Look for a portal with matching name in the destination
+			found := false
+			for _, p := range dstInst.portals {
+				if p.name == dstPortal.destName {
+					finalPortal = p
+					found = true
+					log.Printf("[Mystic Door] Found destination portal by name '%s' at (%d, %d)", p.name, p.pos.x, p.pos.y)
+					break
+				}
+			}
+			if !found {
+				// Fallback to the door portal itself
+				finalPortal = dstPortal
+				log.Printf("[Mystic Door] Destination portal '%s' not found, using door portal", dstPortal.destName)
+			}
+		} else {
+			// Use the door portal directly
+			finalPortal = dstPortal
+		}
+		
+		// Warp the player using the portal
+		if err := server.warpPlayer(plr, dstField, finalPortal, true); err != nil {
 			log.Printf("[Mystic Door] ERROR: Failed to warp player: %v", err)
 			conn.Send(packetPlayerNoChange())
 			return
 		}
 		
-		log.Printf("[Mystic Door] SUCCESS: Player %d warped to map %d", plr.ID, destMapID)
+		log.Printf("[Mystic Door] SUCCESS: Player %d warped to map %d at (%d, %d)", plr.ID, destMapID, finalPortal.pos.x, finalPortal.pos.y)
 	} else {
 		log.Printf("[Mystic Door] ERROR: Invalid portal index %d (total portals: %d)", destPortalIdx, len(dstInst.portals))
 		conn.Send(packetPlayerNoChange())
