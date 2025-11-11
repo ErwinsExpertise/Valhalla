@@ -794,6 +794,19 @@ func (inst fieldInstance) getPortalFromID(id byte) (portal, error) {
 	return portal{}, fmt.Errorf("No portal with that Name")
 }
 
+// addPortal adds a new portal to the instance and returns its index
+func (inst *fieldInstance) addPortal(p portal) int {
+	inst.portals = append(inst.portals, p)
+	return len(inst.portals) - 1
+}
+
+// removePortalAtIndex removes a portal at the specified index
+func (inst *fieldInstance) removePortalAtIndex(index int) {
+	if index >= 0 && index < len(inst.portals) {
+		inst.portals = append(inst.portals[:index], inst.portals[index+1:]...)
+	}
+}
+
 func (inst *fieldInstance) startFieldTimer() {
 	inst.runUpdate = true
 	inst.fieldTimer = time.NewTicker(time.Millisecond * 1000) // Is this correct time?

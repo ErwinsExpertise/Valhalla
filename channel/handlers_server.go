@@ -709,7 +709,10 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 		if plr.doorMapID != 0 {
 			if doorField, ok := server.fields[plr.doorMapID]; ok {
 				if doorInst, err := doorField.getInstance(plr.inst.id); err == nil {
+					// Remove door visual
 					doorInst.send(packetMapRemoveMysticDoor(plr.doorSpawnID, true))
+					// Remove actual portal
+					doorInst.removePortalAtIndex(plr.doorPortalIndex)
 				}
 			}
 			// Remove town portal from return map
@@ -717,7 +720,10 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 				if townField, ok := server.fields[plr.townDoorMapID]; ok {
 					// Town portals are typically in instance 0
 					if townInst, err := townField.getInstance(0); err == nil {
+						// Remove town door visual
 						townInst.send(packetMapRemoveMysticDoor(plr.townDoorSpawnID, true))
+						// Remove actual portal
+						townInst.removePortalAtIndex(plr.townPortalIndex)
 					}
 				}
 			}
@@ -746,7 +752,7 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 		// Show skill animation to all players in the field
 		plr.inst.send(packetPlayerSkillAnimation(plr.ID, false, skillID, skillLevel))
 
-		// Spawn the door at the player's current position
+		// Spawn the door visual at the player's current position
 		plr.inst.send(packetMapSpawnMysticDoor(doorSpawnID, doorPos, true))
 
 		// Create town portal in return map
@@ -761,14 +767,42 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 					plr.townDoorMapID = returnMapID
 					plr.townDoorSpawnID = townDoorSpawnID
 
-					// Spawn town portal showing where it leads (current map + position)
+					// Spawn town door visual showing where it leads (current map + position)
 					returnInst.send(packetMapSpawnTownMysticDoor(plr.mapID, doorPos))
+
+					// Create actual portal in source map that leads to town
+					sourcePortal := portal{
+						id:          0, // Temporary portals don't need unique IDs
+						pos:         doorPos,
+						name:        "tp", // Town portal name for mystic doors
+						destFieldID: returnMapID,
+						destName:    "sp", // Default spawn portal
+						temporary:   true,
+					}
+					plr.doorPortalIndex = plr.inst.addPortal(sourcePortal)
+
+					// Send portal spawn packet to source map (for actual portal usage)
+					plr.inst.send(packetMapPortal(plr.mapID, returnMapID, doorPos))
+
+					// Create actual portal in town map that leads back to source
+					townPortal := portal{
+						id:          0, // Temporary portals don't need unique IDs
+						pos:         doorPos,
+						name:        "tp", // Town portal name for mystic doors
+						destFieldID: plr.mapID,
+						destName:    "", // Will spawn at nearest portal to original position
+						temporary:   true,
+					}
+					plr.townPortalIndex = returnInst.addPortal(townPortal)
+
+					// Send portal spawn packet to town map (for actual portal usage)
+					returnInst.send(packetMapPortal(returnMapID, plr.mapID, doorPos))
 				}
 			}
 		}
 
 		// Set timer to remove doors when skill expires
-		go func(pID int32, srcMapID, srcSpawnID, dstMapID, dstSpawnID int32, dur int64, inst *fieldInstance) {
+		go func(pID, srcMapID, srcSpawnID int32, srcPortalIdx int, dstMapID, dstSpawnID int32, dstPortalIdx int, dur int64, inst *fieldInstance) {
 			time.Sleep(time.Duration(dur) * time.Second)
 			// Use dispatch pattern for thread safety
 			if inst != nil && inst.dispatch != nil {
@@ -778,29 +812,33 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 						if p.doorMapID == srcMapID && p.doorSpawnID == srcSpawnID {
 							p.doorMapID = 0
 							p.doorSpawnID = 0
+							p.doorPortalIndex = 0
 							p.townDoorMapID = 0
 							p.townDoorSpawnID = 0
+							p.townPortalIndex = 0
 						}
 					}
 
-					// Remove door from source map
+					// Remove door visual and portal from source map
 					if srcField, ok := server.fields[srcMapID]; ok {
 						if srcInst, err := srcField.getInstance(inst.id); err == nil {
 							srcInst.send(packetMapRemoveMysticDoor(srcSpawnID, false))
+							srcInst.removePortalAtIndex(srcPortalIdx)
 						}
 					}
 
-					// Remove town portal from destination map
+					// Remove town door visual and portal from destination map
 					if dstMapID > 0 {
 						if dstField, ok := server.fields[dstMapID]; ok {
 							if dstInst, err := dstField.getInstance(0); err == nil {
 								dstInst.send(packetMapRemoveMysticDoor(dstSpawnID, false))
+								dstInst.removePortalAtIndex(dstPortalIdx)
 							}
 						}
 					}
 				}
 			}
-		}(plr.ID, plr.mapID, doorSpawnID, returnMapID, plr.townDoorSpawnID, duration, plr.inst)
+		}(plr.ID, plr.mapID, doorSpawnID, plr.doorPortalIndex, returnMapID, plr.townDoorSpawnID, plr.townPortalIndex, duration, plr.inst)
 
 	// Summons and puppet:
 	case skill.SummonDragon,
