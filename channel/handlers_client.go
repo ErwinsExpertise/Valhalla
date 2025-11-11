@@ -450,11 +450,15 @@ func (server Server) playerEmote(conn mnet.Client, reader mpacket.Reader) {
 func (server Server) playerUseMysticDoor(conn mnet.Client, reader mpacket.Reader) {
 	plr, err := server.players.GetFromConn(conn)
 	if err != nil {
+		log.Printf("[Mystic Door] Failed to get player from connection: %v", err)
 		return
 	}
 
 	doorOwnerID := reader.ReadInt32()
 	fromTown := reader.ReadBool()
+
+	log.Printf("[Mystic Door] Player %d (%s) attempting to use door owned by %d, fromTown=%v, currentMap=%d",
+		plr.ID, plr.Name, doorOwnerID, fromTown, plr.mapID)
 
 	// Determine which map has the door we're looking at and which is the destination
 	var destMapID int32
@@ -467,32 +471,63 @@ func (server Server) playerUseMysticDoor(conn mnet.Client, reader mpacket.Reader
 		// Find the door in town's mysticDoors
 		doorInfo, found = plr.inst.mysticDoors[doorOwnerID]
 		if !found {
+			log.Printf("[Mystic Door] ERROR: Town door not found for owner %d in map %d", doorOwnerID, plr.mapID)
+			log.Printf("[Mystic Door] Available doors in town instance: %v", func() []int32 {
+				keys := make([]int32, 0, len(plr.inst.mysticDoors))
+				for k := range plr.inst.mysticDoors {
+					keys = append(keys, k)
+				}
+				return keys
+			}())
 			conn.Send(packetPlayerNoChange())
 			return
 		}
 		destMapID = doorInfo.destMapID
 		
+		log.Printf("[Mystic Door] Found town door, destination map: %d", destMapID)
+		
 		// Find the source door in the destination map
 		if destField, ok := server.fields[destMapID]; ok {
-			// Source doors are in the same instance as the player who created them
-			// We need to find the door owner to get their instance
+			// Try to get the door owner's instance
+			// If owner is offline, try to find the door in any instance
+			var srcDoorInfo *mysticDoorInfo
+			var srcFound bool
+			
+			// First try: Get owner's current instance if they're online
 			if doorOwner, err := server.players.GetFromID(doorOwnerID); err == nil {
-				if srcInst, err := destField.getInstance(doorOwner.inst.id); err == nil {
-					if srcDoorInfo, exists := srcInst.mysticDoors[doorOwnerID]; exists {
-						destPortalIdx = srcDoorInfo.portalIndex
-					} else {
-						conn.Send(packetPlayerNoChange())
-						return
+				if inst, err := destField.getInstance(doorOwner.inst.id); err == nil {
+					if doorData, exists := inst.mysticDoors[doorOwnerID]; exists {
+						srcDoorInfo = doorData
+						srcFound = true
+						log.Printf("[Mystic Door] Found source door in owner's instance %d", doorOwner.inst.id)
 					}
-				} else {
-					conn.Send(packetPlayerNoChange())
-					return
 				}
+			}
+			
+			// Second try: If owner is offline or door not found, search all instances
+			if !srcFound {
+				log.Printf("[Mystic Door] Owner offline or door not in owner's instance, searching all instances")
+				for instID := 0; instID < 10; instID++ { // Check up to 10 instances
+					if inst, err := destField.getInstance(instID); err == nil {
+						if doorData, exists := inst.mysticDoors[doorOwnerID]; exists {
+							srcDoorInfo = doorData
+							srcFound = true
+							log.Printf("[Mystic Door] Found source door in instance %d", instID)
+							break
+						}
+					}
+				}
+			}
+			
+			if srcFound {
+				destPortalIdx = srcDoorInfo.portalIndex
 			} else {
+				log.Printf("[Mystic Door] ERROR: Source door not found in destination map %d", destMapID)
 				conn.Send(packetPlayerNoChange())
 				return
 			}
 		} else {
+			log.Printf("[Mystic Door] ERROR: Destination field %d not found", destMapID)
 			conn.Send(packetPlayerNoChange())
 			return
 		}
@@ -500,25 +535,47 @@ func (server Server) playerUseMysticDoor(conn mnet.Client, reader mpacket.Reader
 		// Player is in source map, using source door to go to town
 		doorInfo, found = plr.inst.mysticDoors[doorOwnerID]
 		if !found {
+			log.Printf("[Mystic Door] ERROR: Source door not found for owner %d in map %d instance %d",
+				doorOwnerID, plr.mapID, plr.inst.id)
+			log.Printf("[Mystic Door] Available doors in source instance: %v", func() []int32 {
+				keys := make([]int32, 0, len(plr.inst.mysticDoors))
+				for k := range plr.inst.mysticDoors {
+					keys = append(keys, k)
+				}
+				return keys
+			}())
 			conn.Send(packetPlayerNoChange())
 			return
 		}
 		destMapID = doorInfo.destMapID
+		
+		log.Printf("[Mystic Door] Found source door, destination map: %d", destMapID)
 		
 		// Find the town door in the destination (town) map
 		if destField, ok := server.fields[destMapID]; ok {
 			if townInst, err := destField.getInstance(0); err == nil {
 				if townDoorInfo, exists := townInst.mysticDoors[doorOwnerID]; exists {
 					destPortalIdx = townDoorInfo.portalIndex
+					log.Printf("[Mystic Door] Found town door at portal index %d", destPortalIdx)
 				} else {
+					log.Printf("[Mystic Door] ERROR: Town door not found in destination map %d", destMapID)
+					log.Printf("[Mystic Door] Available doors in town: %v", func() []int32 {
+						keys := make([]int32, 0, len(townInst.mysticDoors))
+						for k := range townInst.mysticDoors {
+							keys = append(keys, k)
+						}
+						return keys
+					}())
 					conn.Send(packetPlayerNoChange())
 					return
 				}
 			} else {
+				log.Printf("[Mystic Door] ERROR: Could not get town instance 0: %v", err)
 				conn.Send(packetPlayerNoChange())
 				return
 			}
 		} else {
+			log.Printf("[Mystic Door] ERROR: Town field %d not found", destMapID)
 			conn.Send(packetPlayerNoChange())
 			return
 		}
@@ -539,13 +596,17 @@ func (server Server) playerUseMysticDoor(conn mnet.Client, reader mpacket.Reader
 	}
 
 	if !canUse {
+		log.Printf("[Mystic Door] ERROR: Player %d not authorized to use door (not owner or party member)", plr.ID)
 		conn.Send(packetPlayerNoChange())
 		return
 	}
 
+	log.Printf("[Mystic Door] Player authorized to use door")
+
 	// Get destination field
 	dstField, ok := server.fields[destMapID]
 	if !ok {
+		log.Printf("[Mystic Door] ERROR: Destination field %d not found (second check)", destMapID)
 		conn.Send(packetPlayerNoChange())
 		return
 	}
@@ -553,15 +614,23 @@ func (server Server) playerUseMysticDoor(conn mnet.Client, reader mpacket.Reader
 	// Get the destination instance
 	var dstInst *fieldInstance
 	if fromTown {
-		// Going from town to source - need to get the owner's instance
-		if doorOwner, err := server.players.GetFromID(doorOwnerID); err == nil {
-			if inst, err := dstField.getInstance(doorOwner.inst.id); err == nil {
-				dstInst = inst
-			} else {
-				conn.Send(packetPlayerNoChange())
-				return
+		// Going from town to source - need to get the correct instance
+		// Try to find the instance where the door actually exists
+		var foundInst *fieldInstance
+		for instID := 0; instID < 10; instID++ {
+			if inst, err := dstField.getInstance(instID); err == nil {
+				if _, exists := inst.mysticDoors[doorOwnerID]; exists {
+					foundInst = inst
+					log.Printf("[Mystic Door] Using instance %d for destination", instID)
+					break
+				}
 			}
+		}
+		
+		if foundInst != nil {
+			dstInst = foundInst
 		} else {
+			log.Printf("[Mystic Door] ERROR: Could not find instance with door in destination map")
 			conn.Send(packetPlayerNoChange())
 			return
 		}
@@ -569,7 +638,9 @@ func (server Server) playerUseMysticDoor(conn mnet.Client, reader mpacket.Reader
 		// Going from source to town - use instance 0
 		if inst, err := dstField.getInstance(0); err == nil {
 			dstInst = inst
+			log.Printf("[Mystic Door] Using town instance 0 for destination")
 		} else {
+			log.Printf("[Mystic Door] ERROR: Could not get town instance 0: %v", err)
 			conn.Send(packetPlayerNoChange())
 			return
 		}
@@ -579,12 +650,19 @@ func (server Server) playerUseMysticDoor(conn mnet.Client, reader mpacket.Reader
 	if destPortalIdx >= 0 && destPortalIdx < len(dstInst.portals) {
 		dstPortal := dstInst.portals[destPortalIdx]
 		
+		log.Printf("[Mystic Door] Using portal index %d in destination (total portals: %d)", destPortalIdx, len(dstInst.portals))
+		log.Printf("[Mystic Door] Portal position: (%d, %d), destFieldID: %d", dstPortal.pos.x, dstPortal.pos.y, dstPortal.destFieldID)
+		
 		// Warp the player using the existing portal
 		if err := server.warpPlayer(plr, dstField, dstPortal, true); err != nil {
+			log.Printf("[Mystic Door] ERROR: Failed to warp player: %v", err)
 			conn.Send(packetPlayerNoChange())
 			return
 		}
+		
+		log.Printf("[Mystic Door] SUCCESS: Player %d warped to map %d", plr.ID, destMapID)
 	} else {
+		log.Printf("[Mystic Door] ERROR: Invalid portal index %d (total portals: %d)", destPortalIdx, len(dstInst.portals))
 		conn.Send(packetPlayerNoChange())
 		return
 	}
