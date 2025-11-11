@@ -706,29 +706,26 @@ func (inst *fieldInstance) showMysticDoorsTo(plr *Player) {
 			log.Printf("[Mystic Door] Showing door to player %d (%s): ownerID=%d, pos=(%d,%d), currentMap=%d, destMap=%d, portalIdx=%d",
 				plr.ID, plr.Name, ownerID, doorInfo.pos.x, doorInfo.pos.y, inst.fieldID, doorInfo.destMapID, doorInfo.portalIndex)
 			
-			// Determine door type: doors are stored in the map where they visually appear
-			// Each instance's mysticDoors map contains doors IN that map
-			// So if we're in the return/town map and showing a door, it's a town door
-			// The destMapID tells us where it leads
-			
-			// Check if this is a town portal by seeing if the destination is NOT a town
-			// Town maps typically have IDs like 100000000, 101000000, 102000000, 103000000, 104000000
-			// Remote maps typically have IDs like 104040000
-			isTownMap := inst.fieldID < 110000000 && (inst.fieldID % 1000000) == 0
-			
-			if isTownMap {
-				// We're in a town, showing a town portal that leads to a remote map
-				log.Printf("[Mystic Door] Showing TOWN portal - using packetMapSpawnTownMysticDoor")
-				plr.Send(packetMapSpawnTownMysticDoor(inst.fieldID, doorInfo.destMapID, doorInfo.pos))
-			} else {
-				// We're in a remote map, showing a source door that leads to town
-				log.Printf("[Mystic Door] Showing SOURCE door - using packetMapSpawnMysticDoor + packetMapPortal")
-				plr.Send(packetMapSpawnMysticDoor(doorInfo.spawnID, doorInfo.pos, false))
-				plr.Send(packetMapPortal(inst.fieldID, doorInfo.destMapID, doorInfo.pos))
+			// Check if player is authorized (owner or party member)
+			canUse := false
+			if owner != nil {
+				if owner.ID == plr.ID {
+					canUse = true
+				} else if owner.party != nil && plr.party != nil && owner.party == plr.party {
+					canUse = true
+				}
 			}
 			
-			log.Printf("[Mystic Door] Sent door packets: currentMap=%d, destMap=%d, pos=(%d,%d)", 
-				inst.fieldID, doorInfo.destMapID, doorInfo.pos.x, doorInfo.pos.y)
+			if !canUse {
+				continue // Skip doors player can't use
+			}
+			
+			// Send both packets - client handles them based on context
+			plr.Send(packetMapSpawnMysticDoor(doorInfo.spawnID, doorInfo.pos, false))
+			plr.Send(packetMapPortal(inst.fieldID, doorInfo.destMapID, doorInfo.pos))
+			
+			log.Printf("[Mystic Door] Showed door to player %d: map=%d->%d, pos=(%d,%d)", 
+				plr.ID, inst.fieldID, doorInfo.destMapID, doorInfo.pos.x, doorInfo.pos.y)
 		}
 	}
 }
