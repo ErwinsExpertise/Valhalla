@@ -720,7 +720,7 @@ func (inst *fieldInstance) showMysticDoorsTo(plr *Player) {
 			}
 
 			// Send both packets - client handles them based on context
-			plr.Send(packetMapSpawnMysticDoor(plr.ID, doorInfo.pos, true))
+			plr.Send(packetMapSpawnMysticDoor(doorInfo.spawnID, doorInfo.pos, true))
 			plr.Send(packetMapPortal(inst.fieldID, doorInfo.destMapID, doorInfo.pos))
 
 			log.Printf("[Mystic Door] Showed door to player %d: map=%d->%d, pos=(%d,%d)",
