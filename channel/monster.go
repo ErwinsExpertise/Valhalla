@@ -550,8 +550,10 @@ func packetMobStatSet(spawnID int32, statMask int32, value int16, skillID int32,
 	// Write the stat mask as uint32
 	p.WriteUint32(uint32(statMask))
 	
-	// Convert duration from seconds to deciseconds (100ms units)
-	durationDeciseconds := duration * 10
+	// IDB shows: expiration = currentTime + 500 * CInPacket::Decode2(a3)
+	// Client multiplies the received value by 500ms
+	// So we need to send: duration_seconds * 1000ms / 500ms = duration_seconds * 2
+	durationUnits := duration * 2
 	
 	// Build triples by scanning bits 0-31 in order
 	// For each bit set in statMask, write: [short N][int32 R][short time]
@@ -562,8 +564,8 @@ func packetMobStatSet(spawnID int32, statMask int32, value int16, skillID int32,
 			p.WriteInt16(value)
 			// Write R (int32) - the skill ID
 			p.WriteInt32(skillID)
-			// Write time (short) - duration in deciseconds
-			p.WriteInt16(durationDeciseconds)
+			// Write time (short) - in 500ms units (client multiplies by 500ms)
+			p.WriteInt16(durationUnits)
 		}
 	}
 	
