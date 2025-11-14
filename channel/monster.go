@@ -499,6 +499,9 @@ func (m *monster) applyDebuff(skillID int32, skillLevel byte, statMask int32, in
 
 	// Update the statBuff mask
 	m.statBuff |= statMask
+	
+	log.Printf("Applied debuff to mob spawnID=%d: statMask=0x%X, statBuff now=0x%X (SealSkill bit=%v)",
+		m.spawnID, statMask, m.statBuff, (m.statBuff&skill.MobStat.SealSkill) != 0)
 
 	// Cancel existing timer if any
 	if timer, ok := m.debuffExpireTimers[statMask]; ok && timer != nil {
