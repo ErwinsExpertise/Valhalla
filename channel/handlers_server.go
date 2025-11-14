@@ -627,14 +627,6 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 	partyMask := reader.ReadByte() // party flags
 	delay := reader.ReadInt16()    // delay
 
-	readMobListAndDelay := func() {
-		count := int(reader.ReadByte())
-		for i := 0; i < count; i++ {
-			_ = reader.ReadInt32() // mob spawn ID
-		}
-		_ = reader.ReadInt16() // delay
-	}
-
 	switch skill.Skill(skillID) {
 	// Party buffs handled earlier remain unchanged...
 	case skill.Haste, skill.BanditHaste, skill.Bless, skill.IronWill, skill.Rage,
@@ -776,7 +768,43 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 		skill.ILSeal, skill.Seal,
 		skill.ShadowWeb,
 		skill.Doom:
-		readMobListAndDelay()
+		mobCount := int(reader.ReadByte())
+		mobIDs := make([]int32, mobCount)
+		for i := 0; i < mobCount; i++ {
+			mobIDs[i] = reader.ReadInt32()
+		}
+		_ = reader.ReadInt16() // delay
+
+		// Apply skill animation
+		plr.inst.send(packetPlayerSkillAnimation(plr.ID, false, skillID, skillLevel))
+
+		// Determine which stat mask to apply based on the skill
+		var statMask int32
+		switch skill.Skill(skillID) {
+		case skill.Threaten:
+			statMask = skill.MobStat.PhysicalDefense | skill.MobStat.MagicDefense
+		case skill.ArmorCrash:
+			statMask = skill.MobStat.PhysicalDefense
+		case skill.PowerCrash:
+			statMask = skill.MobStat.PhysicalDamage
+		case skill.MagicCrash:
+			statMask = skill.MobStat.MagicDefense
+		case skill.Slow, skill.ILSlow:
+			statMask = skill.MobStat.Speed
+		case skill.Seal, skill.ILSeal:
+			statMask = skill.MobStat.SealSkill
+		case skill.ShadowWeb:
+			statMask = skill.MobStat.Web
+		case skill.Doom:
+			statMask = skill.MobStat.Doom
+		}
+
+		// Apply debuff to each mob
+		if plr.inst != nil {
+			for _, mobID := range mobIDs {
+				plr.inst.lifePool.applyMobDebuff(mobID, skillID, skillLevel, statMask, plr.inst)
+			}
+		}
 
 	case skill.MysticDoor:
 		createMysticDoor(plr, skillID, skillLevel)

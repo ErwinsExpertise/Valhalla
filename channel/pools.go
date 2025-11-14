@@ -745,6 +745,16 @@ func (pool *lifePool) getMobFromID(mobID int32) (monster, error) {
 	return monster{}, fmt.Errorf("Could not find mob with ID %d", mobID)
 }
 
+// applyMobDebuff applies a debuff to a mob with the given spawn ID
+func (pool *lifePool) applyMobDebuff(spawnID int32, skillID int32, skillLevel byte, statMask int32, inst *fieldInstance) {
+	for _, mob := range pool.mobs {
+		if mob.spawnID == spawnID {
+			mob.applyDebuff(skillID, skillLevel, statMask, inst)
+			return
+		}
+	}
+}
+
 type roomPool struct {
 	instance *fieldInstance
 	rooms    map[int32]roomer

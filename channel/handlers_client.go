@@ -13,6 +13,7 @@ import (
 	"github.com/Hucaru/Valhalla/common"
 	"github.com/Hucaru/Valhalla/common/opcode"
 	"github.com/Hucaru/Valhalla/constant"
+	"github.com/Hucaru/Valhalla/constant/skill"
 	"github.com/Hucaru/Valhalla/internal"
 	"github.com/Hucaru/Valhalla/mnet"
 	"github.com/Hucaru/Valhalla/mpacket"
@@ -2210,10 +2211,98 @@ func (server Server) mobDamagePlayer(conn mnet.Client, reader mpacket.Reader, mo
 		}
 
 		// Magic guard dmg absorption
+		if _, hasMagicGuard := plr.buffs.activeSkillLevels[int32(skill.MagicGuard)]; hasMagicGuard {
+			// Get skill data to determine absorption rate
+			skillData, err := nx.GetPlayerSkill(int32(skill.MagicGuard))
+			if err == nil {
+				if ps, ok := plr.skills[int32(skill.MagicGuard)]; ok && ps.Level > 0 {
+					idx := int(ps.Level) - 1
+					if idx < len(skillData) {
+						// X value determines the percentage of HP damage converted to MP damage
+						absorbPercent := int32(skillData[idx].X)
+						if absorbPercent > 0 {
+							// Calculate MP damage (X% of HP damage)
+							mpDamage := (damage * absorbPercent) / 100
+							// Remaining damage goes to HP
+							hpDamage := damage - mpDamage
+							
+							// Apply MP damage first
+							if mpDamage > 0 {
+								plr.giveMP(-int16(mpDamage))
+							}
+							
+							// Update damage to only the HP portion
+							damage = hpDamage
+							reducedDamage = hpDamage
+						}
+					}
+				}
+			}
+		}
 
-		// Fighter / Page power guard
+		// Fighter / Page power guard - reflects damage back to mob
+		powerGuardSkillID := int32(0)
+		if _, hasPowerGuard := plr.buffs.activeSkillLevels[int32(skill.PowerGuard)]; hasPowerGuard {
+			powerGuardSkillID = int32(skill.PowerGuard)
+		} else if _, hasPagePowerGuard := plr.buffs.activeSkillLevels[int32(skill.PagePowerGuard)]; hasPagePowerGuard {
+			powerGuardSkillID = int32(skill.PagePowerGuard)
+		}
+		
+		if powerGuardSkillID > 0 {
+			// Get skill data to determine reflection rate
+			skillData, err := nx.GetPlayerSkill(powerGuardSkillID)
+			if err == nil {
+				if ps, ok := plr.skills[powerGuardSkillID]; ok && ps.Level > 0 {
+					idx := int(ps.Level) - 1
+					if idx < len(skillData) {
+						// X value determines the percentage of damage reflected
+						reflectPercent := int32(skillData[idx].X)
+						if reflectPercent > 0 {
+							// Calculate reflected damage
+							reflectedDamage := (damage * reflectPercent) / 100
+							
+							// Apply reflected damage to the mob
+							if reflectedDamage > 0 {
+								inst.lifePool.mobDamaged(spawnID, plr, reflectedDamage)
+							}
+						}
+					}
+				}
+			}
+		}
 
-		// Meso guard
+		// Meso guard - uses mesos to reduce damage
+		if _, hasMesoGuard := plr.buffs.activeSkillLevels[int32(skill.MesoGuard)]; hasMesoGuard {
+			// Get skill data to determine reduction and cost
+			skillData, err := nx.GetPlayerSkill(int32(skill.MesoGuard))
+			if err == nil {
+				if ps, ok := plr.skills[int32(skill.MesoGuard)]; ok && ps.Level > 0 {
+					idx := int(ps.Level) - 1
+					if idx < len(skillData) {
+						// X value determines the percentage of damage absorbed
+						absorbPercent := int32(skillData[idx].X)
+						// Y value determines meso cost per damage point
+						mesoCost := int32(skillData[idx].Y)
+						
+						if absorbPercent > 0 && mesoCost > 0 {
+							// Calculate damage to be absorbed
+							absorbedDamage := (damage * absorbPercent) / 100
+							// Calculate total meso cost
+							totalMesoCost := absorbedDamage * mesoCost
+							
+							// Check if player has enough mesos
+							if plr.mesos >= totalMesoCost {
+								// Deduct mesos
+								plr.giveMesos(-totalMesoCost)
+								// Reduce damage
+								damage -= absorbedDamage
+								reducedDamage = damage
+							}
+						}
+					}
+				}
+			}
+		}
 
 		if !plr.admin() {
 			plr.damagePlayer(int16(damage))

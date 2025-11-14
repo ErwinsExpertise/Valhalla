@@ -53,6 +53,10 @@ type monster struct {
 	skillID    byte
 	skillLevel byte
 	statBuff   int32
+	
+	// Player-inflicted debuffs
+	debuffs map[int32]*mobDebuff // key: stat mask from MobStat
+	debuffExpireTimers map[int32]*time.Timer
 
 	dmgTaken map[*Player]int32
 
@@ -72,27 +76,29 @@ type monster struct {
 
 func createMonsterFromData(spawnID int32, life nx.Life, m nx.Mob, dropsItems, dropsMesos bool) monster {
 	return monster{
-		id:            life.ID,
-		spawnID:       spawnID,
-		pos:           newPos(life.X, life.Y, life.Foothold),
-		faceLeft:      life.FaceLeft,
-		hp:            m.HP,
-		mp:            m.MP,
-		maxHP:         m.MaxHP,
-		maxMP:         m.MaxMP,
-		exp:           int32(m.Exp),
-		revives:       m.Revives,
-		summonType:    constant.MobSummonTypeRegen,
-		boss:          m.Boss > 0,
-		hpBgColour:    byte(m.HPTagBGColor),
-		hpFgColour:    byte(m.HPTagColor),
-		spawnInterval: life.MobTime,
-		dmgTaken:      make(map[*Player]int32),
-		skills:        nx.GetMobSkills(life.ID),
-		skillTimes:    make(map[byte]int64),
-		poison:        false,
-		lastHeal:      time.Now().Unix(),
-		lastSkillTime: 0,
+		id:                 life.ID,
+		spawnID:            spawnID,
+		pos:                newPos(life.X, life.Y, life.Foothold),
+		faceLeft:           life.FaceLeft,
+		hp:                 m.HP,
+		mp:                 m.MP,
+		maxHP:              m.MaxHP,
+		maxMP:              m.MaxMP,
+		exp:                int32(m.Exp),
+		revives:            m.Revives,
+		summonType:         constant.MobSummonTypeRegen,
+		boss:               m.Boss > 0,
+		hpBgColour:         byte(m.HPTagBGColor),
+		hpFgColour:         byte(m.HPTagColor),
+		spawnInterval:      life.MobTime,
+		dmgTaken:           make(map[*Player]int32),
+		skills:             nx.GetMobSkills(life.ID),
+		skillTimes:         make(map[byte]int64),
+		debuffs:            make(map[int32]*mobDebuff),
+		debuffExpireTimers: make(map[int32]*time.Timer),
+		poison:             false,
+		lastHeal:           time.Now().Unix(),
+		lastSkillTime:      0,
 	}
 }
 
@@ -412,6 +418,135 @@ func packetMobShowHpChange(spawnID int32, dmg int32) mpacket.Packet {
 	p.WriteInt32(spawnID)
 	p.WriteByte(0)
 	p.WriteInt32(dmg)
+
+	return p
+}
+
+// mobDebuff represents a debuff applied to a mob by a player skill
+type mobDebuff struct {
+	skillID   int32
+	value     int16
+	duration  int16 // in seconds
+	expiresAt int64 // unix milliseconds
+}
+
+// applyDebuff applies a debuff to the mob from a player skill
+func (m *monster) applyDebuff(skillID int32, skillLevel byte, statMask int32, inst *fieldInstance) {
+	if m.debuffs == nil {
+		m.debuffs = make(map[int32]*mobDebuff)
+	}
+	if m.debuffExpireTimers == nil {
+		m.debuffExpireTimers = make(map[int32]*time.Timer)
+	}
+
+	// Get skill data
+	skillData, err := nx.GetPlayerSkill(skillID)
+	if err != nil || skillLevel == 0 || int(skillLevel) > len(skillData) {
+		return
+	}
+	
+	si := skillData[skillLevel-1]
+	
+	// Calculate debuff value based on skill type
+	var value int16
+	switch skill.Skill(skillID) {
+	case skill.Threaten, skill.ArmorCrash, skill.PowerCrash, skill.MagicCrash:
+		// These reduce mob stats by X%
+		value = int16(si.X)
+	case skill.Slow, skill.ILSlow:
+		// Slow reduces speed by X%
+		value = int16(si.X)
+	case skill.Seal, skill.ILSeal:
+		// Seal prevents skill use
+		value = 1
+	case skill.ShadowWeb:
+		// Shadow Web immobilizes
+		value = int16(si.X)
+	case skill.Doom:
+		// Doom
+		value = int16(si.X)
+	default:
+		value = 1
+	}
+
+	duration := int16(si.Time)
+	if duration <= 0 {
+		duration = 30 // default 30 seconds
+	}
+
+	expiresAt := time.Now().Add(time.Duration(duration) * time.Second).UnixMilli()
+
+	// Store the debuff
+	m.debuffs[statMask] = &mobDebuff{
+		skillID:   skillID,
+		value:     value,
+		duration:  duration,
+		expiresAt: expiresAt,
+	}
+
+	// Update the statBuff mask
+	m.statBuff |= statMask
+
+	// Cancel existing timer if any
+	if timer, ok := m.debuffExpireTimers[statMask]; ok && timer != nil {
+		timer.Stop()
+	}
+
+	// Set expiration timer
+	if inst != nil && inst.dispatch != nil {
+		m.debuffExpireTimers[statMask] = time.AfterFunc(time.Duration(duration)*time.Second, func() {
+			inst.dispatch <- func() {
+				m.removeDebuff(statMask, inst)
+			}
+		})
+	}
+
+	// Send packet to show the debuff
+	inst.send(packetMobStatSet(m.spawnID, statMask, value, skillID, duration))
+}
+
+// removeDebuff removes a debuff from the mob
+func (m *monster) removeDebuff(statMask int32, inst *fieldInstance) {
+	if m.debuffs == nil {
+		return
+	}
+
+	// Remove from debuffs map
+	delete(m.debuffs, statMask)
+
+	// Update statBuff mask
+	m.statBuff &^= statMask
+
+	// Cancel timer
+	if timer, ok := m.debuffExpireTimers[statMask]; ok && timer != nil {
+		timer.Stop()
+		delete(m.debuffExpireTimers, statMask)
+	}
+
+	// Send packet to remove the debuff
+	if inst != nil {
+		inst.send(packetMobStatReset(m.spawnID, statMask))
+	}
+}
+
+// packetMobStatSet sends a packet to apply a debuff to a mob
+func packetMobStatSet(spawnID int32, statMask int32, value int16, skillID int32, duration int16) mpacket.Packet {
+	p := mpacket.CreateWithOpcode(opcode.SendChannelMobStatSet)
+	p.WriteInt32(spawnID)
+	p.WriteInt32(statMask)
+	p.WriteInt16(value)
+	p.WriteInt32(skillID)
+	p.WriteInt16(duration)
+
+	return p
+}
+
+// packetMobStatReset sends a packet to remove a debuff from a mob
+func packetMobStatReset(spawnID int32, statMask int32) mpacket.Packet {
+	p := mpacket.CreateWithOpcode(opcode.SendChannelMobStatReset)
+	p.WriteInt32(spawnID)
+	p.WriteInt32(statMask)
+	p.WriteByte(1) // reset flag
 
 	return p
 }
