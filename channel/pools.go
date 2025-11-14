@@ -626,8 +626,17 @@ func (pool *lifePool) spawnReviveMob(m *monster, cont *Player) {
 }
 
 func (pool *lifePool) removeMob(poolID int32, deathType byte) {
-	if _, ok := pool.mobs[poolID]; !ok {
+	if mob, ok := pool.mobs[poolID]; !ok {
 		return
+	} else {
+		// Clean up any active debuff timers
+		if mob.debuffExpireTimers != nil {
+			for _, timer := range mob.debuffExpireTimers {
+				if timer != nil {
+					timer.Stop()
+				}
+			}
+		}
 	}
 
 	delete(pool.mobs, poolID)
