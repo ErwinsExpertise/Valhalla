@@ -759,7 +759,7 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 		plr.addBuff(skillID, skillLevel, delay)
 		plr.inst.send(packetPlayerSkillAnimation(plr.ID, true, skillID, skillLevel))
 
-	// Debuffs on mobs: [mobCount][mobIDs...][delay]
+	// Debuffs on mobs: [extra int16][mobIDs int32...] until end of packet
 	case skill.Threaten,
 		skill.Slow, skill.ILSlow,
 		skill.MagicCrash,
@@ -768,12 +768,23 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 		skill.ILSeal, skill.Seal,
 		skill.ShadowWeb,
 		skill.Doom:
-		mobCount := int(reader.ReadByte())
-		mobIDs := make([]int32, mobCount)
-		for i := 0; i < mobCount; i++ {
-			mobIDs[i] = reader.ReadInt32()
+		// Read extra/padding int16 (seems to always be 0)
+		_ = reader.ReadInt16()
+		
+		// Read all mob IDs from the remaining packet
+		mobIDs := make([]int32, 0)
+		restBytes := reader.GetRestAsBytes()
+		// Each mob ID is 4 bytes (int32)
+		for i := 0; i + 4 <= len(restBytes); i += 4 {
+			mobID := int32(restBytes[i]) | int32(restBytes[i+1])<<8 | int32(restBytes[i+2])<<16 | int32(restBytes[i+3])<<24
+			// Stop if we hit a terminator (0 or very small value that doesn't look like a spawn ID)
+			if mobID == 0 || mobID < 0 {
+				break
+			}
+			mobIDs = append(mobIDs, mobID)
 		}
-		_ = reader.ReadInt16() // delay
+		
+		log.Printf("playerSpecialSkill - Debuff skill %d level %d targeting %d mobs: %v", skillID, skillLevel, len(mobIDs), mobIDs)
 
 		// Apply skill animation
 		plr.inst.send(packetPlayerSkillAnimation(plr.ID, false, skillID, skillLevel))
