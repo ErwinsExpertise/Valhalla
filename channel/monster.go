@@ -2,7 +2,6 @@ package channel
 
 import (
 	"fmt"
-	"log"
 	"math"
 	"math/rand"
 	"strconv"
@@ -499,9 +498,6 @@ func (m *monster) applyDebuff(skillID int32, skillLevel byte, statMask int32, in
 
 	// Update the statBuff mask
 	m.statBuff |= statMask
-	
-	log.Printf("Applied debuff to mob spawnID=%d: statMask=0x%X, statBuff now=0x%X (SealSkill bit=%v)",
-		m.spawnID, statMask, m.statBuff, (m.statBuff&skill.MobStat.SealSkill) != 0)
 
 	// Cancel existing timer if any
 	if timer, ok := m.debuffExpireTimers[statMask]; ok && timer != nil {
@@ -518,8 +514,6 @@ func (m *monster) applyDebuff(skillID int32, skillLevel byte, statMask int32, in
 	}
 
 	// Send packet to show the debuff
-	log.Printf("Sending mob debuff packet: spawnID=%d, statMask=0x%X, value=%d, skillID=%d, duration=%d seconds",
-		m.spawnID, statMask, value, skillID, duration)
 	inst.send(packetMobStatSet(m.spawnID, statMask, value, skillID, duration))
 }
 
@@ -548,7 +542,7 @@ func (m *monster) removeDebuff(statMask int32, inst *fieldInstance) {
 }
 
 // packetMobStatSet sends a packet to apply a debuff to a mob
-// Following the same pattern as player buffs in buffs.go
+// Completely refactored to match character buff system pattern
 func packetMobStatSet(spawnID int32, statMask int32, value int16, skillID int32, duration int16) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelMobStatSet)
 	p.WriteInt32(spawnID)
@@ -559,106 +553,21 @@ func packetMobStatSet(spawnID int32, statMask int32, value int16, skillID int32,
 	// Convert duration from seconds to deciseconds (100ms units)
 	durationDeciseconds := duration * 10
 	
-	// For each bit set in the mask (in order), write the stat triple
-	// This follows the same pattern as buildBuffTriplesWireOrder in buffs.go
-	// Order matches OpenMG's Encode method exactly
-	
-	statsWritten := 0
-	
-	// Helper function to write a stat triple
-	writeStatTriple := func(statName string) {
-		p.WriteInt16(value)
-		p.WriteInt32(skillID)
-		p.WriteInt16(durationDeciseconds)
-		statsWritten++
-		if statsWritten <= 3 {
-			log.Printf("  - Wrote %s (value=%d, skillID=%d, duration=%d deciseconds)", statName, value, skillID, durationDeciseconds)
+	// Build triples by scanning bits 0-31 in order
+	// For each bit set in statMask, write: [short N][int32 R][short time]
+	// This matches exactly how character buffs work
+	for bit := 0; bit < 32; bit++ {
+		if (statMask & (1 << uint(bit))) != 0 {
+			// Write N (short) - the stat value
+			p.WriteInt16(value)
+			// Write R (int32) - the skill ID
+			p.WriteInt32(skillID)
+			// Write time (short) - duration in deciseconds
+			p.WriteInt16(durationDeciseconds)
 		}
 	}
 	
-	// Check each stat bit in the exact order from OpenMG's Encode method
-	if (statMask & skill.MobStat.PhysicalDamage) != 0 {
-		writeStatTriple("PhysicalDamage")
-	}
-	if (statMask & skill.MobStat.PhysicalDefense) != 0 {
-		writeStatTriple("PhysicalDefense")
-	}
-	if (statMask & skill.MobStat.MagicDamage) != 0 {
-		writeStatTriple("MagicDamage")
-	}
-	if (statMask & skill.MobStat.MagicDefense) != 0 {
-		writeStatTriple("MagicDefense")
-	}
-	if (statMask & skill.MobStat.Accurrency) != 0 {
-		writeStatTriple("Accurrency")
-	}
-	if (statMask & skill.MobStat.Evasion) != 0 {
-		writeStatTriple("Evasion")
-	}
-	if (statMask & skill.MobStat.Speed) != 0 {
-		writeStatTriple("Speed")
-	}
-	if (statMask & skill.MobStat.Stun) != 0 {
-		writeStatTriple("Stun")
-	}
-	if (statMask & skill.MobStat.Freeze) != 0 {
-		writeStatTriple("Freeze")
-	}
-	if (statMask & skill.MobStat.Poison) != 0 {
-		writeStatTriple("Poison")
-	}
-	if (statMask & skill.MobStat.Seal) != 0 {
-		writeStatTriple("Seal")
-	}
-	if (statMask & skill.MobStat.Darkness) != 0 {
-		writeStatTriple("Darkness")
-	}
-	if (statMask & skill.MobStat.PowerUp) != 0 {
-		writeStatTriple("PowerUp")
-	}
-	if (statMask & skill.MobStat.MagicUp) != 0 {
-		writeStatTriple("MagicUp")
-	}
-	if (statMask & skill.MobStat.PowerGuardUp) != 0 {
-		writeStatTriple("PowerGuardUp")
-	}
-	if (statMask & skill.MobStat.MagicGuardUp) != 0 {
-		writeStatTriple("MagicGuardUp")
-	}
-	if (statMask & skill.MobStat.PhysicalImmune) != 0 {
-		writeStatTriple("PhysicalImmune")
-	}
-	if (statMask & skill.MobStat.MagicImmune) != 0 {
-		writeStatTriple("MagicImmune")
-	}
-	if (statMask & skill.MobStat.Doom) != 0 {
-		writeStatTriple("Doom")
-	}
-	if (statMask & skill.MobStat.Web) != 0 {
-		writeStatTriple("Web")
-	}
-	if (statMask & skill.MobStat.HardSkin) != 0 {
-		writeStatTriple("HardSkin")
-	}
-	if (statMask & skill.MobStat.Ambush) != 0 {
-		writeStatTriple("Ambush")
-	}
-	if (statMask & skill.MobStat.Venom) != 0 {
-		writeStatTriple("Venom")
-	}
-	if (statMask & skill.MobStat.Blind) != 0 {
-		writeStatTriple("Blind")
-	}
-	if (statMask & skill.MobStat.SealSkill) != 0 {
-		writeStatTriple("SealSkill")
-	}
-	
-	if statsWritten > 3 {
-		log.Printf("  - ... and %d more stats", statsWritten-3)
-	}
-	log.Printf("  Total stats written: %d", statsWritten)
-	
-	// Write delay at the end (in milliseconds, typically 0)
+	// Write delay (short) at the end
 	p.WriteInt16(0)
 
 	return p
