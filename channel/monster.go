@@ -2,6 +2,7 @@ package channel
 
 import (
 	"fmt"
+	"log"
 	"math"
 	"math/rand"
 	"strconv"
@@ -502,6 +503,8 @@ func (m *monster) applyDebuff(skillID int32, skillLevel byte, statMask int32, in
 	}
 
 	// Send packet to show the debuff
+	log.Printf("Sending mob debuff packet: spawnID=%d, statMask=0x%X, value=%d, skillID=%d, duration=%d seconds",
+		m.spawnID, statMask, value, skillID, duration)
 	inst.send(packetMobStatSet(m.spawnID, statMask, value, skillID, duration))
 }
 
@@ -541,12 +544,19 @@ func packetMobStatSet(spawnID int32, statMask int32, value int16, skillID int32,
 	// Convert duration from seconds to deciseconds (100ms units)
 	durationDeciseconds := duration * 10
 	
+	log.Printf("packetMobStatSet: spawnID=%d, mask=0x%X, value=%d, skillID=%d, duration=%d deciseconds",
+		spawnID, statMask, value, skillID, durationDeciseconds)
+	
+	statsWritten := 0
+	
 	// For each bit set in the mask, write data IN ORDER
 	// Order matches OpenMG's Encode method
 	if (statMask & skill.MobStat.PhysicalDamage) != 0 {
 		p.WriteInt16(value)
 		p.WriteInt32(skillID)
 		p.WriteInt16(durationDeciseconds)
+		statsWritten++
+		log.Printf("  - Wrote PhysicalDamage")
 	}
 	if (statMask & skill.MobStat.PhysicalDefense) != 0 {
 		p.WriteInt16(value)
@@ -577,26 +587,32 @@ func packetMobStatSet(spawnID int32, statMask int32, value int16, skillID int32,
 		p.WriteInt16(value)
 		p.WriteInt32(skillID)
 		p.WriteInt16(durationDeciseconds)
+		statsWritten++
+		log.Printf("  - Wrote Speed")
 	}
 	if (statMask & skill.MobStat.Stun) != 0 {
 		p.WriteInt16(value)
 		p.WriteInt32(skillID)
 		p.WriteInt16(durationDeciseconds)
+		statsWritten++
 	}
 	if (statMask & skill.MobStat.Freeze) != 0 {
 		p.WriteInt16(value)
 		p.WriteInt32(skillID)
 		p.WriteInt16(durationDeciseconds)
+		statsWritten++
 	}
 	if (statMask & skill.MobStat.Poison) != 0 {
 		p.WriteInt16(value)
 		p.WriteInt32(skillID)
 		p.WriteInt16(durationDeciseconds)
+		statsWritten++
 	}
 	if (statMask & skill.MobStat.Seal) != 0 {
 		p.WriteInt16(value)
 		p.WriteInt32(skillID)
 		p.WriteInt16(durationDeciseconds)
+		statsWritten++
 	}
 	if (statMask & skill.MobStat.Darkness) != 0 {
 		p.WriteInt16(value)
@@ -667,7 +683,11 @@ func packetMobStatSet(spawnID int32, statMask int32, value int16, skillID int32,
 		p.WriteInt16(value)
 		p.WriteInt32(skillID)
 		p.WriteInt16(durationDeciseconds)
+		statsWritten++
+		log.Printf("  - Wrote SealSkill")
 	}
+	
+	log.Printf("  Total stats written: %d", statsWritten)
 	
 	// Write delay at the end (in milliseconds, typically 0)
 	p.WriteInt16(0)
