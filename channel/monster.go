@@ -533,10 +533,139 @@ func (m *monster) removeDebuff(statMask int32, inst *fieldInstance) {
 func packetMobStatSet(spawnID int32, statMask int32, value int16, skillID int32, duration int16) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelMobStatSet)
 	p.WriteInt32(spawnID)
+	
+	// Write the stat mask
 	p.WriteInt32(statMask)
-	p.WriteInt16(value)
-	p.WriteInt32(skillID)
-	p.WriteInt16(duration)
+	
+	// For each bit set in the mask, write the appropriate data
+	// Based on MapleStory v28 protocol, we need to write data for each stat
+	
+	// Check each stat bit and write appropriate data
+	if (statMask & skill.MobStat.PhysicalDamage) != 0 {
+		p.WriteInt16(value)
+		p.WriteInt32(skillID)
+		p.WriteInt16(duration)
+	}
+	if (statMask & skill.MobStat.PhysicalDefense) != 0 {
+		p.WriteInt16(value)
+		p.WriteInt32(skillID)
+		p.WriteInt16(duration)
+	}
+	if (statMask & skill.MobStat.MagicDamage) != 0 {
+		p.WriteInt16(value)
+		p.WriteInt32(skillID)
+		p.WriteInt16(duration)
+	}
+	if (statMask & skill.MobStat.MagicDefense) != 0 {
+		p.WriteInt16(value)
+		p.WriteInt32(skillID)
+		p.WriteInt16(duration)
+	}
+	if (statMask & skill.MobStat.Accurrency) != 0 {
+		p.WriteInt16(value)
+		p.WriteInt32(skillID)
+		p.WriteInt16(duration)
+	}
+	if (statMask & skill.MobStat.Evasion) != 0 {
+		p.WriteInt16(value)
+		p.WriteInt32(skillID)
+		p.WriteInt16(duration)
+	}
+	if (statMask & skill.MobStat.Speed) != 0 {
+		p.WriteInt16(value)
+		p.WriteInt32(skillID)
+		p.WriteInt16(duration)
+	}
+	if (statMask & skill.MobStat.Stun) != 0 {
+		p.WriteInt16(value)
+		p.WriteInt32(skillID)
+		p.WriteInt16(duration)
+	}
+	if (statMask & skill.MobStat.Freeze) != 0 {
+		p.WriteInt16(value)
+		p.WriteInt32(skillID)
+		p.WriteInt16(duration)
+	}
+	if (statMask & skill.MobStat.Poison) != 0 {
+		p.WriteInt16(value)
+		p.WriteInt32(skillID)
+		p.WriteInt16(duration)
+	}
+	if (statMask & skill.MobStat.Seal) != 0 {
+		p.WriteInt16(value)
+		p.WriteInt32(skillID)
+		p.WriteInt16(duration)
+	}
+	if (statMask & skill.MobStat.Darkness) != 0 {
+		p.WriteInt16(value)
+		p.WriteInt32(skillID)
+		p.WriteInt16(duration)
+	}
+	if (statMask & skill.MobStat.PowerUp) != 0 {
+		p.WriteInt16(value)
+		p.WriteInt32(skillID)
+		p.WriteInt16(duration)
+	}
+	if (statMask & skill.MobStat.MagicUp) != 0 {
+		p.WriteInt16(value)
+		p.WriteInt32(skillID)
+		p.WriteInt16(duration)
+	}
+	if (statMask & skill.MobStat.PowerGuardUp) != 0 {
+		p.WriteInt16(value)
+		p.WriteInt32(skillID)
+		p.WriteInt16(duration)
+	}
+	if (statMask & skill.MobStat.MagicGuardUp) != 0 {
+		p.WriteInt16(value)
+		p.WriteInt32(skillID)
+		p.WriteInt16(duration)
+	}
+	if (statMask & skill.MobStat.Doom) != 0 {
+		p.WriteInt16(value)
+		p.WriteInt32(skillID)
+		p.WriteInt16(duration)
+	}
+	if (statMask & skill.MobStat.Web) != 0 {
+		p.WriteInt16(value)
+		p.WriteInt32(skillID)
+		p.WriteInt16(duration)
+	}
+	if (statMask & skill.MobStat.PhysicalImmune) != 0 {
+		p.WriteInt16(value)
+		p.WriteInt32(skillID)
+		p.WriteInt16(duration)
+	}
+	if (statMask & skill.MobStat.MagicImmune) != 0 {
+		p.WriteInt16(value)
+		p.WriteInt32(skillID)
+		p.WriteInt16(duration)
+	}
+	if (statMask & skill.MobStat.HardSkin) != 0 {
+		p.WriteInt16(value)
+		p.WriteInt32(skillID)
+		p.WriteInt16(duration)
+	}
+	if (statMask & skill.MobStat.Ambush) != 0 {
+		p.WriteInt16(value)
+		p.WriteInt32(skillID)
+		p.WriteInt16(duration)
+	}
+	if (statMask & skill.MobStat.Venom) != 0 {
+		p.WriteInt16(value)
+		p.WriteInt32(skillID)
+		p.WriteInt16(duration)
+	}
+	if (statMask & skill.MobStat.Blind) != 0 {
+		p.WriteInt16(value)
+		p.WriteInt32(skillID)
+		p.WriteInt16(duration)
+	}
+	if (statMask & skill.MobStat.SealSkill) != 0 {
+		p.WriteInt16(value)
+		p.WriteInt32(skillID)
+		p.WriteInt16(duration)
+	}
 
 	return p
 }
