@@ -569,6 +569,9 @@ func packetMobStatSet(spawnID int32, statMask int32, value int16, skillID int32,
 	
 	// Write delay (short) at the end
 	p.WriteInt16(0)
+	
+	// Write extra byte (from IDB OnStatSet: reads Decode1 after delay)
+	p.WriteByte(0)
 
 	return p
 }
