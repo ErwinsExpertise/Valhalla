@@ -454,18 +454,30 @@ func (m *monster) applyDebuff(skillID int32, skillLevel byte, statMask int32, in
 	case skill.Threaten, skill.ArmorCrash, skill.PowerCrash, skill.MagicCrash:
 		// These reduce mob stats by X%
 		value = int16(si.X)
+		if value < 0 {
+			value = -value // Use absolute value
+		}
 	case skill.Slow, skill.ILSlow:
 		// Slow reduces speed by X%
 		value = int16(si.X)
+		if value < 0 {
+			value = -value // Use absolute value for reduction percentage
+		}
 	case skill.Seal, skill.ILSeal:
 		// Seal prevents skill use
 		value = 1
 	case skill.ShadowWeb:
 		// Shadow Web immobilizes
 		value = int16(si.X)
+		if value < 0 {
+			value = -value // Use absolute value
+		}
 	case skill.Doom:
 		// Doom
 		value = int16(si.X)
+		if value < 0 {
+			value = -value // Use absolute value
+		}
 	default:
 		value = 1
 	}
