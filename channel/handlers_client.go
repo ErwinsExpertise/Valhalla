@@ -2479,9 +2479,9 @@ func (server *Server) handleMesoExplosion(plr *Player, inst *fieldInstance, atta
 		}
 	}
 
-	// Remove the mesos from the field (must happen before damage)
+	// Remove the mesos from the field with explosion animation (dropType 4)
 	for _, dropID := range mesosToExplode {
-		inst.dropPool.removeDrop(1, dropID) // Remove with animation
+		inst.dropPool.removeDrop(4, dropID) // Remove with explosion animation
 	}
 
 	// Apply damage from the attack packet (client already calculated this)

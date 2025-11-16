@@ -129,25 +129,20 @@ func (m *fieldMist) isInMist(p pos) bool {
 func packetMistSpawn(mist *fieldMist) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelAffectedAreaCreate)
 	p.WriteInt32(mist.ID)
-	p.WriteInt32(mist.ownerID)
+	p.WriteBool(!mist.isPoisonMist) // MobMist - true for mob mists, false for poison mist
 	p.WriteInt32(mist.skillID)
 	p.WriteByte(mist.skillLevel)
-	p.WriteInt16(mist.box.x1)
-	p.WriteInt16(mist.box.y1)
-	p.WriteInt16(mist.box.x2)
-	p.WriteInt16(mist.box.y2)
-	p.WriteInt32(int32(mist.duration)) // Duration in seconds
+	p.WriteInt16(0) // delay
+	p.WriteInt32(int32(mist.box.x1))
+	p.WriteInt32(int32(mist.box.y1))
+	p.WriteInt32(int32(mist.box.x2))
+	p.WriteInt32(int32(mist.box.y2))
 	return p
 }
 
 func packetMistRemove(mistID int32, isPoisonMist bool) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelAffectedAreaRemove)
 	p.WriteInt32(mistID)
-	if isPoisonMist {
-		p.WriteByte(1) // Fade out animation
-	} else {
-		p.WriteByte(0) // Instant removal
-	}
 	return p
 }
 
