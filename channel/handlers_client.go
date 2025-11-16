@@ -2470,23 +2470,23 @@ func (server *Server) handleMesoExplosion(plr *Player, inst *fieldInstance, atta
 		return
 	}
 
-	// Find all meso drops within range of the attack position (not mob position!)
+	// Find all meso drops within range of the player position
 	// Each meso that explodes should be removed
 	const explosionRange int32 = 200
 	var mesosToExplode []int32
 
-	// Use the hitPosition from the attack, not the mob position
-	attackX := attack.hitPosition.x
-	attackY := attack.hitPosition.y
+	// Use the player's position for meso explosion range check
+	attackX := plr.pos.x
+	attackY := plr.pos.y
 
-	log.Printf("MesoExplosion: Attack position (%d, %d), checking %d drops", attackX, attackY, len(inst.dropPool.drops))
+	log.Printf("MesoExplosion: Player position (%d, %d), checking %d drops", attackX, attackY, len(inst.dropPool.drops))
 
 	for dropID, drop := range inst.dropPool.drops {
 		if drop.mesos <= 0 {
 			continue // Not a meso drop
 		}
 
-		// Calculate distance from attack position to meso
+		// Calculate distance from player position to meso
 		dx := drop.finalPos.x - attackX
 		dy := drop.finalPos.y - attackY
 		distSq := int32(dx)*int32(dx) + int32(dy)*int32(dy)
