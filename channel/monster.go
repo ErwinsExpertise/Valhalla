@@ -461,6 +461,9 @@ func (m *monster) applyBuff(skillID int32, skillLevel byte, statMask int32, inst
 		value = int16(si.X)
 	case skill.Doom:
 		value = int16(si.X)
+	case skill.PoisonMyst:
+		// Poison damage is based on the X value from skill data
+		value = int16(si.X)
 	default:
 		value = 1
 	}

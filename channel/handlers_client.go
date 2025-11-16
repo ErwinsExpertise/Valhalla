@@ -2463,60 +2463,74 @@ func (server Server) playerMagicSkill(conn mnet.Client, reader mpacket.Reader) {
 	}
 }
 
-// handleMesoExplosion validates and explodes mesos based on client-provided drop IDs
+// handleMesoExplosion finds mesos directly in front of the player and explodes them
 func (server *Server) handleMesoExplosion(plr *Player, inst *fieldInstance, attack attackInfo) {
 	if inst == nil {
 		log.Println("MesoExplosion: inst is nil")
 		return
 	}
 
-	// Client tells us which drops to explode - we just verify they're mesos and near the player
-	const maxRange int32 = 400 // Maximum reasonable range for verification
-	var validDropIDs []int32
+	// Find meso drops directly in front of player within 100 pixels
+	const maxRange int32 = 100
+	var mesosToExplode []int32
 
-	log.Printf("MesoExplosion: Player position (%d, %d), client sent %d drop IDs", plr.pos.x, plr.pos.y, len(attack.mesoDropIDs))
+	// Use attack facing direction
+	facesLeft := attack.facesLeft
 
-	for _, dropID := range attack.mesoDropIDs {
-		drop, exists := inst.dropPool.drops[dropID]
-		if !exists {
-			log.Printf("MesoExplosion: Drop %d doesn't exist", dropID)
-			continue
-		}
+	log.Printf("MesoExplosion: Player position (%d, %d), facing left=%v, checking %d drops", plr.pos.x, plr.pos.y, facesLeft, len(inst.dropPool.drops))
 
+	for dropID, drop := range inst.dropPool.drops {
 		if drop.mesos <= 0 {
-			log.Printf("MesoExplosion: Drop %d is not a meso drop", dropID)
+			continue // Not a meso drop
+		}
+
+		// Calculate relative position
+		dx := int32(drop.finalPos.x - plr.pos.x)
+		dy := int32(drop.finalPos.y - plr.pos.y)
+
+		// Check if meso is in front of player (based on facing direction)
+		// If facing left, dx should be negative; if facing right, dx should be positive
+		inFront := false
+		if facesLeft && dx < 0 {
+			inFront = true
+			dx = -dx // Make positive for distance calculation
+		} else if !facesLeft && dx > 0 {
+			inFront = true
+		}
+
+		if !inFront {
+			continue // Meso is behind player
+		}
+
+		// Calculate distance (only horizontal matters, vertical should be small)
+		if dx > maxRange || dy > maxRange || dy < -maxRange {
+			log.Printf("MesoExplosion: Drop %d at (%d, %d) out of range: dx=%d, dy=%d", dropID, drop.finalPos.x, drop.finalPos.y, dx, dy)
 			continue
 		}
 
-		// Verify drop is within reasonable range of player
-		dx := drop.finalPos.x - plr.pos.x
-		dy := drop.finalPos.y - plr.pos.y
-		distSq := int32(dx)*int32(dx) + int32(dy)*int32(dy)
-
-		log.Printf("MesoExplosion: Drop %d at (%d, %d), distance^2=%d, mesos=%d", dropID, drop.finalPos.x, drop.finalPos.y, distSq, drop.mesos)
+		distSq := dx*dx + dy*dy
+		log.Printf("MesoExplosion: Drop %d at (%d, %d), distance^2=%d, mesos=%d - IN FRONT", dropID, drop.finalPos.x, drop.finalPos.y, distSq, drop.mesos)
 
 		if distSq <= maxRange*maxRange {
-			validDropIDs = append(validDropIDs, dropID)
-			log.Printf("MesoExplosion: Drop %d is valid for explosion", dropID)
-		} else {
-			log.Printf("MesoExplosion: Drop %d is too far from player", dropID)
+			mesosToExplode = append(mesosToExplode, dropID)
+			log.Printf("MesoExplosion: Drop %d will explode", dropID)
 		}
 	}
 
-	log.Printf("MesoExplosion: Validated %d drops for explosion", len(validDropIDs))
+	log.Printf("MesoExplosion: Found %d mesos to explode", len(mesosToExplode))
 
-	// Remove the validated mesos with explosion animation
-	for _, dropID := range validDropIDs {
+	// Remove the mesos with explosion animation
+	for _, dropID := range mesosToExplode {
 		log.Printf("MesoExplosion: Removing drop %d with explosion animation", dropID)
 		inst.dropPool.removeDrop(4, dropID) // dropType 4 for explosion
 	}
 
 	// Apply damage using client-calculated values
-	if len(validDropIDs) > 0 && len(attack.damages) > 0 {
+	if len(mesosToExplode) > 0 && len(attack.damages) > 0 {
 		log.Printf("MesoExplosion: Applying %d damages to mob %d", len(attack.damages), attack.spawnID)
 		inst.lifePool.mobDamaged(attack.spawnID, plr, attack.damages...)
 	} else {
-		log.Printf("MesoExplosion: No damage applied - validDrops=%d, damages=%d", len(validDropIDs), len(attack.damages))
+		log.Printf("MesoExplosion: No damage applied - mesosExploded=%d, damages=%d", len(mesosToExplode), len(attack.damages))
 	}
 }
 
@@ -2535,7 +2549,6 @@ type attackInfo struct {
 	hitPosition, previousMobPosition                       pos
 	hitDelay                                               int16
 	damages                                                []int32
-	mesoDropIDs                                            []int32 // For meso explosion - drop IDs from client
 }
 
 type attackData struct {
@@ -2629,14 +2642,6 @@ func getAttackInfo(reader mpacket.Reader, player Player, attackType int) (attack
 				dmg := reader.ReadInt32()
 				data.totalDamage += dmg
 				attack.damages[j] = dmg
-			}
-			
-			// For meso explosion, read the drop IDs that should explode
-			if data.isMesoExplosion {
-				attack.mesoDropIDs = make([]int32, data.hits)
-				for j := byte(0); j < data.hits; j++ {
-					attack.mesoDropIDs[j] = reader.ReadInt32()
-				}
 			}
 			
 			data.attackInfo[i] = attack
