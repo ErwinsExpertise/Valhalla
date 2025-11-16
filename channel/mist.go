@@ -1,6 +1,7 @@
 package channel
 
 import (
+	"log"
 	"math"
 	"time"
 
@@ -61,6 +62,7 @@ func (pool *mistPool) nextID() int32 {
 func (pool *mistPool) createMist(ownerID, skillID int32, skillLevel byte, pos pos, duration int64, isPoisonMist bool) *fieldMist {
 	mistID := pool.nextID()
 	if mistID == 0 {
+		log.Println("Mist: Failed to generate mist ID")
 		return nil
 	}
 
@@ -87,8 +89,13 @@ func (pool *mistPool) createMist(ownerID, skillID int32, skillLevel byte, pos po
 
 	pool.mists[mistID] = mist
 
+	log.Printf("Mist: Created mist ID=%d, owner=%d, skill=%d, level=%d, pos=(%d,%d), box=(%d,%d,%d,%d), duration=%d",
+		mistID, ownerID, skillID, skillLevel, pos.x, pos.y,
+		mist.box.x1, mist.box.y1, mist.box.x2, mist.box.y2, duration)
+
 	// Send spawn packet to all players
 	pool.instance.send(packetMistSpawn(mist))
+	log.Printf("Mist: Sent spawn packet to all players")
 
 	// Schedule removal after duration
 	if duration > 0 {
@@ -137,12 +144,17 @@ func packetMistSpawn(mist *fieldMist) mpacket.Packet {
 	p.WriteInt32(int32(mist.box.y1))
 	p.WriteInt32(int32(mist.box.x2))
 	p.WriteInt32(int32(mist.box.y2))
+	
+	log.Printf("Mist: Packet created - ID=%d, MobMist=false, Skill=%d, Level=%d, Box=(%d,%d,%d,%d)",
+		mist.ID, mist.skillID, mist.skillLevel, mist.box.x1, mist.box.y1, mist.box.x2, mist.box.y2)
+	
 	return p
 }
 
 func packetMistRemove(mistID int32, isPoisonMist bool) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelAffectedAreaRemove)
 	p.WriteInt32(mistID)
+	log.Printf("Mist: Removal packet created for ID=%d", mistID)
 	return p
 }
 

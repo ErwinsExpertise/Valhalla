@@ -2451,6 +2451,7 @@ func (server Server) playerMagicSkill(conn mnet.Client, reader mpacket.Reader) {
 // handleMesoExplosion finds mesos near the attack position and blows them up to deal damage
 func (server *Server) handleMesoExplosion(plr *Player, inst *fieldInstance, attack attackInfo) {
 	if inst == nil {
+		log.Println("MesoExplosion: inst is nil")
 		return
 	}
 
@@ -2463,6 +2464,8 @@ func (server *Server) handleMesoExplosion(plr *Player, inst *fieldInstance, atta
 	attackX := attack.hitPosition.x
 	attackY := attack.hitPosition.y
 
+	log.Printf("MesoExplosion: Attack position (%d, %d), checking %d drops", attackX, attackY, len(inst.dropPool.drops))
+
 	for dropID, drop := range inst.dropPool.drops {
 		if drop.mesos <= 0 {
 			continue // Not a meso drop
@@ -2473,20 +2476,29 @@ func (server *Server) handleMesoExplosion(plr *Player, inst *fieldInstance, atta
 		dy := drop.finalPos.y - attackY
 		distSq := int32(dx)*int32(dx) + int32(dy)*int32(dy)
 
+		log.Printf("MesoExplosion: Drop %d at (%d, %d), distance^2=%d, mesos=%d", dropID, drop.finalPos.x, drop.finalPos.y, distSq, drop.mesos)
+
 		if distSq <= explosionRange*explosionRange {
 			mesosToExplode = append(mesosToExplode, dropID)
+			log.Printf("MesoExplosion: Drop %d will explode", dropID)
 		}
 	}
 
+	log.Printf("MesoExplosion: Found %d mesos to explode", len(mesosToExplode))
+
 	// Remove the mesos from the field with explosion animation (dropType 4)
 	for _, dropID := range mesosToExplode {
+		log.Printf("MesoExplosion: Removing drop %d with explosion animation", dropID)
 		inst.dropPool.removeDrop(4, dropID) // Remove with explosion animation
 	}
 
 	// Apply damage from the attack packet (client already calculated this)
 	// Only apply if mesos were found to explode
 	if len(mesosToExplode) > 0 && len(attack.damages) > 0 {
+		log.Printf("MesoExplosion: Applying %d damages to mob %d", len(attack.damages), attack.spawnID)
 		inst.lifePool.mobDamaged(attack.spawnID, plr, attack.damages...)
+	} else {
+		log.Printf("MesoExplosion: No damage applied - mesos=%d, damages=%d", len(mesosToExplode), len(attack.damages))
 	}
 }
 
