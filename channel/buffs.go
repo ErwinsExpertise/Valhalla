@@ -263,6 +263,21 @@ func (cb *CharacterBuffs) AddBuff(charId, skillID int32, level byte, foreign boo
 
 	if !foreign {
 		switch skill.Skill(skillID) {
+		case skill.HyperBody:
+			// Apply temporary HP/MP increase
+			if cb.plr != nil {
+				increase := int16(skillInfo[level-1].X)
+				hpIncrease := (cb.plr.maxHP * increase) / 100
+				mpIncrease := (cb.plr.maxMP * increase) / 100
+				
+				// Increase max HP/MP temporarily
+				cb.plr.setMaxHP(cb.plr.maxHP + hpIncrease)
+				cb.plr.setMaxMP(cb.plr.maxMP + mpIncrease)
+				
+				// Also increase current HP/MP by the same amount
+				cb.plr.giveHP(hpIncrease)
+				cb.plr.giveMP(mpIncrease)
+			}
 		case skill.SilverHawk, skill.GoldenEagle, skill.SummonDragon:
 			if cb.plr != nil && cb.plr.getSummon(skillID) == nil {
 				spawn := cb.plr.pos
@@ -1128,6 +1143,33 @@ func (cb *CharacterBuffs) expireBuffNow(skillID int32) {
 	// Stop Recovery skill ticker if this is the Recovery skill
 	if skillID == int32(skill.Recovery) {
 		cb.stopRecoveryTicker()
+	}
+
+	// Handle Hyperbody expiration - restore original maxHP/maxMP
+	if skillID == int32(skill.HyperBody) {
+		if level, ok := cb.activeSkillLevels[skillID]; ok && cb.plr != nil {
+			skillInfo, err := nx.GetPlayerSkill(skillID)
+			if err == nil && int(level) > 0 && int(level) <= len(skillInfo) {
+				increase := int16(skillInfo[level-1].X)
+				// Calculate the HP/MP that was added (reverse calculation)
+				// If maxHP was increased by X%, then current maxHP = original * (100 + X) / 100
+				// So original = current * 100 / (100 + X)
+				originalMaxHP := (cb.plr.maxHP * 100) / (100 + increase)
+				originalMaxMP := (cb.plr.maxMP * 100) / (100 + increase)
+				
+				// Restore maxHP/maxMP
+				cb.plr.setMaxHP(originalMaxHP)
+				cb.plr.setMaxMP(originalMaxMP)
+				
+				// Adjust current HP/MP if they exceed new max
+				if cb.plr.hp > cb.plr.maxHP {
+					cb.plr.setHP(cb.plr.maxHP)
+				}
+				if cb.plr.mp > cb.plr.maxMP {
+					cb.plr.setMP(cb.plr.maxMP)
+				}
+			}
+		}
 	}
 
 	// Item-source (negative) or skill-source (positive)

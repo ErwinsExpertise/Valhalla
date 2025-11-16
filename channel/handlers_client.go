@@ -2395,8 +2395,15 @@ func (server Server) playerRangedSkill(conn mnet.Client, reader mpacket.Reader) 
 
 	inst.sendExcept(packetSkillRanged(*plr, data), conn)
 
-	for _, attack := range data.attackInfo {
-		inst.lifePool.mobDamaged(attack.spawnID, plr, attack.damages...)
+	// Handle Meso Explosion - blow up mesos near mobs and deal damage
+	if data.isMesoExplosion {
+		for _, attack := range data.attackInfo {
+			server.handleMesoExplosion(plr, inst, attack)
+		}
+	} else {
+		for _, attack := range data.attackInfo {
+			inst.lifePool.mobDamaged(attack.spawnID, plr, attack.damages...)
+		}
 	}
 }
 
@@ -2437,6 +2444,53 @@ func (server Server) playerMagicSkill(conn mnet.Client, reader mpacket.Reader) {
 	inst.sendExcept(packetSkillMagic(*plr, data), conn)
 
 	for _, attack := range data.attackInfo {
+		inst.lifePool.mobDamaged(attack.spawnID, plr, attack.damages...)
+	}
+}
+
+// handleMesoExplosion finds mesos near a mob and blows them up to deal damage
+func (server *Server) handleMesoExplosion(plr *Player, inst *fieldInstance, attack attackInfo) {
+	if inst == nil {
+		return
+	}
+
+	// Get mob position to check distance
+	mob, err := inst.lifePool.getMobFromID(attack.spawnID)
+	if err != nil {
+		return
+	}
+
+	// Find all meso drops within range (about 200 pixels)
+	const explosionRange int32 = 200
+	var mesosToExplode []int32
+	var totalMesos int32
+
+	for dropID, drop := range inst.dropPool.drops {
+		if drop.mesos <= 0 {
+			continue // Not a meso drop
+		}
+
+		// Calculate distance from mob to meso
+		dx := drop.finalPos.x - mob.pos.x
+		dy := drop.finalPos.y - mob.pos.y
+		distSq := int32(dx)*int32(dx) + int32(dy)*int32(dy)
+
+		if distSq <= explosionRange*explosionRange {
+			mesosToExplode = append(mesosToExplode, dropID)
+			totalMesos += drop.mesos
+		}
+	}
+
+	// Remove the mesos from the field
+	for _, dropID := range mesosToExplode {
+		inst.dropPool.removeDrop(1, dropID) // Remove with animation
+	}
+
+	// Calculate and deal damage based on mesos
+	// Each meso typically does about 1 damage per meso (varies by skill level)
+	// For now, use a simple formula: totalMesos / 10 as base damage per hit
+	if len(attack.damages) > 0 && totalMesos > 0 {
+		// Apply damage from the attack packet (client already calculated this)
 		inst.lifePool.mobDamaged(attack.spawnID, plr, attack.damages...)
 	}
 }
@@ -2489,6 +2543,8 @@ func getAttackInfo(reader mpacket.Reader, player Player, attackType int) (attack
 		if data.skillID != 0 {
 			data.skillLevel = player.skills[skillID].Level
 		}
+		// Check if this is Meso Explosion skill
+		data.isMesoExplosion = (skill.Skill(data.skillID) == skill.MesoExplosion)
 		data.targets = tByte / 0x10
 		data.hits = tByte % 0x10
 		data.option = reader.ReadByte()
@@ -3951,6 +4007,21 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 
 	case skill.MysticDoor:
 		createMysticDoor(plr, skillID, skillLevel)
+
+	case skill.PoisonMyst:
+		// Create a poison mist at the player's position
+		if plr.inst != nil {
+			skillData, err := nx.GetPlayerSkill(skillID)
+			if err == nil && int(skillLevel) > 0 && int(skillLevel) <= len(skillData) {
+				duration := skillData[skillLevel-1].Time // Duration in seconds
+				mist := plr.inst.mistPool.createMist(plr.ID, skillID, skillLevel, plr.pos, duration, true)
+				if mist != nil {
+					// Start poison damage ticker for this mist
+					server.startPoisonMistTicker(plr.inst, mist)
+				}
+			}
+		}
+		plr.inst.send(packetPlayerSkillAnimation(plr.ID, false, skillID, skillLevel))
 
 	// Summons and puppet:
 	case skill.SummonDragon,
