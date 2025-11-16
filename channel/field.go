@@ -11,6 +11,7 @@ import (
 
 	"github.com/Hucaru/Valhalla/common/opcode"
 	"github.com/Hucaru/Valhalla/constant"
+	"github.com/Hucaru/Valhalla/constant/skill"
 	"github.com/Hucaru/Valhalla/mnet"
 	"github.com/Hucaru/Valhalla/mpacket"
 	"github.com/Hucaru/Valhalla/nx"
@@ -340,6 +341,7 @@ func (f *field) createInstance(rates *rates, server *Server) int {
 	inst.lifePool = creatNewLifePool(inst, f.Data.NPCs, f.Data.Mobs, f.mobCapacityMin, f.mobCapacityMax)
 	inst.lifePool.setDropPool(&inst.dropPool)
 	inst.reactorPool = createNewReactorPool(inst, f.Data.Reactors, server)
+	inst.mistPool = createNewMistPool(inst)
 
 	f.instances = append(f.instances, inst)
 
@@ -550,6 +552,7 @@ type fieldInstance struct {
 	dropPool    dropPool
 	roomPool    roomPool
 	reactorPool reactorPool
+	mistPool    *mistPool // Pool for mist objects like Poison Mist
 
 	portals [256]portal
 	players []*Player
@@ -1245,4 +1248,190 @@ func packetShowClock(hour, min, sec int8) mpacket.Packet {
 	p.WriteInt8(sec)
 
 	return p
+}
+
+// Mist represents a poison mist or similar AoE effect on the field
+type mist struct {
+ID         int32
+ownerID    int32
+skillID    int32
+skillLevel byte
+pos        pos
+box        struct {
+lt pos // left-top corner
+rb pos // right-bottom corner
+}
+mistType   byte  // 0 = poison mist, etc
+expireTime int64 // Unix ms when mist expires
+}
+
+func createMist(id, ownerID, skillID int32, skillLevel byte, position pos, mistType byte, durationSec int16) *mist {
+m := &mist{
+ID:         id,
+ownerID:    ownerID,
+skillID:    skillID,
+skillLevel: skillLevel,
+pos:        position,
+mistType:   mistType,
+expireTime: time.Now().Add(time.Duration(durationSec) * time.Second).UnixMilli(),
+}
+
+// Set up the bounding box for the mist effect
+// These dimensions should match the skill's range
+m.box.lt = newPos(position.x-150, position.y-150, 0)
+m.box.rb = newPos(position.x+150, position.y+150, 0)
+
+return m
+}
+
+// isInMist checks if a position is within the mist's area
+func (m *mist) isInMist(p pos) bool {
+return p.x >= m.box.lt.x && p.x <= m.box.rb.x &&
+p.y >= m.box.lt.y && p.y <= m.box.rb.y
+}
+
+// mistPool manages mist objects in a field instance
+type mistPool struct {
+instance  *fieldInstance
+poolID    int32
+mists     map[int32]*mist
+mistTimer *time.Ticker
+}
+
+func createNewMistPool(inst *fieldInstance) *mistPool {
+mp := &mistPool{
+instance: inst,
+mists:    make(map[int32]*mist),
+}
+
+// Start ticker for periodic damage application
+mp.mistTimer = time.NewTicker(1 * time.Second)
+go mp.runMistTicker()
+
+return mp
+}
+
+func (mp *mistPool) nextID() (int32, error) {
+for i := 0; i < 100; i++ {
+mp.poolID++
+if mp.poolID == math.MaxInt32-1 {
+mp.poolID = 1
+}
+if _, ok := mp.mists[mp.poolID]; !ok {
+return mp.poolID, nil
+}
+}
+return 0, fmt.Errorf("no space to generate ID in mist pool")
+}
+
+func (mp *mistPool) addMist(ownerID, skillID int32, skillLevel byte, position pos, mistType byte, durationSec int16) {
+id, err := mp.nextID()
+if err != nil {
+log.Println("mistPool.addMist: failed to generate ID:", err)
+return
+}
+
+mist := createMist(id, ownerID, skillID, skillLevel, position, mistType, durationSec)
+mp.mists[id] = mist
+
+// Send spawn packet to all players
+mp.instance.send(packetSpawnMist(mist))
+
+// Schedule removal
+time.AfterFunc(time.Duration(durationSec)*time.Second, func() {
+if mp.instance.dispatch != nil {
+mp.instance.dispatch <- func() {
+mp.removeMist(id)
+}
+}
+})
+}
+
+func (mp *mistPool) removeMist(mistID int32) {
+if _, ok := mp.mists[mistID]; !ok {
+return
+}
+
+delete(mp.mists, mistID)
+mp.instance.send(packetRemoveMist(mistID))
+}
+
+func (mp *mistPool) runMistTicker() {
+if mp.mistTimer == nil {
+return
+}
+
+for range mp.mistTimer.C {
+if mp.instance.dispatch != nil {
+mp.instance.dispatch <- func() {
+mp.applyMistEffects()
+}
+}
+}
+}
+
+func (mp *mistPool) applyMistEffects() {
+now := time.Now().UnixMilli()
+
+// Remove expired mists
+var toRemove []int32
+for id, mist := range mp.mists {
+if mist.expireTime > 0 && now >= mist.expireTime {
+toRemove = append(toRemove, id)
+}
+}
+for _, id := range toRemove {
+mp.removeMist(id)
+}
+
+// Apply damage to mobs in mists
+for _, mist := range mp.mists {
+if mist.skillID == int32(skill.PoisonMyst) {
+mp.applyPoisonMistDamage(mist)
+}
+}
+}
+
+func (mp *mistPool) applyPoisonMistDamage(mist *mist) {
+// Get skill data to retrieve damage amount
+skillData, err := nx.GetPlayerSkill(mist.skillID)
+if err != nil || mist.skillLevel == 0 || int(mist.skillLevel) > len(skillData) {
+return
+}
+
+// Damage is typically in the X or Damage field
+damage := int32(skillData[mist.skillLevel-1].Damage)
+if damage <= 0 {
+damage = int32(skillData[mist.skillLevel-1].X)
+}
+if damage <= 0 {
+damage = 1
+}
+
+// Find owner player for damage attribution
+var owner *Player
+for _, p := range mp.instance.players {
+if p.ID == mist.ownerID {
+owner = p
+break
+}
+}
+
+if owner == nil {
+return
+}
+
+// Apply damage to all mobs within the mist area
+for _, mob := range mp.instance.lifePool.mobs {
+if mob != nil && mist.isInMist(mob.pos) {
+mp.instance.lifePool.mobDamaged(mob.spawnID, owner, damage)
+}
+}
+}
+
+func (mp *mistPool) stop() {
+if mp.mistTimer != nil {
+mp.mistTimer.Stop()
+mp.mistTimer = nil
+}
 }

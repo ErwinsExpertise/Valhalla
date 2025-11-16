@@ -108,4 +108,6 @@ const (
 	SendChannelCSRecharge             byte = 0xE7
 	SendChannelCSUpdateAmounts        byte = 0xE8
 	SendChannelCSAction               byte = 0xE9
+	SendChannelSpawnMist              byte = 0x9F // Spawn mist packet
+	SendChannelRemoveMist             byte = 0xA0 // Remove mist packet
 )

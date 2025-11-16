@@ -2351,10 +2351,15 @@ func (server Server) playerMeleeSkill(conn mnet.Client, reader mpacket.Reader) {
 		return
 	}
 
-	inst.sendExcept(packetSkillMelee(*plr, data), conn)
+	// Handle Meso Explosion
+	if data.isMesoExplosion {
+		server.handleMesoExplosion(plr, inst, data)
+	} else {
+		inst.sendExcept(packetSkillMelee(*plr, data), conn)
 
-	for _, attack := range data.attackInfo {
-		inst.lifePool.mobDamaged(attack.spawnID, plr, attack.damages...)
+		for _, attack := range data.attackInfo {
+			inst.lifePool.mobDamaged(attack.spawnID, plr, attack.damages...)
+		}
 	}
 }
 
@@ -2489,6 +2494,12 @@ func getAttackInfo(reader mpacket.Reader, player Player, attackType int) (attack
 		if data.skillID != 0 {
 			data.skillLevel = player.skills[skillID].Level
 		}
+		
+		// Check if this is Meso Explosion
+		if data.skillID == int32(skill.MesoExplosion) {
+			data.isMesoExplosion = true
+		}
+		
 		data.targets = tByte / 0x10
 		data.hits = tByte % 0x10
 		data.option = reader.ReadByte()
@@ -3900,6 +3911,20 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 		plr.addBuff(skillID, skillLevel, delay)
 		plr.inst.send(packetPlayerSkillAnimation(plr.ID, true, skillID, skillLevel))
 
+	// Poison Mist skill
+	case skill.PoisonMyst:
+		plr.inst.send(packetPlayerSkillAnimation(plr.ID, false, skillID, skillLevel))
+		
+		// Get skill data to retrieve duration
+		skillData, err := nx.GetPlayerSkill(skillID)
+		if err == nil && skillLevel > 0 && int(skillLevel) <= len(skillData) {
+			durationSec := int16(skillData[skillLevel-1].Time)
+			if durationSec > 0 && plr.inst.mistPool != nil {
+				// Spawn mist at player position
+				plr.inst.mistPool.addMist(plr.ID, skillID, skillLevel, plr.pos, 0, durationSec)
+			}
+		}
+
 	case skill.Threaten,
 		skill.Slow, skill.ILSlow,
 		skill.MagicCrash,
@@ -4728,4 +4753,75 @@ func (server *Server) playerPetLoot(conn mnet.Client, reader mpacket.Reader) {
 	}
 
 	plr.inst.dropPool.playerAttemptPickup(drop, plr, 5)
+}
+
+// handleMesoExplosion handles the Meso Explosion skill
+func (server Server) handleMesoExplosion(plr *Player, inst *fieldInstance, data attackData) {
+// Find meso drops in range and calculate damage
+const explosionRange = 250 // Range in pixels to search for meso drops
+
+// Get skill data to retrieve damage multiplier
+skillData, err := nx.GetPlayerSkill(data.skillID)
+if err != nil || data.skillLevel == 0 || int(data.skillLevel) > len(skillData) {
+return
+}
+
+damagePercentage := int32(skillData[data.skillLevel-1].Damage)
+if damagePercentage <= 0 {
+damagePercentage = 100 // Default if not specified
+}
+
+// Find meso drops near the player
+var mesoDropsToExplode []int32
+var totalMesoAmount int32
+
+for id, drop := range inst.dropPool.drops {
+if drop.mesos > 0 {
+// Check if drop is within range
+dx := float64(drop.finalPos.x - plr.pos.x)
+dy := float64(drop.finalPos.y - plr.pos.y)
+distance := math.Sqrt(dx*dx + dy*dy)
+
+if distance <= explosionRange {
+mesoDropsToExplode = append(mesoDropsToExplode, id)
+totalMesoAmount += drop.mesos
+}
+}
+}
+
+// Remove the exploded meso drops
+for _, dropID := range mesoDropsToExplode {
+inst.dropPool.removeDrop(0, dropID)
+}
+
+// Calculate damage based on number of mesos exploded
+// Each meso drop contributes to damage
+numDrops := int32(len(mesoDropsToExplode))
+if numDrops == 0 {
+return
+}
+
+// Damage calculation: based on skill percentage and number of meso drops
+// Typical formula: (number of drops) * skill damage percentage
+baseDamage := numDrops * damagePercentage
+
+// Send animation packet
+inst.sendExcept(packetSkillMelee(*plr, data), plr.Conn)
+
+// Apply damage to monsters in the attack data
+for _, attack := range data.attackInfo {
+// Calculate actual damage per hit
+damagePerHit := baseDamage / int32(data.hits)
+if damagePerHit == 0 {
+damagePerHit = 1
+}
+
+// Create damage array
+damages := make([]int32, data.hits)
+for i := range damages {
+damages[i] = damagePerHit
+}
+
+inst.lifePool.mobDamaged(attack.spawnID, plr, damages...)
+}
 }

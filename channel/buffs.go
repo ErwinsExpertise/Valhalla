@@ -167,6 +167,8 @@ type CharacterBuffs struct {
 	itemMasks         map[int32][]byte // sourceID (-itemId) -> mask
 	expireAt          map[int32]int64  // sourceID -> unix ms expiry
 	recoveryTicker    *time.Ticker     // 5-second ticker for Recovery skill
+	hyperBodyBonusHP  int16            // Temporary HP bonus from HyperBody
+	hyperBodyBonusMP  int16            // Temporary MP bonus from HyperBody
 }
 
 func NewCharacterBuffs(p *Player) {
@@ -858,6 +860,11 @@ func (cb *CharacterBuffs) AddBuffFromCC(charId, skillID int32, expiresAtMs int64
 		cb.startRecoveryTicker(level)
 	}
 
+	// Apply HyperBody stat changes
+	if !foreign && skillID == int32(skill.HyperBody) {
+		cb.applyHyperBodyStats(level)
+	}
+
 	// If this is a non-puppet summon skill applied to self (e.g., on CC/login restore), spawn the summon entity now.
 	if !foreign {
 		switch skill.Skill(skillID) {
@@ -1130,6 +1137,11 @@ func (cb *CharacterBuffs) expireBuffNow(skillID int32) {
 		cb.stopRecoveryTicker()
 	}
 
+	// Remove HyperBody stat changes if this is HyperBody
+	if skillID == int32(skill.HyperBody) {
+		cb.removeHyperBodyStats()
+	}
+
 	// Item-source (negative) or skill-source (positive)
 	bits, ok := skillBuffBits[skillID]
 	if !ok || len(bits) == 0 {
@@ -1227,3 +1239,72 @@ func (cb *CharacterBuffs) stopRecoveryTicker() {
 		cb.recoveryTicker = nil
 	}
 }
+
+// applyHyperBodyStats applies the temporary HP/MP increases from HyperBody
+func (cb *CharacterBuffs) applyHyperBodyStats(level byte) {
+	if cb.plr == nil {
+		return
+	}
+
+	// Get skill data to retrieve the X value (percentage increase)
+	skillData, err := nx.GetPlayerSkill(int32(skill.HyperBody))
+	if err != nil || level == 0 || int(level) > len(skillData) {
+		return
+	}
+
+	percentIncrease := int32(skillData[level-1].X)
+	if percentIncrease <= 0 {
+		return
+	}
+
+	// Calculate bonus HP and MP
+	hpBonus := int16((int32(cb.plr.maxHP) * percentIncrease) / 100)
+	mpBonus := int16((int32(cb.plr.maxMP) * percentIncrease) / 100)
+
+	// Store the bonus amounts so we can remove them later
+	cb.hyperBodyBonusHP = hpBonus
+	cb.hyperBodyBonusMP = mpBonus
+
+	// Apply the temporary increases
+	cb.plr.setMaxHP(cb.plr.maxHP + hpBonus)
+	cb.plr.setMaxMP(cb.plr.maxMP + mpBonus)
+
+	// Also increase current HP/MP proportionally
+	cb.plr.setHP(cb.plr.hp + hpBonus)
+	cb.plr.setMP(cb.plr.mp + mpBonus)
+}
+
+// removeHyperBodyStats removes the temporary HP/MP increases from HyperBody
+func (cb *CharacterBuffs) removeHyperBodyStats() {
+	if cb.plr == nil || (cb.hyperBodyBonusHP == 0 && cb.hyperBodyBonusMP == 0) {
+		return
+	}
+
+	// Remove the temporary increases
+	newMaxHP := cb.plr.maxHP - cb.hyperBodyBonusHP
+	newMaxMP := cb.plr.maxMP - cb.hyperBodyBonusMP
+
+	// Ensure we don't go below 1
+	if newMaxHP < 1 {
+		newMaxHP = 1
+	}
+	if newMaxMP < 1 {
+		newMaxMP = 1
+	}
+
+	cb.plr.setMaxHP(newMaxHP)
+	cb.plr.setMaxMP(newMaxMP)
+
+	// Adjust current HP/MP if they exceed new max
+	if cb.plr.hp > newMaxHP {
+		cb.plr.setHP(newMaxHP)
+	}
+	if cb.plr.mp > newMaxMP {
+		cb.plr.setMP(newMaxMP)
+	}
+
+	// Clear the bonus tracking
+	cb.hyperBodyBonusHP = 0
+	cb.hyperBodyBonusMP = 0
+}
+

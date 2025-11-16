@@ -3259,3 +3259,28 @@ func packetSkillStop(plrID, skillID int32) mpacket.Packet {
 	p.WriteInt32(skillID)
 	return p
 }
+
+// packetSpawnMist sends a packet to spawn a mist object
+func packetSpawnMist(mist *mist) mpacket.Packet {
+p := mpacket.NewPacket()
+p.WriteByte(opcode.SendChannelSpawnMist)
+p.WriteInt32(mist.ID)
+p.WriteInt32(int32(mist.mistType)) // 0 = poison mist
+p.WriteInt32(mist.ownerID)
+p.WriteInt32(mist.skillID)
+p.WriteByte(mist.skillLevel)
+p.WriteInt16(mist.box.lt.x)
+p.WriteInt16(mist.box.lt.y)
+p.WriteInt16(mist.box.rb.x)
+p.WriteInt16(mist.box.rb.y)
+p.WriteInt32(int32((mist.expireTime - time.Now().UnixMilli()) / 1000)) // remaining time in seconds
+return p
+}
+
+// packetRemoveMist sends a packet to remove a mist object
+func packetRemoveMist(mistID int32) mpacket.Packet {
+p := mpacket.NewPacket()
+p.WriteByte(opcode.SendChannelRemoveMist)
+p.WriteInt32(mistID)
+return p
+}
