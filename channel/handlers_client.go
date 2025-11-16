@@ -2445,8 +2445,8 @@ func (server Server) playerMagicSkill(conn mnet.Client, reader mpacket.Reader) {
 		skillData, err := nx.GetPlayerSkill(data.skillID)
 		if err == nil && int(data.skillLevel) > 0 && int(data.skillLevel) <= len(skillData) {
 			duration := skillData[data.skillLevel-1].Time // Duration in seconds
-			// Get player's magic attack for poison calculation
-			magicAttack := int16(plr.mAtk)
+			// Use skill's X value as base magic attack for poison calculation
+			magicAttack := int16(skillData[data.skillLevel-1].X)
 			mist := inst.mistPool.createMist(plr.ID, data.skillID, data.skillLevel, plr.pos, duration, true, magicAttack)
 			if mist != nil {
 				// Start poison damage ticker for this mist
