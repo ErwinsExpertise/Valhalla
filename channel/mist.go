@@ -188,6 +188,10 @@ func (server *Server) startPoisonMistTicker(inst *fieldInstance, mist *fieldMist
 				// Find all mobs in the mist area and apply poison buff
 				for spawnID, mob := range inst.lifePool.mobs {
 					if mob != nil && mob.hp > 0 && mist.isInMist(mob.pos) {
+						// Check if mob is already poisoned - don't reapply
+						if (mob.statBuff & skill.MobStat.Poison) != 0 {
+							continue
+						}
 						// Apply poison mob buff
 						inst.lifePool.applyMobBuff(spawnID, mist.skillID, mist.skillLevel, skill.MobStat.Poison, inst)
 						log.Printf("PoisonMist: Applied poison buff to mob %d", spawnID)

@@ -167,6 +167,8 @@ type CharacterBuffs struct {
 	itemMasks         map[int32][]byte // sourceID (-itemId) -> mask
 	expireAt          map[int32]int64  // sourceID -> unix ms expiry
 	recoveryTicker    *time.Ticker     // 5-second ticker for Recovery skill
+	hyperbodyOriginalMaxHP int16      // Store original maxHP before Hyperbody
+	hyperbodyOriginalMaxMP int16      // Store original maxMP before Hyperbody
 }
 
 func NewCharacterBuffs(p *Player) {
@@ -266,13 +268,21 @@ func (cb *CharacterBuffs) AddBuff(charId, skillID int32, level byte, foreign boo
 		case skill.HyperBody:
 			// Apply temporary HP/MP increase
 			if cb.plr != nil {
+				// Store original values before modifying
+				cb.hyperbodyOriginalMaxHP = cb.plr.maxHP
+				cb.hyperbodyOriginalMaxMP = cb.plr.maxMP
+				
 				increase := int16(skillInfo[level-1].X)
 				hpIncrease := (cb.plr.maxHP * increase) / 100
 				mpIncrease := (cb.plr.maxMP * increase) / 100
 				
-				// Increase max HP/MP temporarily
-				cb.plr.setMaxHP(cb.plr.maxHP + hpIncrease)
-				cb.plr.setMaxMP(cb.plr.maxMP + mpIncrease)
+				// Increase max HP/MP temporarily (in-memory only, no DB write)
+				cb.plr.maxHP = cb.plr.maxHP + hpIncrease
+				cb.plr.maxMP = cb.plr.maxMP + mpIncrease
+				
+				// Send stat change packet
+				cb.plr.Send(packetPlayerStatChange(true, constant.MaxHpID, int32(cb.plr.maxHP)))
+				cb.plr.Send(packetPlayerStatChange(true, constant.MaxMpID, int32(cb.plr.maxMP)))
 				
 				// Also increase current HP/MP by the same amount
 				cb.plr.giveHP(hpIncrease)
@@ -1147,28 +1157,26 @@ func (cb *CharacterBuffs) expireBuffNow(skillID int32) {
 
 	// Handle Hyperbody expiration - restore original maxHP/maxMP
 	if skillID == int32(skill.HyperBody) {
-		if level, ok := cb.activeSkillLevels[skillID]; ok && cb.plr != nil {
-			skillInfo, err := nx.GetPlayerSkill(skillID)
-			if err == nil && int(level) > 0 && int(level) <= len(skillInfo) {
-				increase := int16(skillInfo[level-1].X)
-				// Calculate the HP/MP that was added (reverse calculation)
-				// If maxHP was increased by X%, then current maxHP = original * (100 + X) / 100
-				// So original = current * 100 / (100 + X)
-				originalMaxHP := (cb.plr.maxHP * 100) / (100 + increase)
-				originalMaxMP := (cb.plr.maxMP * 100) / (100 + increase)
-				
-				// Restore maxHP/maxMP
-				cb.plr.setMaxHP(originalMaxHP)
-				cb.plr.setMaxMP(originalMaxMP)
-				
-				// Adjust current HP/MP if they exceed new max
-				if cb.plr.hp > cb.plr.maxHP {
-					cb.plr.setHP(cb.plr.maxHP)
-				}
-				if cb.plr.mp > cb.plr.maxMP {
-					cb.plr.setMP(cb.plr.maxMP)
-				}
+		if cb.plr != nil && cb.hyperbodyOriginalMaxHP > 0 && cb.hyperbodyOriginalMaxMP > 0 {
+			// Restore from stored original values (in-memory only, no DB write)
+			cb.plr.maxHP = cb.hyperbodyOriginalMaxHP
+			cb.plr.maxMP = cb.hyperbodyOriginalMaxMP
+			
+			// Send stat change packet
+			cb.plr.Send(packetPlayerStatChange(true, constant.MaxHpID, int32(cb.plr.maxHP)))
+			cb.plr.Send(packetPlayerStatChange(true, constant.MaxMpID, int32(cb.plr.maxMP)))
+			
+			// Adjust current HP/MP if they exceed new max
+			if cb.plr.hp > cb.plr.maxHP {
+				cb.plr.setHP(cb.plr.maxHP)
 			}
+			if cb.plr.mp > cb.plr.maxMP {
+				cb.plr.setMP(cb.plr.maxMP)
+			}
+			
+			// Clear stored values
+			cb.hyperbodyOriginalMaxHP = 0
+			cb.hyperbodyOriginalMaxMP = 0
 		}
 	}
 
