@@ -20,6 +20,7 @@ type fieldMist struct {
 	createdAt    time.Time
 	duration     int64 // in seconds
 	isPoisonMist bool
+	magicAttack  int16 // Magic attack value for poison damage calculation
 }
 
 // mistBox defines the rectangular area of a mist
@@ -59,7 +60,7 @@ func (pool *mistPool) nextID() int32 {
 }
 
 // createMist spawns a new mist on the field
-func (pool *mistPool) createMist(ownerID, skillID int32, skillLevel byte, pos pos, duration int64, isPoisonMist bool) *fieldMist {
+func (pool *mistPool) createMist(ownerID, skillID int32, skillLevel byte, pos pos, duration int64, isPoisonMist bool, magicAttack int16) *fieldMist {
 	mistID := pool.nextID()
 	if mistID == 0 {
 		log.Println("Mist: Failed to generate mist ID")
@@ -72,10 +73,10 @@ func (pool *mistPool) createMist(ownerID, skillID int32, skillLevel byte, pos po
 	const mistHeight int16 = 100 // radius in y direction
 
 	mist := &fieldMist{
-		ID:         mistID,
-		ownerID:    ownerID,
-		skillID:    skillID,
-		skillLevel: skillLevel,
+		ID:           mistID,
+		ownerID:      ownerID,
+		skillID:      skillID,
+		skillLevel:   skillLevel,
 		box: mistBox{
 			x1: pos.x - mistWidth,
 			y1: pos.y - mistHeight,
@@ -85,6 +86,7 @@ func (pool *mistPool) createMist(ownerID, skillID int32, skillLevel byte, pos po
 		createdAt:    time.Now(),
 		duration:     duration,
 		isPoisonMist: isPoisonMist,
+		magicAttack:  magicAttack,
 	}
 
 	pool.mists[mistID] = mist

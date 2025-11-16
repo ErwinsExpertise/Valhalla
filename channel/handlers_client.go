@@ -2445,7 +2445,9 @@ func (server Server) playerMagicSkill(conn mnet.Client, reader mpacket.Reader) {
 		skillData, err := nx.GetPlayerSkill(data.skillID)
 		if err == nil && int(data.skillLevel) > 0 && int(data.skillLevel) <= len(skillData) {
 			duration := skillData[data.skillLevel-1].Time // Duration in seconds
-			mist := inst.mistPool.createMist(plr.ID, data.skillID, data.skillLevel, plr.pos, duration, true)
+			// Get player's magic attack for poison calculation
+			magicAttack := int16(plr.mAtk)
+			mist := inst.mistPool.createMist(plr.ID, data.skillID, data.skillLevel, plr.pos, duration, true, magicAttack)
 			if mist != nil {
 				// Start poison damage ticker for this mist
 				server.startPoisonMistTicker(inst, mist)
@@ -2530,11 +2532,14 @@ func (server *Server) handleMesoExplosion(plr *Player, inst *fieldInstance, atta
 
 	// Apply damage using client-calculated values from attack packet
 	// The client sends damage for each mob hit
-	if len(mesosToExplode) > 0 && len(attack.damages) > 0 {
+	// Only apply damage if there are mobs to hit (attack.spawnID != 0) and damage values
+	if attack.spawnID != 0 && len(attack.damages) > 0 {
 		log.Printf("MesoExplosion: Applying damage to mob %d: %v", attack.spawnID, attack.damages)
 		inst.lifePool.mobDamaged(attack.spawnID, plr, attack.damages...)
+	} else if len(mesosToExplode) > 0 {
+		log.Printf("MesoExplosion: Exploded %d mesos but no mobs to damage", len(mesosToExplode))
 	} else {
-		log.Printf("MesoExplosion: No damage applied - mesosExploded=%d, damages=%d", len(mesosToExplode), len(attack.damages))
+		log.Printf("MesoExplosion: No mesos found to explode")
 	}
 }
 
