@@ -2351,6 +2351,21 @@ func (server Server) playerMeleeSkill(conn mnet.Client, reader mpacket.Reader) {
 		return
 	}
 
+	// Handle Poison Mist - it's a melee attack skill that creates a mist
+	if skill.Skill(data.skillID) == skill.PoisonMyst {
+		log.Printf("PoisonMist: Melee skill detected, creating mist at player position")
+		skillData, err := nx.GetPlayerSkill(data.skillID)
+		if err == nil && int(data.skillLevel) > 0 && int(data.skillLevel) <= len(skillData) {
+			duration := skillData[data.skillLevel-1].Time // Duration in seconds
+			mist := inst.mistPool.createMist(plr.ID, data.skillID, data.skillLevel, plr.pos, duration, true)
+			if mist != nil {
+				// Start poison damage ticker for this mist
+				server.startPoisonMistTicker(inst, mist)
+				log.Printf("PoisonMist: Created and started ticker for mist ID=%d", mist.ID)
+			}
+		}
+	}
+
 	inst.sendExcept(packetSkillMelee(*plr, data), conn)
 
 	for _, attack := range data.attackInfo {
@@ -4014,21 +4029,6 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 
 	case skill.MysticDoor:
 		createMysticDoor(plr, skillID, skillLevel)
-
-	case skill.PoisonMyst:
-		// Create a poison mist at the player's position
-		if plr.inst != nil {
-			skillData, err := nx.GetPlayerSkill(skillID)
-			if err == nil && int(skillLevel) > 0 && int(skillLevel) <= len(skillData) {
-				duration := skillData[skillLevel-1].Time // Duration in seconds
-				mist := plr.inst.mistPool.createMist(plr.ID, skillID, skillLevel, plr.pos, duration, true)
-				if mist != nil {
-					// Start poison damage ticker for this mist
-					server.startPoisonMistTicker(plr.inst, mist)
-				}
-			}
-		}
-		plr.inst.send(packetPlayerSkillAnimation(plr.ID, false, skillID, skillLevel))
 
 	// Summons and puppet:
 	case skill.SummonDragon,
