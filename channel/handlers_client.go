@@ -2368,8 +2368,15 @@ func (server Server) playerMeleeSkill(conn mnet.Client, reader mpacket.Reader) {
 
 	inst.sendExcept(packetSkillMelee(*plr, data), conn)
 
-	for _, attack := range data.attackInfo {
-		inst.lifePool.mobDamaged(attack.spawnID, plr, attack.damages...)
+	// Handle Meso Explosion - blow up mesos near attack position and deal damage
+	if data.isMesoExplosion {
+		for _, attack := range data.attackInfo {
+			server.handleMesoExplosion(plr, inst, attack)
+		}
+	} else {
+		for _, attack := range data.attackInfo {
+			inst.lifePool.mobDamaged(attack.spawnID, plr, attack.damages...)
+		}
 	}
 }
 
@@ -2410,15 +2417,8 @@ func (server Server) playerRangedSkill(conn mnet.Client, reader mpacket.Reader) 
 
 	inst.sendExcept(packetSkillRanged(*plr, data), conn)
 
-	// Handle Meso Explosion - blow up mesos near mobs and deal damage
-	if data.isMesoExplosion {
-		for _, attack := range data.attackInfo {
-			server.handleMesoExplosion(plr, inst, attack)
-		}
-	} else {
-		for _, attack := range data.attackInfo {
-			inst.lifePool.mobDamaged(attack.spawnID, plr, attack.damages...)
-		}
+	for _, attack := range data.attackInfo {
+		inst.lifePool.mobDamaged(attack.spawnID, plr, attack.damages...)
 	}
 }
 
