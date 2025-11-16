@@ -2549,6 +2549,7 @@ type attackInfo struct {
 	facesLeft                                              bool
 	hitPosition, previousMobPosition                       pos
 	hitDelay                                               int16
+	hitCount                                               byte // For meso explosion, hit count per target
 	damages                                                []int32
 }
 
@@ -2633,13 +2634,14 @@ func getAttackInfo(reader mpacket.Reader, player Player, attackType int) (attack
 			attack.previousMobPosition.y = reader.ReadInt16()
 
 			if data.isMesoExplosion {
-				data.hits = reader.ReadByte()
+				attack.hitCount = reader.ReadByte() // Hit count per target for meso explosion
 			} else {
 				attack.hitDelay = reader.ReadInt16()
+				attack.hitCount = data.hits // For non-meso explosion, use global hit count
 			}
 
-			attack.damages = make([]int32, data.hits)
-			for j := byte(0); j < data.hits; j++ {
+			attack.damages = make([]int32, attack.hitCount)
+			for j := byte(0); j < attack.hitCount; j++ {
 				dmg := reader.ReadInt32()
 				data.totalDamage += dmg
 				attack.damages[j] = dmg
