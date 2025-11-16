@@ -159,40 +159,39 @@ func (server *Server) startPoisonMistTicker(inst *fieldInstance, mist *fieldMist
 
 	// Poison ticks every 1 second
 	ticker := time.NewTicker(1 * time.Second)
-	done := make(chan bool)
 
 	go func() {
 		defer ticker.Stop()
 
 		endTime := mist.createdAt.Add(time.Duration(mist.duration) * time.Second)
 
-		for {
-			select {
-			case <-done:
+		for range ticker.C {
+			// Check if mist has expired
+			if time.Now().After(endTime) {
 				return
-			case <-ticker.C:
-				// Check if mist has expired
-				if time.Now().After(endTime) {
+			}
+
+			// Check if mist still exists
+			if _, exists := inst.mistPool.mists[mist.ID]; !exists {
+				return
+			}
+
+			// Apply poison damage to all mobs in the mist area
+			inst.dispatch <- func() {
+				// Get skill data for damage calculation
+				skillData, err := nx.GetPlayerSkill(mist.skillID)
+				if err != nil || mist.skillLevel == 0 || int(mist.skillLevel) > len(skillData) {
 					return
 				}
 
-				// Apply poison damage to all mobs in the mist area
-				inst.dispatch <- func() {
-					// Get skill data for damage calculation
-					skillData, err := nx.GetPlayerSkill(mist.skillID)
-					if err != nil || mist.skillLevel == 0 || int(mist.skillLevel) > len(skillData) {
-						return
-					}
+				// Poison damage is based on the X value from skill data
+				poisonDamage := int32(skillData[mist.skillLevel-1].X)
 
-					// Poison damage is based on the X value from skill data
-					poisonDamage := int32(skillData[mist.skillLevel-1].X)
-
-					// Find all mobs in the mist area and apply poison damage
-					for _, mob := range inst.lifePool.mobs {
-						if mob.hp > 0 && mist.isInMist(mob.pos) {
-							// Apply poison damage to mob
-							inst.lifePool.mobDamaged(mob.spawnID, nil, poisonDamage)
-						}
+				// Find all mobs in the mist area and apply poison damage
+				for spawnID, mob := range inst.lifePool.mobs {
+					if mob != nil && mob.hp > 0 && mist.isInMist(mob.pos) {
+						// Apply poison damage to mob
+						inst.lifePool.mobDamaged(spawnID, nil, poisonDamage)
 					}
 				}
 			}

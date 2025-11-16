@@ -2463,7 +2463,6 @@ func (server *Server) handleMesoExplosion(plr *Player, inst *fieldInstance, atta
 	// Find all meso drops within range (about 200 pixels)
 	const explosionRange int32 = 200
 	var mesosToExplode []int32
-	var totalMesos int32
 
 	for dropID, drop := range inst.dropPool.drops {
 		if drop.mesos <= 0 {
@@ -2477,20 +2476,17 @@ func (server *Server) handleMesoExplosion(plr *Player, inst *fieldInstance, atta
 
 		if distSq <= explosionRange*explosionRange {
 			mesosToExplode = append(mesosToExplode, dropID)
-			totalMesos += drop.mesos
 		}
 	}
 
-	// Remove the mesos from the field
+	// Remove the mesos from the field (must happen before damage)
 	for _, dropID := range mesosToExplode {
 		inst.dropPool.removeDrop(1, dropID) // Remove with animation
 	}
 
-	// Calculate and deal damage based on mesos
-	// Each meso typically does about 1 damage per meso (varies by skill level)
-	// For now, use a simple formula: totalMesos / 10 as base damage per hit
-	if len(attack.damages) > 0 && totalMesos > 0 {
-		// Apply damage from the attack packet (client already calculated this)
+	// Apply damage from the attack packet (client already calculated this)
+	// Only apply if mesos were found to explode
+	if len(mesosToExplode) > 0 && len(attack.damages) > 0 {
 		inst.lifePool.mobDamaged(attack.spawnID, plr, attack.damages...)
 	}
 }
