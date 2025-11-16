@@ -11,13 +11,13 @@ import (
 
 // fieldMist represents a poison mist or other area effect on the field
 type fieldMist struct {
-	ID        int32
-	ownerID   int32
-	skillID   int32
-	skillLevel byte
-	box       mistBox // Rectangle area of effect
-	createdAt time.Time
-	duration  int64 // in seconds
+	ID           int32
+	ownerID      int32
+	skillID      int32
+	skillLevel   byte
+	box          mistBox // Rectangle area of effect
+	createdAt    time.Time
+	duration     int64 // in seconds
 	isPoisonMist bool
 }
 
@@ -80,8 +80,8 @@ func (pool *mistPool) createMist(ownerID, skillID int32, skillLevel byte, pos po
 			x2: pos.x + mistWidth,
 			y2: pos.y + mistHeight,
 		},
-		createdAt: time.Now(),
-		duration:  duration,
+		createdAt:    time.Now(),
+		duration:     duration,
 		isPoisonMist: isPoisonMist,
 	}
 
@@ -127,7 +127,7 @@ func (m *fieldMist) isInMist(p pos) bool {
 // Packet functions for mist
 
 func packetMistSpawn(mist *fieldMist) mpacket.Packet {
-	p := mpacket.CreateWithOpcode(opcode.SendChannelSpecialMapObjectSpawn)
+	p := mpacket.CreateWithOpcode(opcode.SendChannelAffectedAreaCreate)
 	p.WriteInt32(mist.ID)
 	p.WriteInt32(mist.ownerID)
 	p.WriteInt32(mist.skillID)
@@ -141,7 +141,7 @@ func packetMistSpawn(mist *fieldMist) mpacket.Packet {
 }
 
 func packetMistRemove(mistID int32, isPoisonMist bool) mpacket.Packet {
-	p := mpacket.CreateWithOpcode(opcode.SendChannelSpecialMapObjectRemove)
+	p := mpacket.CreateWithOpcode(opcode.SendChannelAffectedAreaRemove)
 	p.WriteInt32(mistID)
 	if isPoisonMist {
 		p.WriteByte(1) // Fade out animation
@@ -163,9 +163,9 @@ func (server *Server) startPoisonMistTicker(inst *fieldInstance, mist *fieldMist
 
 	go func() {
 		defer ticker.Stop()
-		
+
 		endTime := mist.createdAt.Add(time.Duration(mist.duration) * time.Second)
-		
+
 		for {
 			select {
 			case <-done:
@@ -183,10 +183,10 @@ func (server *Server) startPoisonMistTicker(inst *fieldInstance, mist *fieldMist
 					if err != nil || mist.skillLevel == 0 || int(mist.skillLevel) > len(skillData) {
 						return
 					}
-					
+
 					// Poison damage is based on the X value from skill data
 					poisonDamage := int32(skillData[mist.skillLevel-1].X)
-					
+
 					// Find all mobs in the mist area and apply poison damage
 					for _, mob := range inst.lifePool.mobs {
 						if mob.hp > 0 && mist.isInMist(mob.pos) {
