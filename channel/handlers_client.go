@@ -2351,21 +2351,6 @@ func (server Server) playerMeleeSkill(conn mnet.Client, reader mpacket.Reader) {
 		return
 	}
 
-	// Handle Poison Mist - it's a melee attack skill that creates a mist
-	if skill.Skill(data.skillID) == skill.PoisonMyst {
-		log.Printf("PoisonMist: Melee skill detected, creating mist at player position")
-		skillData, err := nx.GetPlayerSkill(data.skillID)
-		if err == nil && int(data.skillLevel) > 0 && int(data.skillLevel) <= len(skillData) {
-			duration := skillData[data.skillLevel-1].Time // Duration in seconds
-			mist := inst.mistPool.createMist(plr.ID, data.skillID, data.skillLevel, plr.pos, duration, true)
-			if mist != nil {
-				// Start poison damage ticker for this mist
-				server.startPoisonMistTicker(inst, mist)
-				log.Printf("PoisonMist: Created and started ticker for mist ID=%d", mist.ID)
-			}
-		}
-	}
-
 	inst.sendExcept(packetSkillMelee(*plr, data), conn)
 
 	// Handle Meso Explosion - blow up mesos near attack position and deal damage
@@ -2452,6 +2437,21 @@ func (server Server) playerMagicSkill(conn mnet.Client, reader mpacket.Reader) {
 	err = plr.useSkill(data.skillID, data.skillLevel, data.projectileID)
 	if err != nil {
 		return
+	}
+
+	// Handle Poison Mist - it's a magic attack skill that creates a mist
+	if skill.Skill(data.skillID) == skill.PoisonMyst {
+		log.Printf("PoisonMist: Magic skill detected, creating mist at player position")
+		skillData, err := nx.GetPlayerSkill(data.skillID)
+		if err == nil && int(data.skillLevel) > 0 && int(data.skillLevel) <= len(skillData) {
+			duration := skillData[data.skillLevel-1].Time // Duration in seconds
+			mist := inst.mistPool.createMist(plr.ID, data.skillID, data.skillLevel, plr.pos, duration, true)
+			if mist != nil {
+				// Start poison damage ticker for this mist
+				server.startPoisonMistTicker(inst, mist)
+				log.Printf("PoisonMist: Created and started ticker for mist ID=%d", mist.ID)
+			}
+		}
 	}
 
 	// if Player in party extract
