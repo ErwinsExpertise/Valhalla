@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/Hucaru/Valhalla/common/opcode"
+	"github.com/Hucaru/Valhalla/constant/skill"
 	"github.com/Hucaru/Valhalla/mpacket"
-	"github.com/Hucaru/Valhalla/nx"
 )
 
 // fieldMist represents a poison mist or other area effect on the field
@@ -158,13 +158,13 @@ func packetMistRemove(mistID int32, isPoisonMist bool) mpacket.Packet {
 	return p
 }
 
-// startPoisonMistTicker starts a goroutine that applies poison damage periodically to mobs in the mist
+// startPoisonMistTicker applies poison buff to mobs entering the mist area
 func (server *Server) startPoisonMistTicker(inst *fieldInstance, mist *fieldMist) {
 	if !mist.isPoisonMist || inst == nil {
 		return
 	}
 
-	// Poison ticks every 1 second
+	// Check every second for mobs in the mist
 	ticker := time.NewTicker(1 * time.Second)
 
 	go func() {
@@ -183,22 +183,14 @@ func (server *Server) startPoisonMistTicker(inst *fieldInstance, mist *fieldMist
 				return
 			}
 
-			// Apply poison damage to all mobs in the mist area
+			// Apply poison buff to all mobs in the mist area
 			inst.dispatch <- func() {
-				// Get skill data for damage calculation
-				skillData, err := nx.GetPlayerSkill(mist.skillID)
-				if err != nil || mist.skillLevel == 0 || int(mist.skillLevel) > len(skillData) {
-					return
-				}
-
-				// Poison damage is based on the X value from skill data
-				poisonDamage := int32(skillData[mist.skillLevel-1].X)
-
-				// Find all mobs in the mist area and apply poison damage
+				// Find all mobs in the mist area and apply poison buff
 				for spawnID, mob := range inst.lifePool.mobs {
 					if mob != nil && mob.hp > 0 && mist.isInMist(mob.pos) {
-						// Apply poison damage to mob
-						inst.lifePool.mobDamaged(spawnID, nil, poisonDamage)
+						// Apply poison mob buff
+						inst.lifePool.applyMobBuff(spawnID, mist.skillID, mist.skillLevel, skill.MobStat.Poison, inst)
+						log.Printf("PoisonMist: Applied poison buff to mob %d", spawnID)
 					}
 				}
 			}
