@@ -129,7 +129,7 @@ func (m *fieldMist) isInMist(p pos) bool {
 func packetMistSpawn(mist *fieldMist) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelAffectedAreaCreate)
 	p.WriteInt32(mist.ID)
-	p.WriteBool(!mist.isPoisonMist) // MobMist - true for mob mists, false for poison mist
+	p.WriteBool(false) // MobMist - false for player-created poison mist, true for mob mists
 	p.WriteInt32(mist.skillID)
 	p.WriteByte(mist.skillLevel)
 	p.WriteInt16(0) // delay

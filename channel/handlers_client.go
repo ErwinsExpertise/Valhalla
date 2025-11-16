@@ -2448,30 +2448,29 @@ func (server Server) playerMagicSkill(conn mnet.Client, reader mpacket.Reader) {
 	}
 }
 
-// handleMesoExplosion finds mesos near a mob and blows them up to deal damage
+// handleMesoExplosion finds mesos near the attack position and blows them up to deal damage
 func (server *Server) handleMesoExplosion(plr *Player, inst *fieldInstance, attack attackInfo) {
 	if inst == nil {
 		return
 	}
 
-	// Get mob position to check distance
-	mob, err := inst.lifePool.getMobFromID(attack.spawnID)
-	if err != nil {
-		return
-	}
-
-	// Find all meso drops within range (about 200 pixels)
+	// Find all meso drops within range of the attack position (not mob position!)
+	// Each meso that explodes should be removed
 	const explosionRange int32 = 200
 	var mesosToExplode []int32
+
+	// Use the hitPosition from the attack, not the mob position
+	attackX := attack.hitPosition.x
+	attackY := attack.hitPosition.y
 
 	for dropID, drop := range inst.dropPool.drops {
 		if drop.mesos <= 0 {
 			continue // Not a meso drop
 		}
 
-		// Calculate distance from mob to meso
-		dx := drop.finalPos.x - mob.pos.x
-		dy := drop.finalPos.y - mob.pos.y
+		// Calculate distance from attack position to meso
+		dx := drop.finalPos.x - attackX
+		dy := drop.finalPos.y - attackY
 		distSq := int32(dx)*int32(dx) + int32(dy)*int32(dy)
 
 		if distSq <= explosionRange*explosionRange {
