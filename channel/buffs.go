@@ -280,13 +280,15 @@ func (cb *CharacterBuffs) AddBuff(charId, skillID int32, level byte, foreign boo
 				cb.plr.maxHP = cb.plr.maxHP + hpIncrease
 				cb.plr.maxMP = cb.plr.maxMP + mpIncrease
 				
-				// Send stat change packet
-				cb.plr.Send(packetPlayerStatChange(true, constant.MaxHpID, int32(cb.plr.maxHP)))
-				cb.plr.Send(packetPlayerStatChange(true, constant.MaxMpID, int32(cb.plr.maxMP)))
-				
 				// Also increase current HP/MP by the same amount
 				cb.plr.giveHP(hpIncrease)
 				cb.plr.giveMP(mpIncrease)
+				
+				// Send stat change packets after modifying
+				cb.plr.Send(packetPlayerStatChange(true, constant.MaxHpID, int32(cb.plr.maxHP)))
+				cb.plr.Send(packetPlayerStatChange(true, constant.MaxMpID, int32(cb.plr.maxMP)))
+				cb.plr.Send(packetPlayerStatChange(true, constant.HpID, int32(cb.plr.hp)))
+				cb.plr.Send(packetPlayerStatChange(true, constant.MpID, int32(cb.plr.mp)))
 			}
 		case skill.SilverHawk, skill.GoldenEagle, skill.SummonDragon:
 			if cb.plr != nil && cb.plr.getSummon(skillID) == nil {
@@ -1162,10 +1164,6 @@ func (cb *CharacterBuffs) expireBuffNow(skillID int32) {
 			cb.plr.maxHP = cb.hyperbodyOriginalMaxHP
 			cb.plr.maxMP = cb.hyperbodyOriginalMaxMP
 			
-			// Send stat change packet
-			cb.plr.Send(packetPlayerStatChange(true, constant.MaxHpID, int32(cb.plr.maxHP)))
-			cb.plr.Send(packetPlayerStatChange(true, constant.MaxMpID, int32(cb.plr.maxMP)))
-			
 			// Adjust current HP/MP if they exceed new max
 			if cb.plr.hp > cb.plr.maxHP {
 				cb.plr.setHP(cb.plr.maxHP)
@@ -1173,6 +1171,12 @@ func (cb *CharacterBuffs) expireBuffNow(skillID int32) {
 			if cb.plr.mp > cb.plr.maxMP {
 				cb.plr.setMP(cb.plr.maxMP)
 			}
+			
+			// Send stat change packets after restoring
+			cb.plr.Send(packetPlayerStatChange(true, constant.MaxHpID, int32(cb.plr.maxHP)))
+			cb.plr.Send(packetPlayerStatChange(true, constant.MaxMpID, int32(cb.plr.maxMP)))
+			cb.plr.Send(packetPlayerStatChange(true, constant.HpID, int32(cb.plr.hp)))
+			cb.plr.Send(packetPlayerStatChange(true, constant.MpID, int32(cb.plr.mp)))
 			
 			// Clear stored values
 			cb.hyperbodyOriginalMaxHP = 0

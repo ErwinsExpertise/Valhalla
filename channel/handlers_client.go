@@ -2530,10 +2530,10 @@ func (server *Server) handleMesoExplosion(plr *Player, inst *fieldInstance, atta
 		inst.dropPool.removeDrop(4, dropID) // dropType 4 for explosion
 	}
 
-	// Apply damage using client-calculated values from attack packet
-	// The client sends damage for each mob hit
+	// Apply damage to the mob target if there are mesos exploding
+	// The client sends damage for the mob hit
 	// Only apply damage if there are mobs to hit (attack.spawnID != 0) and damage values
-	if attack.spawnID != 0 && len(attack.damages) > 0 {
+	if attack.spawnID != 0 && len(attack.damages) > 0 && len(mesosToExplode) > 0 {
 		log.Printf("MesoExplosion: Applying damage to mob %d: %v", attack.spawnID, attack.damages)
 		inst.lifePool.mobDamaged(attack.spawnID, plr, attack.damages...)
 	} else if len(mesosToExplode) > 0 {

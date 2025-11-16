@@ -463,18 +463,23 @@ func (m *monster) applyBuff(skillID int32, skillLevel byte, statMask int32, inst
 		value = int16(si.X)
 	case skill.PoisonMyst:
 		// Poison damage calculation per OpenMG reference:
-		// Max((mob.MaxHP / (70 - skillLevel)), magicAttack)
-		// Since we don't have magicAttack here, we use the formula: MaxHP / (70 - skillLevel)
+		// Math.Max((mob.MaxHP / (70 - skillLevel)), magicAttack)
+		// Use Math.Max to take the GREATER of the two values
 		divisor := 70 - int32(skillLevel)
 		if divisor <= 0 {
 			divisor = 1
 		}
 		poisonDamage := m.maxHP / divisor
-		// Cap the poison damage to a reasonable value
-		if poisonDamage < int32(si.X) {
-			poisonDamage = int32(si.X)
+		magicAttack := int32(si.X)
+		
+		// Use the MAXIMUM of the two values per OpenMG reference
+		if magicAttack > poisonDamage {
+			value = int16(magicAttack)
+		} else {
+			value = int16(poisonDamage)
 		}
-		value = int16(poisonDamage)
+		
+		// Ensure minimum damage of 1
 		if value <= 0 {
 			value = 1
 		}
