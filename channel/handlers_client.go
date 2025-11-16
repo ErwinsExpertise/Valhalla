@@ -2489,13 +2489,16 @@ func (server *Server) handleMesoExplosion(plr *Player, inst *fieldInstance, atta
 		dy := int32(drop.finalPos.y - plr.pos.y)
 
 		// Check if meso is in front of player (based on facing direction)
-		// If facing left, dx should be negative; if facing right, dx should be positive
+		// If facing left, dx should be negative or zero; if facing right, dx should be positive or zero
+		// Include drops directly on top of player (dx == 0)
 		inFront := false
-		if facesLeft && dx < 0 {
+		absDx := dx
+		if facesLeft && dx <= 0 {
 			inFront = true
-			dx = -dx // Make positive for distance calculation
-		} else if !facesLeft && dx > 0 {
+			absDx = -dx // Make positive for distance calculation
+		} else if !facesLeft && dx >= 0 {
 			inFront = true
+			absDx = dx
 		}
 
 		if !inFront {
@@ -2503,12 +2506,12 @@ func (server *Server) handleMesoExplosion(plr *Player, inst *fieldInstance, atta
 		}
 
 		// Calculate distance (only horizontal matters, vertical should be small)
-		if dx > maxRange || dy > maxRange || dy < -maxRange {
+		if absDx > maxRange || dy > maxRange || dy < -maxRange {
 			log.Printf("MesoExplosion: Drop %d at (%d, %d) out of range: dx=%d, dy=%d", dropID, drop.finalPos.x, drop.finalPos.y, dx, dy)
 			continue
 		}
 
-		distSq := dx*dx + dy*dy
+		distSq := absDx*absDx + dy*dy
 		log.Printf("MesoExplosion: Drop %d at (%d, %d), distance^2=%d, mesos=%d - IN FRONT", dropID, drop.finalPos.x, drop.finalPos.y, distSq, drop.mesos)
 
 		if distSq <= maxRange*maxRange {
