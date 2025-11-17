@@ -2211,50 +2211,34 @@ func (p *Player) ensureSummonState() {
 
 func (p *Player) addSummon(su *summon) {
 	p.ensureSummonState()
+	if su == nil {
+		return
+	}
 
-	if su.IsPuppet {
+	switch skill.Skill(su.SkillID) {
+	case skill.Puppet, skill.SniperPuppet:
 		if p.summons.puppet != nil {
-			p.removeSummon(true, constant.SummonRemoveReasonReplaced)
+			p.broadcastRemoveSummon(p.summons.puppet.SkillID, constant.SummonRemoveReasonReplaced)
+			p.summons.puppet = nil
 		}
 		p.summons.puppet = su
-	} else {
+
+	case skill.SummonDragon, skill.SilverHawk, skill.GoldenEagle:
 		if p.summons.summon != nil {
-			p.removeSummon(false, constant.SummonRemoveReasonReplaced)
+			p.broadcastRemoveSummon(p.summons.summon.SkillID, constant.SummonRemoveReasonReplaced)
+			p.summons.summon = nil
+		}
+		p.summons.summon = su
+
+	default:
+		if p.summons.summon != nil {
+			p.broadcastRemoveSummon(p.summons.summon.SkillID, constant.SummonRemoveReasonReplaced)
+			p.summons.summon = nil
 		}
 		p.summons.summon = su
 	}
 
 	p.broadcastShowSummon(su)
-}
-
-func (p *Player) removeSummon(puppet bool, reason byte) {
-	p.ensureSummonState()
-
-	shouldCancelBuff := func(r byte) bool {
-		return r != constant.SummonRemoveReasonKeepBuff && r != constant.SummonRemoveReasonReplaced
-	}
-
-	if puppet {
-		if p.summons.puppet == nil {
-			return
-		}
-		su := p.summons.puppet
-		p.broadcastRemoveSummon(su.SkillID, reason)
-		if shouldCancelBuff(reason) && p.buffs != nil {
-			p.buffs.expireBuffNow(su.SkillID)
-		}
-		p.summons.puppet = nil
-	} else {
-		if p.summons.summon == nil {
-			return
-		}
-		su := p.summons.summon
-		p.broadcastRemoveSummon(su.SkillID, reason)
-		if shouldCancelBuff(reason) && p.buffs != nil {
-			p.buffs.expireBuffNow(su.SkillID)
-		}
-		p.summons.summon = nil
-	}
 }
 
 func (p *Player) getSummon(skillID int32) *summon {
@@ -2288,11 +2272,23 @@ func (p *Player) broadcastShowSummon(su *summon) {
 }
 
 func (p *Player) broadcastRemoveSummon(summonSkillID int32, reason byte) {
-	if p == nil || p.inst == nil {
-		return
+	if p.inst != nil {
+		p.inst.send(packetRemoveSummon(p.ID, summonSkillID, reason))
+	} else {
+		p.Send(packetRemoveSummon(p.ID, summonSkillID, reason))
 	}
+}
 
-	p.inst.send(packetRemoveSummon(p.ID, summonSkillID, reason))
+func (p *Player) shouldKeepSummonOnTransfer(su *summon) bool {
+	return su != nil && p.hasActiveBuff(su.SkillID)
+}
+
+func (p *Player) hasActiveBuff(skillID int32) bool {
+	if p == nil || p.buffs == nil {
+		return false
+	}
+	lvl, ok := p.buffs.activeSkillLevels[skillID]
+	return ok && lvl > 0
 }
 
 func (p *Player) updatePet() {
