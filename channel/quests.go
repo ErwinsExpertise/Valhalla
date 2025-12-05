@@ -242,6 +242,17 @@ const (
 	QuestActionCannotCarryMoreThanOne     byte = 9
 )
 
+// packetQuestActionResult creates a quest action result packet according to the spec:
+// byte = result (status code)
+// short = questID (0 to ignore)
+//
+//	if result == Success {
+//	  int32 = npcID
+//	  for nextQuests {
+//	    short = nextQuestID
+//	  }
+//	  short = 0  // End of next quests list
+//	}
 func packetQuestActionResult(result byte, questID int16, npcID int32, nextQuests []int16) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelQuestActionResult)
 	p.WriteByte(result)

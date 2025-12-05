@@ -2124,6 +2124,8 @@ func (d *Player) applyQuestAct(act nx.ActBlock, npcID int32, questID int16) erro
 
 		if totalWeight > 0 {
 			// Generate random number [0, totalWeight)
+			// Note: On 32-bit systems, if totalWeight exceeds MaxInt, this will panic.
+			// In practice, quest rewards won't have such large prop values.
 			roll := int32(d.randIntn(int(totalWeight)))
 
 			// Select item based on roll
@@ -2152,7 +2154,7 @@ func (d *Player) applyQuestAct(act nx.ActBlock, npcID int32, questID int16) erro
 			}
 		}
 
-		// Also give items with Prop = 0 (guaranteed rewards) and process item removal
+		// Also give items with Prop = 0 (guaranteed rewards)
 		for _, ai := range act.Items {
 			if ai.Count > 0 && ai.Prop == 0 {
 				if it, err := CreateItemFromID(ai.ID, int16(ai.Count)); err == nil {
@@ -2161,15 +2163,12 @@ func (d *Player) applyQuestAct(act nx.ActBlock, npcID int32, questID int16) erro
 						return giveErr
 					}
 				}
-			} else if ai.Count < 0 {
-				_ = d.removeItemsByID(ai.ID, -ai.Count)
 			}
 		}
 	} else {
 		// No random rewards, give all items as before
 		for _, ai := range act.Items {
-			switch {
-			case ai.Count > 0:
+			if ai.Count > 0 {
 				if it, err := CreateItemFromID(ai.ID, int16(ai.Count)); err == nil {
 					if giveErr, _ := d.GiveItem(it); giveErr != nil {
 						// Inventory full or other error
@@ -2177,9 +2176,14 @@ func (d *Player) applyQuestAct(act nx.ActBlock, npcID int32, questID int16) erro
 						return giveErr
 					}
 				}
-			case ai.Count < 0:
-				_ = d.removeItemsByID(ai.ID, -ai.Count)
 			}
+		}
+	}
+
+	// Process item removal (Count < 0) for all items
+	for _, ai := range act.Items {
+		if ai.Count < 0 {
+			_ = d.removeItemsByID(ai.ID, -ai.Count)
 		}
 	}
 
