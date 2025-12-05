@@ -234,12 +234,12 @@ func packetQuestUpdateMobKills(questID int16, killStr string) mpacket.Packet {
 
 // Quest action result status codes
 const (
-	QuestActionSuccess                      byte = 4
-	QuestActionUnknownError                 byte = 5
-	QuestActionInventoryFull                byte = 6
-	QuestActionNotEnoughMesos               byte = 7
-	QuestActionFailedRetrieveEquippedItem   byte = 8
-	QuestActionCannotCarryMoreThanOne       byte = 9
+	QuestActionSuccess                    byte = 4
+	QuestActionUnknownError               byte = 5
+	QuestActionInventoryFull              byte = 6
+	QuestActionNotEnoughMesos             byte = 7
+	QuestActionFailedRetrieveEquippedItem byte = 8
+	QuestActionCannotCarryMoreThanOne     byte = 9
 )
 
 func packetQuestActionResult(result byte, questID int16, npcID int32, nextQuests []int16) mpacket.Packet {

@@ -1817,11 +1817,11 @@ func parseTeleportRocks(rocksStr string, size int) []int32 {
 	for i := range rocks {
 		rocks[i] = constant.InvalidMap
 	}
-	
+
 	if rocksStr == "" {
 		return rocks
 	}
-	
+
 	parts := strings.Split(rocksStr, ",")
 	for i, part := range parts {
 		if i >= size {
@@ -1835,7 +1835,7 @@ func parseTeleportRocks(rocksStr string, size int) []int32 {
 			rocks[i] = mapID
 		}
 	}
-	
+
 	return rocks
 }
 
@@ -2102,7 +2102,7 @@ func (d *Player) applyQuestAct(act nx.ActBlock, npcID int32, questID int16) erro
 
 	// Handle items: if any item has Prop > 0, we need to randomly select ONE item
 	// based on weighted probability. Otherwise, give all items.
-	
+
 	// Check if we need random selection (any item has Prop > 0)
 	hasRandomReward := false
 	for _, ai := range act.Items {
@@ -2114,7 +2114,7 @@ func (d *Player) applyQuestAct(act nx.ActBlock, npcID int32, questID int16) erro
 
 	if hasRandomReward {
 		// Random item selection based on Prop weights
-		// Calculate total weight
+		// Calculate total weight from items with Prop > 0
 		totalWeight := int32(0)
 		for _, ai := range act.Items {
 			if ai.Count > 0 && ai.Prop > 0 {
@@ -2125,7 +2125,7 @@ func (d *Player) applyQuestAct(act nx.ActBlock, npcID int32, questID int16) erro
 		if totalWeight > 0 {
 			// Generate random number [0, totalWeight)
 			roll := int32(d.randIntn(int(totalWeight)))
-			
+
 			// Select item based on roll
 			cumulative := int32(0)
 			var selectedItem *nx.ActItem
@@ -2151,10 +2151,17 @@ func (d *Player) applyQuestAct(act nx.ActBlock, npcID int32, questID int16) erro
 				}
 			}
 		}
-		
-		// Also process items with Count < 0 (item removal)
+
+		// Also give items with Prop = 0 (guaranteed rewards) and process item removal
 		for _, ai := range act.Items {
-			if ai.Count < 0 {
+			if ai.Count > 0 && ai.Prop == 0 {
+				if it, err := CreateItemFromID(ai.ID, int16(ai.Count)); err == nil {
+					if giveErr, _ := d.GiveItem(it); giveErr != nil {
+						d.Send(packetQuestActionResult(QuestActionInventoryFull, questID, npcID, nil))
+						return giveErr
+					}
+				}
+			} else if ai.Count < 0 {
 				_ = d.removeItemsByID(ai.ID, -ai.Count)
 			}
 		}
@@ -2207,7 +2214,7 @@ func (d *Player) tryStartQuest(questID int16) bool {
 		nextQuests = append(nextQuests, q.ActOnStart.NextQuest)
 	}
 	d.Send(packetQuestActionResult(QuestActionSuccess, questID, q.Start.NPC, nextQuests))
-	
+
 	return true
 }
 
@@ -2251,7 +2258,7 @@ func (d *Player) tryCompleteQuest(questID int16) bool {
 
 	// Send success result
 	d.Send(packetQuestActionResult(QuestActionSuccess, questID, q.Complete.NPC, nextQuests))
-	
+
 	return true
 }
 
