@@ -2083,7 +2083,8 @@ func (d *Player) meetsQuestBlock(blk nx.CheckBlock) bool {
 }
 
 // applyQuestAct grants EXP/Mesos and applies Item +/- from NX Act block.
-func (d *Player) applyQuestAct(act nx.ActBlock) {
+// Returns error if inventory is full or other issues occur.
+func (d *Player) applyQuestAct(act nx.ActBlock, npcID int32, questID int16) error {
 	if act.Exp > 0 {
 		d.giveEXP(act.Exp, false, false)
 	}
@@ -2099,16 +2100,83 @@ func (d *Player) applyQuestAct(act nx.ActBlock) {
 		d.setFame(d.fame + int16(act.Pop))
 	}
 
+	// Handle items: if any item has Prop > 0, we need to randomly select ONE item
+	// based on weighted probability. Otherwise, give all items.
+	
+	// Check if we need random selection (any item has Prop > 0)
+	hasRandomReward := false
 	for _, ai := range act.Items {
-		switch {
-		case ai.Count > 0:
-			if it, err := CreateItemFromID(ai.ID, int16(ai.Count)); err == nil {
-				_, _ = d.GiveItem(it)
-			}
-		case ai.Count < 0:
-			_ = d.removeItemsByID(ai.ID, -ai.Count)
+		if ai.Prop > 0 && ai.Count > 0 {
+			hasRandomReward = true
+			break
 		}
 	}
+
+	if hasRandomReward {
+		// Random item selection based on Prop weights
+		// Calculate total weight
+		totalWeight := int32(0)
+		for _, ai := range act.Items {
+			if ai.Count > 0 && ai.Prop > 0 {
+				totalWeight += ai.Prop
+			}
+		}
+
+		if totalWeight > 0 {
+			// Generate random number [0, totalWeight)
+			roll := int32(d.randIntn(int(totalWeight)))
+			
+			// Select item based on roll
+			cumulative := int32(0)
+			var selectedItem *nx.ActItem
+			for i := range act.Items {
+				ai := &act.Items[i]
+				if ai.Count > 0 && ai.Prop > 0 {
+					cumulative += ai.Prop
+					if roll < cumulative {
+						selectedItem = ai
+						break
+					}
+				}
+			}
+
+			// Give the selected item
+			if selectedItem != nil {
+				if it, err := CreateItemFromID(selectedItem.ID, int16(selectedItem.Count)); err == nil {
+					if giveErr, _ := d.GiveItem(it); giveErr != nil {
+						// Inventory full or other error
+						d.Send(packetQuestActionResult(QuestActionInventoryFull, questID, npcID, nil))
+						return giveErr
+					}
+				}
+			}
+		}
+		
+		// Also process items with Count < 0 (item removal)
+		for _, ai := range act.Items {
+			if ai.Count < 0 {
+				_ = d.removeItemsByID(ai.ID, -ai.Count)
+			}
+		}
+	} else {
+		// No random rewards, give all items as before
+		for _, ai := range act.Items {
+			switch {
+			case ai.Count > 0:
+				if it, err := CreateItemFromID(ai.ID, int16(ai.Count)); err == nil {
+					if giveErr, _ := d.GiveItem(it); giveErr != nil {
+						// Inventory full or other error
+						d.Send(packetQuestActionResult(QuestActionInventoryFull, questID, npcID, nil))
+						return giveErr
+					}
+				}
+			case ai.Count < 0:
+				_ = d.removeItemsByID(ai.ID, -ai.Count)
+			}
+		}
+	}
+
+	return nil
 }
 
 // tryStartQuest validates NX Start requirements, starts quest, applies Act(0).
@@ -2127,7 +2195,19 @@ func (d *Player) tryStartQuest(questID int16) bool {
 	upsertQuestRecord(d.ID, questID, "")
 	d.Send(packetQuestUpdate(questID, ""))
 
-	d.applyQuestAct(q.ActOnStart)
+	// Apply quest start actions with error handling
+	if err := d.applyQuestAct(q.ActOnStart, q.Start.NPC, questID); err != nil {
+		// Quest action failed (e.g., inventory full)
+		return false
+	}
+
+	// Send success result
+	var nextQuests []int16
+	if q.ActOnStart.NextQuest != 0 {
+		nextQuests = append(nextQuests, q.ActOnStart.NextQuest)
+	}
+	d.Send(packetQuestActionResult(QuestActionSuccess, questID, q.Start.NPC, nextQuests))
+	
 	return true
 }
 
@@ -2155,11 +2235,23 @@ func (d *Player) tryCompleteQuest(questID int16) bool {
 	d.Send(packetQuestUpdate(questID, ""))
 	d.Send(packetQuestComplete(questID))
 
-	d.applyQuestAct(q.ActOnComplete)
+	// Apply quest completion actions with error handling
+	if err := d.applyQuestAct(q.ActOnComplete, q.Complete.NPC, questID); err != nil {
+		// Quest action failed (e.g., inventory full)
+		// Note: Quest is already marked as complete, but rewards weren't given
+		return false
+	}
 
+	// Handle next quest
+	var nextQuests []int16
 	if q.ActOnComplete.NextQuest != 0 {
+		nextQuests = append(nextQuests, q.ActOnComplete.NextQuest)
 		_ = d.tryStartQuest(q.ActOnComplete.NextQuest)
 	}
+
+	// Send success result
+	d.Send(packetQuestActionResult(QuestActionSuccess, questID, q.Complete.NPC, nextQuests))
+	
 	return true
 }
 

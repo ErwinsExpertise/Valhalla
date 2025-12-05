@@ -232,6 +232,30 @@ func packetQuestUpdateMobKills(questID int16, killStr string) mpacket.Packet {
 	return p
 }
 
+// Quest action result status codes
+const (
+	QuestActionSuccess                      byte = 4
+	QuestActionUnknownError                 byte = 5
+	QuestActionInventoryFull                byte = 6
+	QuestActionNotEnoughMesos               byte = 7
+	QuestActionFailedRetrieveEquippedItem   byte = 8
+	QuestActionCannotCarryMoreThanOne       byte = 9
+)
+
+func packetQuestActionResult(result byte, questID int16, npcID int32, nextQuests []int16) mpacket.Packet {
+	p := mpacket.CreateWithOpcode(opcode.SendChannelQuestActionResult)
+	p.WriteByte(result)
+	p.WriteInt16(questID)
+	if result == QuestActionSuccess {
+		p.WriteInt32(npcID)
+		for _, nextQuestID := range nextQuests {
+			p.WriteInt16(nextQuestID)
+		}
+		p.WriteInt16(0) // End of next quests
+	}
+	return p
+}
+
 // Login serialization
 func writeActiveQuests(p *mpacket.Packet, qs []quest) {
 	p.WriteInt16(int16(len(qs)))
