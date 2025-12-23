@@ -160,7 +160,7 @@ func (s *CashShopStorage) Load() error {
 		}
 		idx := int(slotNumber - 1)
 		s.items[idx] = csItem
-		if csItem.dbID != 0 && csItem.itemID != 0 {
+		if csItem.itemID != 0 {
 			s.totalSlotsUsed++
 		}
 	}
@@ -242,8 +242,8 @@ func (s *CashShopStorage) Save() (err error) {
 	return nil
 }
 
-// AddItem adds an item to cash shop storage
-func (s *CashShopStorage) AddItem(item channel.Item, sn int32) bool {
+// AddItem adds an item to cash shop storage and returns the slot it was added to
+func (s *CashShopStorage) AddItem(item channel.Item, sn int32) (int, bool) {
 	data := item.ExportData()
 	for i := 0; i < int(s.maxSlots); i++ {
 		if s.items[i].itemID != 0 {
@@ -278,9 +278,9 @@ func (s *CashShopStorage) AddItem(item channel.Item, sn int32) bool {
 			creatorName:  data.CreatorName,
 			invID:        data.InvID,
 		}
-		return true
+		return i, true
 	}
-	return false
+	return -1, false
 }
 
 // RemoveAt removes an item at the given index
@@ -330,5 +330,35 @@ func (s *CashShopStorage) GetItemBySlot(slot int16) (*CashShopItem, bool) {
 
 // ToItem converts a CashShopItem back to a channel.Item for giving to player
 func (csItem *CashShopItem) ToItem() (channel.Item, error) {
-	return channel.CreateItemFromID(csItem.itemID, csItem.amount)
+	// Create base item
+	item, err := channel.CreateItemFromID(csItem.itemID, csItem.amount)
+	if err != nil {
+		return item, err
+	}
+	
+	// Restore all the stored properties
+	data := item.ExportData()
+	data.Flag = csItem.flag
+	data.UpgradeSlots = csItem.upgradeSlots
+	data.ScrollLevel = csItem.scrollLevel
+	data.Str = csItem.str
+	data.Dex = csItem.dex
+	data.Intt = csItem.intt
+	data.Luk = csItem.luk
+	data.HP = csItem.hp
+	data.MP = csItem.mp
+	data.Watk = csItem.watk
+	data.Matk = csItem.matk
+	data.Wdef = csItem.wdef
+	data.Mdef = csItem.mdef
+	data.Accuracy = csItem.accuracy
+	data.Avoid = csItem.avoid
+	data.Hands = csItem.hands
+	data.Speed = csItem.speed
+	data.Jump = csItem.jump
+	data.ExpireTime = csItem.expireTime
+	data.CreatorName = csItem.creatorName
+	
+	// Use the helper to rebuild item from data
+	return channel.ItemFromExportedData(data)
 }

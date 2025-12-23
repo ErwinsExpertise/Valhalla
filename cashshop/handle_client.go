@@ -227,7 +227,8 @@ func (server *Server) playerCashShopPurchase(conn mnet.Client, reader mpacket.Re
 		}
 		
 		// Add item to storage instead of inventory
-		if !storage.AddItem(newItem, sn) {
+		slotIdx, added := storage.AddItem(newItem, sn)
+		if !added {
 			plr.Send(packetCashShopError(opcode.SendCashShopBuyFailed, constant.CashShopErrorExceededNumberOfCashItems))
 			return
 		}
@@ -253,12 +254,9 @@ func (server *Server) playerCashShopPurchase(conn mnet.Client, reader mpacket.Re
 
 		plr.Send(packetCashShopUpdateAmounts(plrNX, plrMaplePoints))
 		
-		// Send buy success packet with the item added to locker
-		items := storage.GetAllItems()
-		if len(items) > 0 {
-			lastItem := items[len(items)-1]
-			plr.Send(packetCashShopBuyDone(lastItem))
-		}
+		// Send buy success packet with the specific item that was just added
+		addedItem := storage.items[slotIdx]
+		plr.Send(packetCashShopBuyDone(addedItem))
 
 	case opcode.RecvCashShopBuyPackage, opcode.RecvCashShopGiftPackage:
 		currencySel := reader.ReadByte()
@@ -426,36 +424,46 @@ func (server *Server) playerCashShopPurchase(conn mnet.Client, reader mpacket.Re
 			return
 		}
 		
+		// Remove from storage first to prevent duplication
+		removedItem, ok := storage.RemoveAt(foundIdx)
+		if !ok {
+			log.Println("Failed to remove item from cash shop storage")
+			plr.Send(packetCashShopError(opcode.SendCashShopMoveLtoSFailed, constant.CashShopErrorUnknown))
+			return
+		}
+		
 		// Convert to Item for giving to player
-		item, convErr := foundItem.ToItem()
+		item, convErr := removedItem.ToItem()
 		if convErr != nil {
 			log.Println("Failed to convert cash shop item to item:", convErr)
+			// Try to add back to storage
+			storage.AddItem(item, removedItem.sn)
+			storage.Save()
 			plr.Send(packetCashShopError(opcode.SendCashShopMoveLtoSFailed, constant.CashShopErrorUnknown))
 			return
 		}
 		
 		// Try to give item to player
-		if err, givenItem := plr.GiveItem(item); err != nil {
+		err, givenItem := plr.GiveItem(item)
+		if err != nil {
+			// Failed to give, add back to storage
+			storage.AddItem(item, removedItem.sn)
+			if saveErr := storage.Save(); saveErr != nil {
+				log.Println("Failed to restore item to cash shop storage:", saveErr)
+			}
 			plr.Send(packetCashShopError(opcode.SendCashShopMoveLtoSFailed, constant.CashShopErrorCheckFullInventory))
 			return
-		} else {
-			// Remove from storage only after successfully giving to player
-			if _, ok := storage.RemoveAt(foundIdx); !ok {
-				log.Println("Failed to remove item from cash shop storage")
-				plr.Send(packetCashShopError(opcode.SendCashShopMoveLtoSFailed, constant.CashShopErrorUnknown))
-				return
-			}
-			
-			// Save storage
-			if saveErr := storage.Save(); saveErr != nil {
-				log.Println("Failed to save cash shop storage:", saveErr)
-				plr.Send(packetCashShopError(opcode.SendCashShopMoveLtoSFailed, constant.CashShopErrorUnknown))
-				return
-			}
-			
-			// Send success packet with the given item's slot
-			plr.Send(packetCashShopMoveLtoSDone(givenItem, givenItem.ExportData().SlotID))
 		}
+		
+		// Save storage after successful transfer
+		if saveErr := storage.Save(); saveErr != nil {
+			log.Println("Failed to save cash shop storage:", saveErr)
+			plr.Send(packetCashShopError(opcode.SendCashShopMoveLtoSFailed, constant.CashShopErrorUnknown))
+			return
+		}
+		
+		// Send success packet with the given item's slot
+		plr.Send(packetCashShopMoveLtoSDone(givenItem, givenItem.ExportData().SlotID))
 		
 	case opcode.RecvCashShopMoveStoL:
 		// Move from slot (inventory) to locker (storage)
@@ -485,7 +493,8 @@ func (server *Server) playerCashShopPurchase(conn mnet.Client, reader mpacket.Re
 		}
 		
 		// Add to storage (no SN for items moved from inventory)
-		if !storage.AddItem(takenItem, 0) {
+		slotIdx, added := storage.AddItem(takenItem, 0)
+		if !added {
 			// Failed to add, return item to player
 			plr.GiveItem(takenItem)
 			plr.Send(packetCashShopError(opcode.SendCashShopMoveStoLFailed, constant.CashShopErrorExceededNumberOfCashItems))
@@ -499,12 +508,9 @@ func (server *Server) playerCashShopPurchase(conn mnet.Client, reader mpacket.Re
 			return
 		}
 		
-		// Send success packet
-		items := storage.GetAllItems()
-		if len(items) > 0 {
-			lastItem := items[len(items)-1]
-			plr.Send(packetCashShopMoveStoLDone(lastItem))
-		}
+		// Send success packet with the specific item that was just added
+		addedItem := storage.items[slotIdx]
+		plr.Send(packetCashShopMoveStoLDone(addedItem))
 		
 	default:
 		log.Println("Unknown Cash Shop Packet(", sub, "): ", reader)

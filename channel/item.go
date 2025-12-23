@@ -650,6 +650,39 @@ func (v Item) ExportData() ExportedItemData {
 	}
 }
 
+// ItemFromExportedData creates an Item from exported data, preserving all properties
+func ItemFromExportedData(data ExportedItemData) (Item, error) {
+	// Create base item to get default stats and metadata
+	item, err := CreateItemFromID(data.ItemID, data.Amount)
+	if err != nil {
+		return item, err
+	}
+	
+	// Override with stored properties
+	item.flag = data.Flag
+	item.upgradeSlots = data.UpgradeSlots
+	item.scrollLevel = data.ScrollLevel
+	item.str = data.Str
+	item.dex = data.Dex
+	item.intt = data.Intt
+	item.luk = data.Luk
+	item.hp = data.HP
+	item.mp = data.MP
+	item.watk = data.Watk
+	item.matk = data.Matk
+	item.wdef = data.Wdef
+	item.mdef = data.Mdef
+	item.accuracy = data.Accuracy
+	item.avoid = data.Avoid
+	item.hands = data.Hands
+	item.speed = data.Speed
+	item.jump = data.Jump
+	item.expireTime = data.ExpireTime
+	item.creatorName = data.CreatorName
+	
+	return item, nil
+}
+
 func getItemType(itemID int32) int32 {
 	return itemID / 10000
 }
