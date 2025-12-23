@@ -155,7 +155,7 @@ func (s *CashShopStorage) Load() error {
 		
 		csItem.slotID = slotNumber
 
-		if slotNumber <= 0 || int(slotNumber) > len(s.items) {
+		if slotNumber <= 0 || slotNumber > int16(s.maxSlots) {
 			continue
 		}
 		idx := int(slotNumber - 1)
