@@ -592,6 +592,64 @@ func (v *Item) incrementScrollCount() {
 	v.scrollLevel++
 }
 
+// ExportedItemData contains exported item data for use by other packages
+type ExportedItemData struct {
+	ItemID       int32
+	InvID        byte
+	SlotID       int16
+	Amount       int16
+	Flag         int16
+	UpgradeSlots byte
+	ScrollLevel  byte
+	Str          int16
+	Dex          int16
+	Intt         int16
+	Luk          int16
+	HP           int16
+	MP           int16
+	Watk         int16
+	Matk         int16
+	Wdef         int16
+	Mdef         int16
+	Accuracy     int16
+	Avoid        int16
+	Hands        int16
+	Speed        int16
+	Jump         int16
+	ExpireTime   int64
+	CreatorName  string
+}
+
+// ExportData exports item data for use by other packages
+func (v Item) ExportData() ExportedItemData {
+	return ExportedItemData{
+		ItemID:       v.ID,
+		InvID:        v.invID,
+		SlotID:       v.slotID,
+		Amount:       v.amount,
+		Flag:         v.flag,
+		UpgradeSlots: v.upgradeSlots,
+		ScrollLevel:  v.scrollLevel,
+		Str:          v.str,
+		Dex:          v.dex,
+		Intt:         v.intt,
+		Luk:          v.luk,
+		HP:           v.hp,
+		MP:           v.mp,
+		Watk:         v.watk,
+		Matk:         v.matk,
+		Wdef:         v.wdef,
+		Mdef:         v.mdef,
+		Accuracy:     v.accuracy,
+		Avoid:        v.avoid,
+		Hands:        v.hands,
+		Speed:        v.speed,
+		Jump:         v.jump,
+		ExpireTime:   v.expireTime,
+		CreatorName:  v.creatorName,
+	}
+}
+
 func getItemType(itemID int32) int32 {
 	return itemID / 10000
 }

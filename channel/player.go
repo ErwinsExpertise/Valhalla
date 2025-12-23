@@ -1185,6 +1185,11 @@ func (d *Player) takeItem(id int32, slot int16, amount int16, invID byte) (Item,
 
 }
 
+// TakeItem removes an item from the player's inventory (exported for use by other packages)
+func (d *Player) TakeItem(id int32, slot int16, amount int16, invID byte) (Item, error) {
+	return d.takeItem(id, slot, amount, invID)
+}
+
 func (d Player) updateItemStack(item Item) {
 	item.save(d.ID)
 	d.updateItem(item)
