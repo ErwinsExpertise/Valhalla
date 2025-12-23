@@ -220,12 +220,6 @@ func (server *Server) playerCashShopPurchase(conn mnet.Client, reader mpacket.Re
 			return
 		}
 		
-		// Check if storage has space
-		if !storage.SlotsAvailable() {
-			plr.Send(packetCashShopError(opcode.SendCashShopBuyFailed, constant.CashShopErrorExceededNumberOfCashItems))
-			return
-		}
-		
 		// Add item to storage instead of inventory
 		slotIdx, added := storage.AddItem(newItem, sn)
 		if !added {
@@ -437,8 +431,13 @@ func (server *Server) playerCashShopPurchase(conn mnet.Client, reader mpacket.Re
 		if convErr != nil {
 			log.Println("Failed to convert cash shop item to item:", convErr)
 			// Try to add back to storage
-			storage.AddItem(item, removedItem.sn)
-			storage.Save()
+			if _, restored := storage.AddItem(item, removedItem.sn); !restored {
+				log.Println("CRITICAL: Failed to restore item to cash shop storage after conversion error. Item may be lost.")
+			} else {
+				if saveErr := storage.Save(); saveErr != nil {
+					log.Println("Failed to save restored item to cash shop storage:", saveErr)
+				}
+			}
 			plr.Send(packetCashShopError(opcode.SendCashShopMoveLtoSFailed, constant.CashShopErrorUnknown))
 			return
 		}
@@ -447,9 +446,12 @@ func (server *Server) playerCashShopPurchase(conn mnet.Client, reader mpacket.Re
 		err, givenItem := plr.GiveItem(item)
 		if err != nil {
 			// Failed to give, add back to storage
-			storage.AddItem(item, removedItem.sn)
-			if saveErr := storage.Save(); saveErr != nil {
-				log.Println("Failed to restore item to cash shop storage:", saveErr)
+			if _, restored := storage.AddItem(item, removedItem.sn); !restored {
+				log.Println("CRITICAL: Failed to restore item to cash shop storage after GiveItem failure. Item may be lost.")
+			} else {
+				if saveErr := storage.Save(); saveErr != nil {
+					log.Println("Failed to save restored item to cash shop storage:", saveErr)
+				}
 			}
 			plr.Send(packetCashShopError(opcode.SendCashShopMoveLtoSFailed, constant.CashShopErrorCheckFullInventory))
 			return
@@ -478,12 +480,6 @@ func (server *Server) playerCashShopPurchase(conn mnet.Client, reader mpacket.Re
 			return
 		}
 		
-		// Check if storage has space
-		if !storage.SlotsAvailable() {
-			plr.Send(packetCashShopError(opcode.SendCashShopMoveStoLFailed, constant.CashShopErrorExceededNumberOfCashItems))
-			return
-		}
-		
 		// Take the item from inventory (1 at a time for cash items)
 		takenItem, takeErr := plr.TakeItem(itemID, invSlot, 1, invType)
 		if takeErr != nil {
@@ -496,7 +492,9 @@ func (server *Server) playerCashShopPurchase(conn mnet.Client, reader mpacket.Re
 		slotIdx, added := storage.AddItem(takenItem, 0)
 		if !added {
 			// Failed to add, return item to player
-			plr.GiveItem(takenItem)
+			if err, _ := plr.GiveItem(takenItem); err != nil {
+				log.Println("CRITICAL: Failed to return item to player after storage add failure. Item may be lost.")
+			}
 			plr.Send(packetCashShopError(opcode.SendCashShopMoveStoLFailed, constant.CashShopErrorExceededNumberOfCashItems))
 			return
 		}

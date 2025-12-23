@@ -242,7 +242,7 @@ func (s *CashShopStorage) Save() (err error) {
 	return nil
 }
 
-// AddItem adds an item to cash shop storage and returns the slot it was added to
+// AddItem adds an item to cash shop storage and returns the array index (0-based) where it was added
 func (s *CashShopStorage) AddItem(item channel.Item, sn int32) (int, bool) {
 	data := item.ExportData()
 	for i := 0; i < int(s.maxSlots); i++ {
