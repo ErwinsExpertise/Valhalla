@@ -852,7 +852,7 @@ func (r *tradeRoom) completeTrade() {
 		}
 
 		undo = append(undo, func() {
-			if _, err := p1.takeItem(gi.ID, gi.slotID, gi.amount, gi.invID); err != nil {
+			if _, err := p1.TakeItem(gi.ID, gi.slotID, gi.amount, gi.invID); err != nil {
 				log.Printf("Trade rollback warning: failed to remove item %v from %s: %v", gi.ID, p1.Name, err)
 			}
 		})
@@ -867,7 +867,7 @@ func (r *tradeRoom) completeTrade() {
 		}
 
 		undo = append(undo, func() {
-			if _, err := p2.takeItem(gi.ID, gi.slotID, gi.amount, gi.invID); err != nil {
+			if _, err := p2.TakeItem(gi.ID, gi.slotID, gi.amount, gi.invID); err != nil {
 				log.Printf("Trade rollback warning: failed to remove item %v from %s: %v", gi.ID, p2.Name, err)
 			}
 		})

@@ -25,35 +25,10 @@ type CashShopStorage struct {
 
 // CashShopItem represents an item in the cash shop storage
 type CashShopItem struct {
-	dbID      int64
-	itemID    int32
-	sn        int32 // serial number from commodity
-	slotID    int16
-	amount    int16
-	purchased int64 // unix timestamp
-	
-	// Item properties
-	flag         int16
-	upgradeSlots byte
-	scrollLevel  byte
-	str          int16
-	dex          int16
-	intt         int16
-	luk          int16
-	hp           int16
-	mp           int16
-	watk         int16
-	matk         int16
-	wdef         int16
-	mdef         int16
-	accuracy     int16
-	avoid        int16
-	hands        int16
-	speed        int16
-	jump         int16
-	expireTime   int64
-	creatorName  string
-	invID        byte
+	dbID      int64         // Database ID for this cash shop item entry
+	sn        int32         // Serial number from commodity
+	purchased int64         // Unix timestamp of purchase
+	item      channel.Item  // The actual item
 }
 
 func clampByte(v, min, max byte) byte {
@@ -133,34 +108,55 @@ func (s *CashShopStorage) Load() error {
 
 	for rows.Next() {
 		var csItem CashShopItem
-		var creator sql.NullString
+		var creatorName sql.NullString
 		var slotNumber int16
+		var itemID int32
+		var amount int16
+		var flag int16
+		var upgradeSlots byte
+		var scrollLevel byte
+		var str, dex, intt, luk, hp, mp int16
+		var watk, matk, wdef, mdef int16
+		var accuracy, avoid, hands, speed, jump int16
+		var expireTime int64
 		
 		if err := rows.Scan(
-			&csItem.dbID, &csItem.itemID, &csItem.sn, &slotNumber, &csItem.amount,
-			&csItem.flag, &csItem.upgradeSlots, &csItem.scrollLevel,
-			&csItem.str, &csItem.dex, &csItem.intt, &csItem.luk,
-			&csItem.hp, &csItem.mp, &csItem.watk, &csItem.matk,
-			&csItem.wdef, &csItem.mdef, &csItem.accuracy, &csItem.avoid,
-			&csItem.hands, &csItem.speed, &csItem.jump,
-			&csItem.expireTime, &creator, &csItem.purchased,
+			&csItem.dbID, &itemID, &csItem.sn, &slotNumber, &amount,
+			&flag, &upgradeSlots, &scrollLevel,
+			&str, &dex, &intt, &luk,
+			&hp, &mp, &watk, &matk,
+			&wdef, &mdef, &accuracy, &avoid,
+			&hands, &speed, &jump,
+			&expireTime, &creatorName, &csItem.purchased,
 		); err != nil {
 			log.Println("Error scanning cash shop storage item:", err)
 			continue
 		}
 		
-		if creator.Valid {
-			csItem.creatorName = creator.String
+		// Create the item using the new helper function
+		var creator string
+		if creatorName.Valid {
+			creator = creatorName.String
 		}
 		
-		csItem.slotID = slotNumber
+		item, ierr := channel.CreateItemFromDBValues(
+			itemID, slotNumber, amount, flag, upgradeSlots, scrollLevel,
+			str, dex, intt, luk, hp, mp, watk, matk, wdef, mdef,
+			accuracy, avoid, hands, speed, jump, expireTime, creator,
+		)
+		if ierr != nil {
+			log.Println("Error creating item from DB values:", ierr)
+			continue
+		}
+		
+		csItem.item = item
 
 		if slotNumber <= 0 || slotNumber > int16(s.maxSlots) {
 			continue
 		}
 		idx := int(slotNumber - 1)
 		s.items[idx] = csItem
-		if csItem.itemID != 0 {
+		if itemID != 0 {
 			s.totalSlotsUsed++
 		}
 	}
@@ -215,21 +211,21 @@ func (s *CashShopStorage) Save() (err error) {
 
 	for i := range s.items {
 		csItem := s.items[i]
-		if csItem.itemID == 0 || csItem.amount == 0 {
+		if csItem.item.GetID() == 0 || csItem.item.GetAmount() == 0 {
 			continue
 		}
 
 		slotNumber := int16(i + 1)
 		if _, ierr := stmt.Exec(
-			s.accountID, csItem.itemID, csItem.sn, slotNumber, csItem.amount,
-			csItem.flag, csItem.upgradeSlots, csItem.scrollLevel,
-			csItem.str, csItem.dex, csItem.intt, csItem.luk,
-			csItem.hp, csItem.mp, csItem.watk, csItem.matk,
-			csItem.wdef, csItem.mdef, csItem.accuracy, csItem.avoid,
-			csItem.hands, csItem.speed, csItem.jump,
-			csItem.expireTime, csItem.creatorName,
+			s.accountID, csItem.item.GetID(), csItem.sn, slotNumber, csItem.item.GetAmount(),
+			csItem.item.GetFlag(), csItem.item.GetUpgradeSlots(), csItem.item.GetScrollLevel(),
+			csItem.item.GetStr(), csItem.item.GetDex(), csItem.item.GetIntt(), csItem.item.GetLuk(),
+			csItem.item.GetHP(), csItem.item.GetMP(), csItem.item.GetWatk(), csItem.item.GetMatk(),
+			csItem.item.GetWdef(), csItem.item.GetMdef(), csItem.item.GetAccuracy(), csItem.item.GetAvoid(),
+			csItem.item.GetHands(), csItem.item.GetSpeed(), csItem.item.GetJump(),
+			csItem.item.GetExpireTime(), csItem.item.GetCreatorName(),
 		); ierr != nil {
-			err = fmt.Errorf("failed inserting cash shop item %d (acct %d, slot %d): %w", csItem.itemID, s.accountID, slotNumber, ierr)
+			err = fmt.Errorf("failed inserting cash shop item %d (acct %d, slot %d): %w", csItem.item.GetID(), s.accountID, slotNumber, ierr)
 			return
 		}
 	}
@@ -244,39 +240,14 @@ func (s *CashShopStorage) Save() (err error) {
 
 // AddItem adds an item to cash shop storage and returns the array index (0-based) where it was added
 func (s *CashShopStorage) AddItem(item channel.Item, sn int32) (int, bool) {
-	data := item.ExportData()
 	for i := 0; i < int(s.maxSlots); i++ {
-		if s.items[i].itemID != 0 {
+		if s.items[i].item.GetID() != 0 {
 			continue
 		}
 		s.totalSlotsUsed++
-		slotID := int16(i + 1)
 		s.items[i] = CashShopItem{
-			itemID:       data.ItemID,
-			sn:           sn,
-			slotID:       slotID,
-			amount:       data.Amount,
-			flag:         data.Flag,
-			upgradeSlots: data.UpgradeSlots,
-			scrollLevel:  data.ScrollLevel,
-			str:          data.Str,
-			dex:          data.Dex,
-			intt:         data.Intt,
-			luk:          data.Luk,
-			hp:           data.HP,
-			mp:           data.MP,
-			watk:         data.Watk,
-			matk:         data.Matk,
-			wdef:         data.Wdef,
-			mdef:         data.Mdef,
-			accuracy:     data.Accuracy,
-			avoid:        data.Avoid,
-			hands:        data.Hands,
-			speed:        data.Speed,
-			jump:         data.Jump,
-			expireTime:   data.ExpireTime,
-			creatorName:  data.CreatorName,
-			invID:        data.InvID,
+			sn:   sn,
+			item: item,
 		}
 		return i, true
 	}
@@ -288,7 +259,7 @@ func (s *CashShopStorage) RemoveAt(idx int) (*CashShopItem, bool) {
 	if idx < 0 || idx >= int(s.maxSlots) {
 		return nil, false
 	}
-	if s.items[idx].itemID == 0 {
+	if s.items[idx].item.GetID() == 0 {
 		return nil, false
 	}
 
@@ -304,7 +275,7 @@ func (s *CashShopStorage) RemoveAt(idx int) (*CashShopItem, bool) {
 func (s *CashShopStorage) GetAllItems() []CashShopItem {
 	out := make([]CashShopItem, 0, s.totalSlotsUsed)
 	for i := range s.items {
-		if s.items[i].itemID != 0 {
+		if s.items[i].item.GetID() != 0 {
 			out = append(out, s.items[i])
 		}
 	}
@@ -322,43 +293,8 @@ func (s *CashShopStorage) GetItemBySlot(slot int16) (*CashShopItem, bool) {
 		return nil, false
 	}
 	idx := int(slot - 1)
-	if s.items[idx].itemID == 0 {
+	if s.items[idx].item.GetID() == 0 {
 		return nil, false
 	}
 	return &s.items[idx], true
-}
-
-// ToItem converts a CashShopItem back to a channel.Item for giving to player
-func (csItem *CashShopItem) ToItem() (channel.Item, error) {
-	// Create base item
-	item, err := channel.CreateItemFromID(csItem.itemID, csItem.amount)
-	if err != nil {
-		return item, err
-	}
-	
-	// Restore all the stored properties
-	data := item.ExportData()
-	data.Flag = csItem.flag
-	data.UpgradeSlots = csItem.upgradeSlots
-	data.ScrollLevel = csItem.scrollLevel
-	data.Str = csItem.str
-	data.Dex = csItem.dex
-	data.Intt = csItem.intt
-	data.Luk = csItem.luk
-	data.HP = csItem.hp
-	data.MP = csItem.mp
-	data.Watk = csItem.watk
-	data.Matk = csItem.matk
-	data.Wdef = csItem.wdef
-	data.Mdef = csItem.mdef
-	data.Accuracy = csItem.accuracy
-	data.Avoid = csItem.avoid
-	data.Hands = csItem.hands
-	data.Speed = csItem.speed
-	data.Jump = csItem.jump
-	data.ExpireTime = csItem.expireTime
-	data.CreatorName = csItem.creatorName
-	
-	// Use the helper to rebuild item from data
-	return channel.ItemFromExportedData(data)
 }

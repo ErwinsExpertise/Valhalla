@@ -426,21 +426,8 @@ func (server *Server) playerCashShopPurchase(conn mnet.Client, reader mpacket.Re
 			return
 		}
 		
-		// Convert to Item for giving to player
-		item, convErr := removedItem.ToItem()
-		if convErr != nil {
-			log.Println("Failed to convert cash shop item to item:", convErr)
-			// Restore the removed item back to storage at the same slot
-			storage.items[foundIdx] = *removedItem
-			storage.totalSlotsUsed++
-			if saveErr := storage.Save(); saveErr != nil {
-				log.Println("CRITICAL: Failed to save restored item to cash shop storage:", saveErr)
-			}
-			plr.Send(packetCashShopError(opcode.SendCashShopMoveLtoSFailed, constant.CashShopErrorUnknown))
-			return
-		}
-		
-		// Try to give item to player
+		// Try to give item to player (use the item directly from storage)
+		item := removedItem.item
 		err, givenItem := plr.GiveItem(item)
 		if err != nil {
 			// Failed to give, add back to storage
@@ -463,7 +450,7 @@ func (server *Server) playerCashShopPurchase(conn mnet.Client, reader mpacket.Re
 		}
 		
 		// Send success packet with the given item's slot
-		plr.Send(packetCashShopMoveLtoSDone(givenItem, givenItem.ExportData().SlotID))
+		plr.Send(packetCashShopMoveLtoSDone(givenItem, givenItem.GetSlotID()))
 		
 	case opcode.RecvCashShopMoveStoL:
 		// Move from slot (inventory) to locker (storage)

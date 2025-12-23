@@ -362,6 +362,31 @@ func (v *Item) setSlots(slots int) {
 	v.upgradeSlots = byte(slots)
 }
 
+// Getter methods for cash shop storage access
+func (v Item) GetID() int32          { return v.ID }
+func (v Item) GetSlotID() int16      { return v.slotID }
+func (v Item) GetAmount() int16      { return v.amount }
+func (v Item) GetFlag() int16        { return v.flag }
+func (v Item) GetUpgradeSlots() byte { return v.upgradeSlots }
+func (v Item) GetScrollLevel() byte  { return v.scrollLevel }
+func (v Item) GetStr() int16         { return v.str }
+func (v Item) GetDex() int16         { return v.dex }
+func (v Item) GetIntt() int16        { return v.intt }
+func (v Item) GetLuk() int16         { return v.luk }
+func (v Item) GetHP() int16          { return v.hp }
+func (v Item) GetMP() int16          { return v.mp }
+func (v Item) GetWatk() int16        { return v.watk }
+func (v Item) GetMatk() int16        { return v.matk }
+func (v Item) GetWdef() int16        { return v.wdef }
+func (v Item) GetMdef() int16        { return v.mdef }
+func (v Item) GetAccuracy() int16    { return v.accuracy }
+func (v Item) GetAvoid() int16       { return v.avoid }
+func (v Item) GetHands() int16       { return v.hands }
+func (v Item) GetSpeed() int16       { return v.speed }
+func (v Item) GetJump() int16        { return v.jump }
+func (v Item) GetExpireTime() int64  { return v.expireTime }
+func (v Item) GetCreatorName() string { return v.creatorName }
+
 func (v Item) isRechargeable() bool {
 	return float64(v.ID/10000) == 207 // Taken from client
 }
@@ -592,93 +617,40 @@ func (v *Item) incrementScrollCount() {
 	v.scrollLevel++
 }
 
-// ExportedItemData contains exported item data for use by other packages
-type ExportedItemData struct {
-	ItemID       int32
-	InvID        byte
-	SlotID       int16
-	Amount       int16
-	Flag         int16
-	UpgradeSlots byte
-	ScrollLevel  byte
-	Str          int16
-	Dex          int16
-	Intt         int16
-	Luk          int16
-	HP           int16
-	MP           int16
-	Watk         int16
-	Matk         int16
-	Wdef         int16
-	Mdef         int16
-	Accuracy     int16
-	Avoid        int16
-	Hands        int16
-	Speed        int16
-	Jump         int16
-	ExpireTime   int64
-	CreatorName  string
-}
-
-// ExportData exports item data for use by other packages
-func (v Item) ExportData() ExportedItemData {
-	return ExportedItemData{
-		ItemID:       v.ID,
-		InvID:        v.invID,
-		SlotID:       v.slotID,
-		Amount:       v.amount,
-		Flag:         v.flag,
-		UpgradeSlots: v.upgradeSlots,
-		ScrollLevel:  v.scrollLevel,
-		Str:          v.str,
-		Dex:          v.dex,
-		Intt:         v.intt,
-		Luk:          v.luk,
-		HP:           v.hp,
-		MP:           v.mp,
-		Watk:         v.watk,
-		Matk:         v.matk,
-		Wdef:         v.wdef,
-		Mdef:         v.mdef,
-		Accuracy:     v.accuracy,
-		Avoid:        v.avoid,
-		Hands:        v.hands,
-		Speed:        v.speed,
-		Jump:         v.jump,
-		ExpireTime:   v.expireTime,
-		CreatorName:  v.creatorName,
-	}
-}
-
-// ItemFromExportedData creates an Item from exported data, preserving all properties
-func ItemFromExportedData(data ExportedItemData) (Item, error) {
-	// Create base item to get default stats and metadata
-	item, err := CreateItemFromID(data.ItemID, data.Amount)
+// CreateItemFromDBValues creates an Item from database values, used for loading saved items
+// This preserves all stat modifications, scrolls, etc. from the database
+func CreateItemFromDBValues(itemID int32, slotID int16, amount int16, flag int16, upgradeSlots, scrollLevel byte,
+	str, dex, intt, luk, hp, mp, watk, matk, wdef, mdef, accuracy, avoid, hands, speed, jump int16,
+	expireTime int64, creatorName string) (Item, error) {
+	
+	// Create base item to get metadata
+	item, err := CreateItemFromID(itemID, amount)
 	if err != nil {
 		return item, err
 	}
 	
-	// Override with stored properties
-	item.flag = data.Flag
-	item.upgradeSlots = data.UpgradeSlots
-	item.scrollLevel = data.ScrollLevel
-	item.str = data.Str
-	item.dex = data.Dex
-	item.intt = data.Intt
-	item.luk = data.Luk
-	item.hp = data.HP
-	item.mp = data.MP
-	item.watk = data.Watk
-	item.matk = data.Matk
-	item.wdef = data.Wdef
-	item.mdef = data.Mdef
-	item.accuracy = data.Accuracy
-	item.avoid = data.Avoid
-	item.hands = data.Hands
-	item.speed = data.Speed
-	item.jump = data.Jump
-	item.expireTime = data.ExpireTime
-	item.creatorName = data.CreatorName
+	// Override with saved stat values
+	item.slotID = slotID
+	item.flag = flag
+	item.upgradeSlots = upgradeSlots
+	item.scrollLevel = scrollLevel
+	item.str = str
+	item.dex = dex
+	item.intt = intt
+	item.luk = luk
+	item.hp = hp
+	item.mp = mp
+	item.watk = watk
+	item.matk = matk
+	item.wdef = wdef
+	item.mdef = mdef
+	item.accuracy = accuracy
+	item.avoid = avoid
+	item.hands = hands
+	item.speed = speed
+	item.jump = jump
+	item.expireTime = expireTime
+	item.creatorName = creatorName
 	
 	return item, nil
 }

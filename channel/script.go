@@ -406,7 +406,7 @@ func (ctrl *scriptPlayerWrapper) ForfeitQuest(id int16) {
 }
 
 func (ctrl *scriptPlayerWrapper) TakeItem(id int32, slot int16, amount int16, invID byte) bool {
-	_, err := ctrl.plr.takeItem(id, slot, amount, invID)
+	_, err := ctrl.plr.TakeItem(id, slot, amount, invID)
 	return err == nil
 }
 

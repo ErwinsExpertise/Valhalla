@@ -1154,7 +1154,8 @@ func (d *Player) GiveItem(newItem Item) (error, Item) { // TODO: Refactor
 	return nil, newItem
 }
 
-func (d *Player) takeItem(id int32, slot int16, amount int16, invID byte) (Item, error) {
+// TakeItem removes an item from the player's inventory
+func (d *Player) TakeItem(id int32, slot int16, amount int16, invID byte) (Item, error) {
 	item, err := d.getItem(invID, slot)
 	if err != nil {
 		return item, fmt.Errorf("item not found at inv=%d slot=%d", invID, slot)
@@ -1183,11 +1184,6 @@ func (d *Player) takeItem(id int32, slot int16, amount int16, invID byte) (Item,
 
 	return item, nil
 
-}
-
-// TakeItem removes an item from the player's inventory (exported for use by other packages)
-func (d *Player) TakeItem(id int32, slot int16, amount int16, invID byte) (Item, error) {
-	return d.takeItem(id, slot, amount, invID)
 }
 
 func (d Player) updateItemStack(item Item) {
@@ -1365,7 +1361,7 @@ func (d *Player) moveItem(start, end, amount int16, invID byte) error {
 		if item.isRechargeable() && item.amount == 0 {
 			d.removeItem(item)
 		} else {
-			takenItem, err := d.takeItem(item.ID, item.slotID, amount, item.invID)
+			takenItem, err := d.TakeItem(item.ID, item.slotID, amount, item.invID)
 			if err != nil {
 				return fmt.Errorf("unable to take Item")
 			}
@@ -1547,7 +1543,7 @@ func (d *Player) consumeItemsByID(itemID int32, reqCount int32) bool {
 			if int32(take) > remaining {
 				take = int16(remaining)
 			}
-			if _, err := d.takeItem(itemID, it.slotID, take, invID); err == nil {
+			if _, err := d.TakeItem(itemID, it.slotID, take, invID); err == nil {
 				remaining -= int32(take)
 			}
 		}
@@ -2254,7 +2250,7 @@ func (d *Player) removeItemsByID(itemID int32, reqCount int32) bool {
 			if int32(take) > remaining {
 				take = int16(remaining)
 			}
-			if _, err := d.takeItem(itemID, it.slotID, take, invID); err == nil {
+			if _, err := d.TakeItem(itemID, it.slotID, take, invID); err == nil {
 				remaining -= int32(take)
 			}
 		}

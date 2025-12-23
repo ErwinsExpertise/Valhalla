@@ -1345,7 +1345,7 @@ func (server Server) playerUseInventoryItem(conn mnet.Client, reader mpacket.Rea
 	slot := reader.ReadInt16()
 	itemid := reader.ReadInt32()
 
-	item, err := plr.takeItem(itemid, slot, 1, 2)
+	item, err := plr.TakeItem(itemid, slot, 1, 2)
 	if err != nil {
 		log.Println(err)
 	}
@@ -1443,7 +1443,7 @@ func (server *Server) playerUseReturnScroll(conn mnet.Client, reader mpacket.Rea
 	}
 
 	// Consume one scroll from the specified slot in 'use' inventory (invID 2)
-	if _, err := plr.takeItem(itemID, slot, 1, 2); err != nil {
+	if _, err := plr.TakeItem(itemID, slot, 1, 2); err != nil {
 		// If we fail to consume, do not warp
 		plr.Send(packetPlayerNoChange())
 		return
@@ -1491,7 +1491,7 @@ func (server *Server) playerUseScroll(conn mnet.Client, reader mpacket.Reader) {
 	}
 
 	// Consume scroll
-	if _, err := plr.takeItem(scroll.ID, scrollSlot, 1, 2); err != nil {
+	if _, err := plr.TakeItem(scroll.ID, scrollSlot, 1, 2); err != nil {
 		plr.Send(packetPlayerNoChange())
 		return
 	}
@@ -1733,7 +1733,7 @@ func (server *Server) playerUseCash(conn mnet.Client, reader mpacket.Reader) {
 	}
 
 	if used {
-		if _, err = plr.takeItem(itemID, slot, 1, 5); err != nil {
+		if _, err = plr.TakeItem(itemID, slot, 1, 5); err != nil {
 			log.Println(err)
 			return
 		}
@@ -3063,7 +3063,7 @@ func (server *Server) npcShop(conn mnet.Client, reader mpacket.Reader) {
 			sellAmount = useItem.amount
 		}
 
-		if _, remErr := plr.takeItem(itemID, slotPos, sellAmount, invID); remErr != nil {
+		if _, remErr := plr.TakeItem(itemID, slotPos, sellAmount, invID); remErr != nil {
 			plr.Send(packetNpcShopResult(shopSellIncorrectRequest))
 			return
 		}
@@ -3364,7 +3364,7 @@ func (server Server) roomWindow(conn mnet.Client, reader mpacket.Reader) {
 			amount = item.amount
 		}
 
-		_, err = plr.takeItem(item.ID, invSlot, amount, invType)
+		_, err = plr.TakeItem(item.ID, invSlot, amount, invType)
 		if err != nil {
 			plr.Send(packetPlayerNoChange())
 			return
@@ -3876,7 +3876,7 @@ func (server *Server) playerUseSack(conn mnet.Client, reader mpacket.Reader) {
 		return
 	}
 
-	sack, err := plr.takeItem(itemID, slot, 1, 2)
+	sack, err := plr.TakeItem(itemID, slot, 1, 2)
 
 	if err != nil {
 		log.Println("Could not find sack")
@@ -4565,7 +4565,7 @@ func (server *Server) playerUseStorage(conn mnet.Client, reader mpacket.Reader) 
 		storeCopy.dbID = 0
 		storeCopy.slotID = 0
 
-		if _, remErr := plr.takeItem(itemID, srcSlot, amt, tab); remErr != nil {
+		if _, remErr := plr.TakeItem(itemID, srcSlot, amt, tab); remErr != nil {
 			plr.Send(packetNpcStorageResult(storageDueToAnError))
 			return
 		}

@@ -142,12 +142,12 @@ func packetCashShopLoadLocker(storage *CashShopStorage) mpacket.Packet {
 	p.WriteInt16(int16(len(items)))
 	
 	for _, csItem := range items {
-		p.WriteInt64(int64(csItem.dbID)) // Unique cash item ID
-		p.WriteInt32(csItem.sn)          // Serial number
-		p.WriteInt32(csItem.itemID)      // Item ID
-		p.WriteInt16(csItem.amount)      // Quantity
-		p.WriteString("")                // Gift message (empty for non-gifts)
-		p.WriteInt64(0)                  // Expiration time (0 for non-expiring)
+		p.WriteInt64(int64(csItem.dbID))       // Unique cash item ID
+		p.WriteInt32(csItem.sn)                // Serial number
+		p.WriteInt32(csItem.item.GetID())      // Item ID
+		p.WriteInt16(csItem.item.GetAmount())  // Quantity
+		p.WriteString("")                      // Gift message (empty for non-gifts)
+		p.WriteInt64(0)                        // Expiration time (0 for non-expiring)
 	}
 	
 	p.WriteInt16(int16(storage.maxSlots)) // Storage capacity
@@ -166,24 +166,24 @@ func packetCashShopMoveLtoSDone(item channel.Item, slot int16) mpacket.Packet {
 func packetCashShopMoveStoLDone(csItem CashShopItem) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelCSAction)
 	p.WriteByte(opcode.SendCashShopMoveStoLDone)
-	p.WriteInt64(int64(csItem.dbID)) // Unique cash item ID
-	p.WriteInt32(csItem.sn)          // Serial number
-	p.WriteInt32(csItem.itemID)      // Item ID
-	p.WriteInt16(csItem.amount)      // Quantity
-	p.WriteString("")                // Gift message
-	p.WriteInt64(0)                  // Expiration time
+	p.WriteInt64(int64(csItem.dbID))       // Unique cash item ID
+	p.WriteInt32(csItem.sn)                // Serial number
+	p.WriteInt32(csItem.item.GetID())      // Item ID
+	p.WriteInt16(csItem.item.GetAmount())  // Quantity
+	p.WriteString("")                      // Gift message
+	p.WriteInt64(0)                        // Expiration time
 	return p
 }
 
 func packetCashShopBuyDone(csItem CashShopItem) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelCSAction)
 	p.WriteByte(opcode.SendCashShopBuyDone)
-	p.WriteInt64(int64(csItem.dbID)) // Unique cash item ID
-	p.WriteInt32(csItem.sn)          // Serial number
-	p.WriteInt32(csItem.itemID)      // Item ID
-	p.WriteInt16(csItem.amount)      // Quantity
-	p.WriteString("")                // Gift message (empty for purchases)
-	p.WriteInt64(0)                  // Expiration time (0 for non-expiring)
+	p.WriteInt64(int64(csItem.dbID))       // Unique cash item ID
+	p.WriteInt32(csItem.sn)                // Serial number
+	p.WriteInt32(csItem.item.GetID())      // Item ID
+	p.WriteInt16(csItem.item.GetAmount())  // Quantity
+	p.WriteString("")                      // Gift message (empty for purchases)
+	p.WriteInt64(0)                        // Expiration time (0 for non-expiring)
 	return p
 }
 
