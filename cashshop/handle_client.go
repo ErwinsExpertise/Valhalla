@@ -250,8 +250,10 @@ func (server *Server) handleCashShopOperation(conn mnet.Client, reader mpacket.R
 		plr.Send(packetCashShopUpdateAmounts(plrNX, plrMaplePoints))
 
 		// Send buy success packet with the specific item that was just added
-		addedItem := storage.items[slotIdx]
-		plr.Send(packetCashShopBuyDone(addedItem))
+		addedItem, ok := storage.GetItemBySlot(int16(slotIdx + 1))
+		if ok {
+			plr.Send(packetCashShopBuyDone(*addedItem))
+		}
 
 	case opcode.RecvCashShopBuyPackage, opcode.RecvCashShopGiftPackage:
 		currencySel := reader.ReadByte()
@@ -455,9 +457,8 @@ func (server *Server) handleCashShopOperation(conn mnet.Client, reader mpacket.R
 
 	case opcode.RecvCashShopMoveStoL:
 		// Move from slot (inventory) to locker (storage)
-		itemID := reader.ReadInt32()  // Item ID
-		invType := reader.ReadByte()  // Inventory type
 		invSlot := reader.ReadInt16() // Inventory slot
+		invType := reader.ReadByte()  // Inventory type
 
 		storage, storageErr := server.GetOrLoadStorage(conn.GetAccountID())
 		if storageErr != nil {
@@ -465,6 +466,16 @@ func (server *Server) handleCashShopOperation(conn mnet.Client, reader mpacket.R
 			plr.Send(packetCashShopError(opcode.SendCashShopMoveStoLFailed, constant.CashShopErrorUnknown))
 			return
 		}
+
+		// Get the item from inventory to find its ID
+		item, getErr := plr.GetItem(invType, invSlot)
+		if getErr != nil {
+			log.Println("Failed to get item from inventory:", getErr)
+			plr.Send(packetCashShopError(opcode.SendCashShopMoveStoLFailed, constant.CashShopErrorUnknown))
+			return
+		}
+
+		itemID := item.GetID()
 
 		// Take the item from inventory (1 at a time for cash items)
 		takenItem, takeErr := plr.TakeItem(itemID, invSlot, 1, invType)
@@ -493,8 +504,10 @@ func (server *Server) handleCashShopOperation(conn mnet.Client, reader mpacket.R
 		}
 
 		// Send success packet with the specific item that was just added
-		addedItem := storage.items[slotIdx]
-		plr.Send(packetCashShopMoveStoLDone(addedItem))
+		addedItem, ok := storage.GetItemBySlot(int16(slotIdx + 1))
+		if ok {
+			plr.Send(packetCashShopMoveStoLDone(*addedItem))
+		}
 
 	default:
 		log.Println("Unknown Cash Shop Packet(", sub, "): ", reader)

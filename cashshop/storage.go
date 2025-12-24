@@ -210,13 +210,13 @@ func (s *CashShopStorage) Save() (err error) {
 	defer stmt.Close()
 
 	for i := range s.items {
-		csItem := s.items[i]
+		csItem := &s.items[i]
 		if csItem.item.GetID() == 0 || csItem.item.GetAmount() == 0 {
 			continue
 		}
 
 		slotNumber := int16(i + 1)
-		if _, ierr := stmt.Exec(
+		result, ierr := stmt.Exec(
 			s.accountID, csItem.item.GetID(), csItem.sn, slotNumber, csItem.item.GetAmount(),
 			csItem.item.GetFlag(), csItem.item.GetUpgradeSlots(), csItem.item.GetScrollLevel(),
 			csItem.item.GetStr(), csItem.item.GetDex(), csItem.item.GetIntt(), csItem.item.GetLuk(),
@@ -224,9 +224,16 @@ func (s *CashShopStorage) Save() (err error) {
 			csItem.item.GetWdef(), csItem.item.GetMdef(), csItem.item.GetAccuracy(), csItem.item.GetAvoid(),
 			csItem.item.GetHands(), csItem.item.GetSpeed(), csItem.item.GetJump(),
 			csItem.item.GetExpireTime(), csItem.item.GetCreatorName(),
-		); ierr != nil {
+		)
+		if ierr != nil {
 			err = fmt.Errorf("failed inserting cash shop item %d (acct %d, slot %d): %w", csItem.item.GetID(), s.accountID, slotNumber, ierr)
 			return
+		}
+		
+		// Get the auto-generated ID
+		lastID, lidErr := result.LastInsertId()
+		if lidErr == nil {
+			csItem.dbID = lastID
 		}
 	}
 

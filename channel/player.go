@@ -1261,6 +1261,11 @@ func (d Player) getItem(invID byte, slotID int16) (Item, error) {
 	return Item{}, fmt.Errorf("Could not find Item")
 }
 
+// GetItem retrieves an item from the player's inventory (exported for use by other packages)
+func (d Player) GetItem(invID byte, slotID int16) (Item, error) {
+	return d.getItem(invID, slotID)
+}
+
 func (d *Player) swapItems(item1, item2 Item, start, end int16) {
 	item1.slotID = end
 	item1.save(d.ID)
