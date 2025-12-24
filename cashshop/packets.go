@@ -119,9 +119,9 @@ func packetCashShopSendCSItemInventory(slotType byte, it channel.Item) mpacket.P
 func packetCashShopWishList(sns []int32, update bool) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelCSAction)
 	if update {
-		p.WriteByte(0x39)
+		p.WriteByte(opcode.SendCashShopUpdateWishDone)
 	} else {
-		p.WriteByte(0x33)
+		p.WriteByte(opcode.SendCashShopLoadWishDone)
 	}
 	count := 10
 	for i := 0; i < count; i++ {

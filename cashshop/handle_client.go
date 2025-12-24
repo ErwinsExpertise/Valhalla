@@ -85,14 +85,14 @@ func (server *Server) handlePlayerConnect(conn mnet.Client, reader mpacket.Reade
 	server.world.Send(internal.PacketChannelPlayerConnected(plr.ID, plr.Name, server.id, false, 0, 0))
 
 	plr.Send(packetCashShopSet(&plr))
-	plr.Send(packetCashShopUpdateAmounts(plr.GetNX(), plr.GetMaplePoints()))
-
-	// Send cash shop storage items to player
+	
+	// Send cash shop storage items to player (before wishlist and amounts, matching OpenMG order)
 	if storage != nil {
 		plr.Send(packetCashShopLoadLocker(storage))
 	}
-
-	plr.Send(packetCashShopWishList(nil, true))
+	
+	plr.Send(packetCashShopWishList(nil, false))
+	plr.Send(packetCashShopUpdateAmounts(plr.GetNX(), plr.GetMaplePoints()))
 }
 
 func (server *Server) leaveCashShopToChannel(conn mnet.Client, reader mpacket.Reader) {
