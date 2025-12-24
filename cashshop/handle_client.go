@@ -20,8 +20,8 @@ func (server *Server) HandleClientPacket(conn mnet.Client, reader mpacket.Reader
 	case opcode.RecvPing:
 	case opcode.RecvClientMigrate:
 		server.handlePlayerConnect(conn, reader)
-	case opcode.RecvCashShopPurchase:
-		server.playerCashShopPurchase(conn, reader)
+	case opcode.RecvCashShopOperation:
+		server.handleCashShopOperation(conn, reader)
 	case opcode.RecvChannelUserPortal:
 		server.leaveCashShopToChannel(conn, reader)
 
@@ -75,7 +75,7 @@ func (server *Server) handlePlayerConnect(conn mnet.Client, reader mpacket.Reade
 	plr := channel.LoadPlayerFromID(charID, conn)
 
 	server.players.Add(&plr)
-	
+
 	// Load cash shop storage
 	storage, err := server.GetOrLoadStorage(accountID)
 	if err != nil {
@@ -86,12 +86,12 @@ func (server *Server) handlePlayerConnect(conn mnet.Client, reader mpacket.Reade
 
 	plr.Send(packetCashShopSet(&plr))
 	plr.Send(packetCashShopUpdateAmounts(plr.GetNX(), plr.GetMaplePoints()))
-	
+
 	// Send cash shop storage items to player
 	if storage != nil {
 		plr.Send(packetCashShopLoadLocker(storage))
 	}
-	
+
 	plr.Send(packetCashShopWishList(nil, true))
 }
 
@@ -155,7 +155,7 @@ func (server *Server) leaveCashShopToChannel(conn mnet.Client, reader mpacket.Re
 	conn.Send(p)
 }
 
-func (server *Server) playerCashShopPurchase(conn mnet.Client, reader mpacket.Reader) {
+func (server *Server) handleCashShopOperation(conn mnet.Client, reader mpacket.Reader) {
 	plr, err := server.players.GetFromConn(conn)
 	if err != nil {
 		return
@@ -211,7 +211,7 @@ func (server *Server) playerCashShopPurchase(conn mnet.Client, reader mpacket.Re
 			plr.Send(packetCashShopUpdateAmounts(plrNX, plrMaplePoints))
 			return
 		}
-		
+
 		// Get cash shop storage
 		storage, storageErr := server.GetOrLoadStorage(conn.GetAccountID())
 		if storageErr != nil {
@@ -219,14 +219,15 @@ func (server *Server) playerCashShopPurchase(conn mnet.Client, reader mpacket.Re
 			plr.Send(packetCashShopError(opcode.SendCashShopBuyFailed, constant.CashShopErrorUnknown))
 			return
 		}
-		
+
 		// Add item to storage instead of inventory
 		slotIdx, added := storage.AddItem(newItem, sn)
 		if !added {
+			log.Println("Failed to add item to cash shop storage")
 			plr.Send(packetCashShopError(opcode.SendCashShopBuyFailed, constant.CashShopErrorExceededNumberOfCashItems))
 			return
 		}
-		
+
 		// Save storage
 		if saveErr := storage.Save(); saveErr != nil {
 			log.Println("Failed to save cash shop storage:", saveErr)
@@ -247,7 +248,7 @@ func (server *Server) playerCashShopPurchase(conn mnet.Client, reader mpacket.Re
 		}
 
 		plr.Send(packetCashShopUpdateAmounts(plrNX, plrMaplePoints))
-		
+
 		// Send buy success packet with the specific item that was just added
 		addedItem := storage.items[slotIdx]
 		plr.Send(packetCashShopBuyDone(addedItem))
@@ -389,19 +390,19 @@ func (server *Server) playerCashShopPurchase(conn mnet.Client, reader mpacket.Re
 
 		plr.Send(packetCashShopIncreaseInv(invType, plr.GetSlotSize(invType)))
 		plr.Send(packetCashShopUpdateAmounts(plrNX, plrMaplePoints))
-		
+
 	case opcode.RecvCashShopMoveLtoS:
 		// Move from locker (storage) to slot (inventory)
 		cashItemID := reader.ReadInt64() // Unique cash item ID
 		_ = reader.ReadInt16()           // Target inventory slot (not used in this implementation)
-		
+
 		storage, storageErr := server.GetOrLoadStorage(conn.GetAccountID())
 		if storageErr != nil {
 			log.Println("Failed to get cash shop storage:", storageErr)
 			plr.Send(packetCashShopError(opcode.SendCashShopMoveLtoSFailed, constant.CashShopErrorUnknown))
 			return
 		}
-		
+
 		// Find item in storage by cash item ID
 		var foundIdx = -1
 		var foundItem *CashShopItem
@@ -412,12 +413,12 @@ func (server *Server) playerCashShopPurchase(conn mnet.Client, reader mpacket.Re
 				break
 			}
 		}
-		
+
 		if foundIdx == -1 || foundItem == nil {
 			plr.Send(packetCashShopError(opcode.SendCashShopMoveLtoSFailed, constant.CashShopErrorUnknown))
 			return
 		}
-		
+
 		// Remove from storage first to prevent duplication
 		removedItem, ok := storage.RemoveAt(foundIdx)
 		if !ok {
@@ -425,7 +426,7 @@ func (server *Server) playerCashShopPurchase(conn mnet.Client, reader mpacket.Re
 			plr.Send(packetCashShopError(opcode.SendCashShopMoveLtoSFailed, constant.CashShopErrorUnknown))
 			return
 		}
-		
+
 		// Try to give item to player (use the item directly from storage)
 		item := removedItem.item
 		err, givenItem := plr.GiveItem(item)
@@ -441,30 +442,30 @@ func (server *Server) playerCashShopPurchase(conn mnet.Client, reader mpacket.Re
 			plr.Send(packetCashShopError(opcode.SendCashShopMoveLtoSFailed, constant.CashShopErrorCheckFullInventory))
 			return
 		}
-		
+
 		// Save storage after successful transfer
 		if saveErr := storage.Save(); saveErr != nil {
 			log.Println("Failed to save cash shop storage:", saveErr)
 			plr.Send(packetCashShopError(opcode.SendCashShopMoveLtoSFailed, constant.CashShopErrorUnknown))
 			return
 		}
-		
+
 		// Send success packet with the given item's slot
 		plr.Send(packetCashShopMoveLtoSDone(givenItem, givenItem.GetSlotID()))
-		
+
 	case opcode.RecvCashShopMoveStoL:
 		// Move from slot (inventory) to locker (storage)
-		itemID := reader.ReadInt32()     // Item ID
-		invType := reader.ReadByte()     // Inventory type
-		invSlot := reader.ReadInt16()    // Inventory slot
-		
+		itemID := reader.ReadInt32()  // Item ID
+		invType := reader.ReadByte()  // Inventory type
+		invSlot := reader.ReadInt16() // Inventory slot
+
 		storage, storageErr := server.GetOrLoadStorage(conn.GetAccountID())
 		if storageErr != nil {
 			log.Println("Failed to get cash shop storage:", storageErr)
 			plr.Send(packetCashShopError(opcode.SendCashShopMoveStoLFailed, constant.CashShopErrorUnknown))
 			return
 		}
-		
+
 		// Take the item from inventory (1 at a time for cash items)
 		takenItem, takeErr := plr.TakeItem(itemID, invSlot, 1, invType)
 		if takeErr != nil {
@@ -472,7 +473,7 @@ func (server *Server) playerCashShopPurchase(conn mnet.Client, reader mpacket.Re
 			plr.Send(packetCashShopError(opcode.SendCashShopMoveStoLFailed, constant.CashShopErrorUnknown))
 			return
 		}
-		
+
 		// Add to storage (no SN for items moved from inventory)
 		slotIdx, added := storage.AddItem(takenItem, 0)
 		if !added {
@@ -483,18 +484,18 @@ func (server *Server) playerCashShopPurchase(conn mnet.Client, reader mpacket.Re
 			plr.Send(packetCashShopError(opcode.SendCashShopMoveStoLFailed, constant.CashShopErrorExceededNumberOfCashItems))
 			return
 		}
-		
+
 		// Save storage
 		if saveErr := storage.Save(); saveErr != nil {
 			log.Println("Failed to save cash shop storage:", saveErr)
 			plr.Send(packetCashShopError(opcode.SendCashShopMoveStoLFailed, constant.CashShopErrorUnknown))
 			return
 		}
-		
+
 		// Send success packet with the specific item that was just added
 		addedItem := storage.items[slotIdx]
 		plr.Send(packetCashShopMoveStoLDone(addedItem))
-		
+
 	default:
 		log.Println("Unknown Cash Shop Packet(", sub, "): ", reader)
 	}
