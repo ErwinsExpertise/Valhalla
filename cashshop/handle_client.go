@@ -467,7 +467,7 @@ func (server *Server) handleCashShopOperation(conn mnet.Client, reader mpacket.R
 			return
 		}
 
-		// Get the item from inventory to find its ID
+		// Get the item from inventory to verify it exists and get its ID
 		item, getErr := plr.GetItem(invType, invSlot)
 		if getErr != nil {
 			log.Println("Failed to get item from inventory:", getErr)
@@ -475,10 +475,8 @@ func (server *Server) handleCashShopOperation(conn mnet.Client, reader mpacket.R
 			return
 		}
 
-		itemID := item.GetID()
-
 		// Take the item from inventory (1 at a time for cash items)
-		takenItem, takeErr := plr.TakeItem(itemID, invSlot, 1, invType)
+		takenItem, takeErr := plr.TakeItem(item.GetID(), invSlot, 1, invType)
 		if takeErr != nil {
 			log.Println("Failed to take item from inventory:", takeErr)
 			plr.Send(packetCashShopError(opcode.SendCashShopMoveStoLFailed, constant.CashShopErrorUnknown))

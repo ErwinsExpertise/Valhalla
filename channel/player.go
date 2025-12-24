@@ -1262,7 +1262,7 @@ func (d Player) getItem(invID byte, slotID int16) (Item, error) {
 }
 
 // GetItem retrieves an item from the player's inventory (exported for use by other packages)
-func (d Player) GetItem(invID byte, slotID int16) (Item, error) {
+func (d *Player) GetItem(invID byte, slotID int16) (Item, error) {
 	return d.getItem(invID, slotID)
 }
 

@@ -210,7 +210,7 @@ func (s *CashShopStorage) Save() (err error) {
 	defer stmt.Close()
 
 	for i := range s.items {
-		csItem := &s.items[i]
+		csItem := s.items[i]
 		if csItem.item.GetID() == 0 || csItem.item.GetAmount() == 0 {
 			continue
 		}
@@ -230,10 +230,10 @@ func (s *CashShopStorage) Save() (err error) {
 			return
 		}
 		
-		// Get the auto-generated ID
+		// Get the auto-generated ID and update the original slice
 		lastID, lidErr := result.LastInsertId()
 		if lidErr == nil {
-			csItem.dbID = lastID
+			s.items[i].dbID = lastID
 		}
 	}
 
