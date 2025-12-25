@@ -197,10 +197,10 @@ func (s *CashShopStorage) Save() (err error) {
 
 	const ins = `
 		INSERT INTO account_cashshop_storage_items(
-			accountID, itemID, sn, slotNumber, amount, flag, upgradeSlots, level,
+			id, accountID, itemID, sn, slotNumber, amount, flag, upgradeSlots, level,
 			str, dex, intt, luk, hp, mp, watk, matk, wdef, mdef, accuracy, avoid, hands,
 			speed, jump, expireTime, creatorName
-		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 	`
 	stmt, perr := tx.Prepare(ins)
 	if perr != nil {
@@ -216,8 +216,17 @@ func (s *CashShopStorage) Save() (err error) {
 		}
 
 		slotNumber := int16(i + 1)
+		
+		// If dbID is 0, pass NULL to let MySQL auto-generate the ID
+		var idParam interface{}
+		if csItem.dbID > 0 {
+			idParam = csItem.dbID
+		} else {
+			idParam = nil
+		}
+		
 		result, ierr := stmt.Exec(
-			s.accountID, csItem.item.GetID(), csItem.sn, slotNumber, csItem.item.GetAmount(),
+			idParam, s.accountID, csItem.item.GetID(), csItem.sn, slotNumber, csItem.item.GetAmount(),
 			csItem.item.GetFlag(), csItem.item.GetUpgradeSlots(), csItem.item.GetScrollLevel(),
 			csItem.item.GetStr(), csItem.item.GetDex(), csItem.item.GetIntt(), csItem.item.GetLuk(),
 			csItem.item.GetHP(), csItem.item.GetMP(), csItem.item.GetWatk(), csItem.item.GetMatk(),
@@ -230,10 +239,12 @@ func (s *CashShopStorage) Save() (err error) {
 			return
 		}
 		
-		// Get the auto-generated ID and update the original slice
-		lastID, lidErr := result.LastInsertId()
-		if lidErr == nil {
-			s.items[i].dbID = lastID
+		// Get the auto-generated ID only if we didn't provide one
+		if csItem.dbID == 0 {
+			lastID, lidErr := result.LastInsertId()
+			if lidErr == nil {
+				s.items[i].dbID = lastID
+			}
 		}
 	}
 
@@ -253,6 +264,23 @@ func (s *CashShopStorage) AddItem(item channel.Item, sn int32) (int, bool) {
 		}
 		s.totalSlotsUsed++
 		s.items[i] = CashShopItem{
+			sn:   sn,
+			item: item,
+		}
+		return i, true
+	}
+	return -1, false
+}
+
+// AddItemWithCashID adds an item to storage with a specific cash ID (used when moving from inventory back to locker)
+func (s *CashShopStorage) AddItemWithCashID(item channel.Item, sn int32, cashID int64) (int, bool) {
+	for i := 0; i < int(s.maxSlots); i++ {
+		if s.items[i].item.GetID() != 0 {
+			continue
+		}
+		s.totalSlotsUsed++
+		s.items[i] = CashShopItem{
+			dbID: cashID, // Use the existing cash ID
 			sn:   sn,
 			item: item,
 		}

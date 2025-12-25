@@ -433,8 +433,11 @@ func (server *Server) handleCashShopOperation(conn mnet.Client, reader mpacket.R
 			return
 		}
 
-		// Try to give item to player (use the item directly from storage)
+		// Set the cash ID on the item so we can find it later for MoveStoL
 		item := removedItem.item
+		item.SetCashID(cashItemID)
+		
+		// Try to give item to player
 		err, givenItem := plr.GiveItem(item)
 		if err != nil {
 			// Failed to give, add back to storage
@@ -461,25 +464,63 @@ func (server *Server) handleCashShopOperation(conn mnet.Client, reader mpacket.R
 
 	case opcode.RecvCashShopMoveStoL:
 		// Move from slot (inventory) to locker (storage)
-		// Note: In the OpenMG reference, this moves items that were previously in the locker
-		// and are currently in inventory, back to the locker using their cash ID
 		cashItemID := reader.ReadInt64() // Cash item ID
 		invType := reader.ReadByte()     // Inventory type
-		
-		_ = cashItemID // TODO: Find item in inventory by cash ID
-		_ = invType    // TODO: Validate inventory type
 
-		_, storageErr := server.GetOrLoadStorage(conn.GetAccountID())
+		storage, storageErr := server.GetOrLoadStorage(conn.GetAccountID())
 		if storageErr != nil {
 			log.Println("Failed to get cash shop storage:", storageErr)
 			plr.Send(packetCashShopError(opcode.SendCashShopMoveStoLFailed, constant.CashShopErrorUnknown))
 			return
 		}
 
-		// TODO: This operation requires tracking cash IDs for items in inventory
-		// For now, we'll return an error as this operation isn't fully implemented
-		log.Println("MoveStoL operation not fully implemented - requires cash ID tracking in inventory")
-		plr.Send(packetCashShopError(opcode.SendCashShopMoveStoLFailed, constant.CashShopErrorUnknown))
+		// Find the item in inventory by cash ID
+		item, itemSlot, findErr := plr.GetItemByCashID(invType, cashItemID)
+		if findErr != nil {
+			log.Println("Failed to find item in inventory with cash ID:", cashItemID, "error:", findErr)
+			plr.Send(packetCashShopError(opcode.SendCashShopMoveStoLFailed, constant.CashShopErrorUnknown))
+			return
+		}
+
+		// Validate that the inventory type matches the item
+		expectedInvType := byte(item.GetID() / 1000000)
+		if expectedInvType != invType {
+			log.Println("Inventory type mismatch: expected", expectedInvType, "got", invType)
+			plr.Send(packetCashShopError(opcode.SendCashShopMoveStoLFailed, constant.CashShopErrorUnknown))
+			return
+		}
+
+		// Take the item from inventory (1 at a time for cash items)
+		takenItem, takeErr := plr.TakeItem(item.GetID(), itemSlot, 1, invType)
+		if takeErr != nil {
+			log.Println("Failed to take item from inventory:", takeErr)
+			plr.Send(packetCashShopError(opcode.SendCashShopMoveStoLFailed, constant.CashShopErrorUnknown))
+			return
+		}
+
+		// Add to storage (preserve the original cash ID by using it as the dbID)
+		slotIdx, added := storage.AddItemWithCashID(takenItem, 0, cashItemID)
+		if !added {
+			// Failed to add, return item to player
+			if err, _ := plr.GiveItem(takenItem); err != nil {
+				log.Println("CRITICAL: Failed to return item to player after storage add failure. Item may be lost.")
+			}
+			plr.Send(packetCashShopError(opcode.SendCashShopMoveStoLFailed, constant.CashShopErrorExceededNumberOfCashItems))
+			return
+		}
+
+		// Save storage
+		if saveErr := storage.Save(); saveErr != nil {
+			log.Println("Failed to save cash shop storage:", saveErr)
+			plr.Send(packetCashShopError(opcode.SendCashShopMoveStoLFailed, constant.CashShopErrorUnknown))
+			return
+		}
+
+		// Send success packet with the specific item that was just added
+		addedItem, ok := storage.GetItemBySlot(int16(slotIdx + 1))
+		if ok {
+			plr.Send(packetCashShopMoveStoLDone(*addedItem, conn.GetAccountID(), plr.ID))
+		}
 
 	default:
 		log.Println("Unknown Cash Shop Packet(", sub, "): ", reader)

@@ -1266,6 +1266,43 @@ func (d *Player) GetItem(invID byte, slotID int16) (Item, error) {
 	return d.getItem(invID, slotID)
 }
 
+// GetItemByCashID finds an item in the specified inventory by its cash shop ID
+func (d *Player) GetItemByCashID(invID byte, cashID int64) (Item, int16, error) {
+	switch invID {
+	case 1:
+		for i := range d.equip {
+			if d.equip[i].cashID == cashID {
+				return d.equip[i], d.equip[i].slotID, nil
+			}
+		}
+	case 2:
+		for i := range d.use {
+			if d.use[i].cashID == cashID {
+				return d.use[i], d.use[i].slotID, nil
+			}
+		}
+	case 3:
+		for i := range d.setUp {
+			if d.setUp[i].cashID == cashID {
+				return d.setUp[i], d.setUp[i].slotID, nil
+			}
+		}
+	case 4:
+		for i := range d.etc {
+			if d.etc[i].cashID == cashID {
+				return d.etc[i], d.etc[i].slotID, nil
+			}
+		}
+	case 5:
+		for i := range d.cash {
+			if d.cash[i].cashID == cashID {
+				return d.cash[i], d.cash[i].slotID, nil
+			}
+		}
+	}
+	return Item{}, 0, fmt.Errorf("item not found with cashID: %d", cashID)
+}
+
 func (d *Player) swapItems(item1, item2 Item, start, end int16) {
 	item1.slotID = end
 	item1.save(d.ID)

@@ -49,6 +49,7 @@ type Item struct {
 	dbID         int64
 	uuid         uuid.UUID
 	cash         bool
+	cashID       int64 // Cash shop storage ID (dbID from account_cashshop_storage_items)
 	invID        byte
 	slotID       int16
 	ID           int32
@@ -366,6 +367,7 @@ func (v *Item) setSlots(slots int) {
 func (v Item) GetID() int32          { return v.ID }
 func (v Item) GetSlotID() int16      { return v.slotID }
 func (v Item) GetAmount() int16      { return v.amount }
+func (v Item) GetCashID() int64      { return v.cashID }
 func (v Item) GetFlag() int16        { return v.flag }
 func (v Item) GetUpgradeSlots() byte { return v.upgradeSlots }
 func (v Item) GetScrollLevel() byte  { return v.scrollLevel }
@@ -382,6 +384,9 @@ func (v Item) GetMdef() int16        { return v.mdef }
 func (v Item) GetAccuracy() int16    { return v.accuracy }
 func (v Item) GetAvoid() int16       { return v.avoid }
 func (v Item) GetHands() int16       { return v.hands }
+
+// SetCashID sets the cash shop storage ID for tracking items from cash shop
+func (v *Item) SetCashID(cashID int64) { v.cashID = cashID }
 func (v Item) GetSpeed() int16       { return v.speed }
 func (v Item) GetJump() int16        { return v.jump }
 func (v Item) GetExpireTime() int64  { return v.expireTime }
