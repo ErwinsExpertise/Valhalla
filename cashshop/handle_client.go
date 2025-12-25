@@ -395,7 +395,7 @@ func (server *Server) handleCashShopOperation(conn mnet.Client, reader mpacket.R
 
 	case opcode.RecvCashShopMoveLtoS:
 		// Move from locker (storage) to slot (inventory)
-		cashItemID := reader.ReadInt64() // Cash item ID (SN)
+		cashItemID := reader.ReadInt64() // Cash item ID (unique cash ID)
 		invType := reader.ReadByte()     // Inventory type
 		targetSlot := reader.ReadInt16() // Target inventory slot
 		
@@ -409,11 +409,11 @@ func (server *Server) handleCashShopOperation(conn mnet.Client, reader mpacket.R
 			return
 		}
 
-		// Find item in storage by SN (cash item ID)
+		// Find item in storage by cash ID
 		var foundIdx = -1
 		var foundItem *CashShopItem
 		for i := range storage.items {
-			if int64(storage.items[i].sn) == cashItemID {
+			if storage.items[i].cashID == cashItemID {
 				foundIdx = i
 				foundItem = &storage.items[i]
 				break
@@ -433,9 +433,10 @@ func (server *Server) handleCashShopOperation(conn mnet.Client, reader mpacket.R
 			return
 		}
 
-		// Set the cash ID (SN) on the item so we can find it later for MoveStoL
+		// Set the cash ID and SN on the item so we can track it for MoveStoL
 		item := removedItem.item
 		item.SetCashID(cashItemID)
+		item.SetCashSN(removedItem.sn)
 		
 		// Try to give item to player
 		err, givenItem := plr.GiveItem(item)
@@ -464,7 +465,7 @@ func (server *Server) handleCashShopOperation(conn mnet.Client, reader mpacket.R
 
 	case opcode.RecvCashShopMoveStoL:
 		// Move from slot (inventory) to locker (storage)
-		cashItemID := reader.ReadInt64() // Cash item ID (SN)
+		cashItemID := reader.ReadInt64() // Cash item ID (unique cash ID)
 		invType := reader.ReadByte()     // Inventory type
 
 		storage, storageErr := server.GetOrLoadStorage(conn.GetAccountID())
@@ -474,7 +475,7 @@ func (server *Server) handleCashShopOperation(conn mnet.Client, reader mpacket.R
 			return
 		}
 
-		// Find the item in inventory by cash ID (SN)
+		// Find the item in inventory by cash ID
 		item, itemSlot, findErr := plr.GetItemByCashID(invType, cashItemID)
 		if findErr != nil {
 			log.Println("Failed to find item in inventory with cash ID:", cashItemID, "error:", findErr)
@@ -490,6 +491,14 @@ func (server *Server) handleCashShopOperation(conn mnet.Client, reader mpacket.R
 			return
 		}
 
+		// Get the SN from the item (should have been set when moving from storage to inventory)
+		sn := item.GetCashSN()
+		if sn == 0 {
+			log.Println("Item has no commodity SN set, cannot move back to storage")
+			plr.Send(packetCashShopError(opcode.SendCashShopMoveStoLFailed, constant.CashShopErrorUnknown))
+			return
+		}
+
 		// Take the item from inventory (1 at a time for cash items)
 		takenItem, takeErr := plr.TakeItem(item.GetID(), itemSlot, 1, invType)
 		if takeErr != nil {
@@ -498,18 +507,7 @@ func (server *Server) handleCashShopOperation(conn mnet.Client, reader mpacket.R
 			return
 		}
 
-		// Add to storage (cashItemID is the SN)
-		// Since cashItemID is int64 but SN is int32, validate the range
-		if cashItemID > int64(0x7FFFFFFF) || cashItemID < int64(-0x80000000) {
-			log.Println("Cash ID out of int32 range:", cashItemID)
-			// Return item to player
-			if err, _ := plr.GiveItem(takenItem); err != nil {
-				log.Println("CRITICAL: Failed to return item to player. Item may be lost.")
-			}
-			plr.Send(packetCashShopError(opcode.SendCashShopMoveStoLFailed, constant.CashShopErrorUnknown))
-			return
-		}
-		sn := int32(cashItemID)
+		// Add to storage with the preserved cash ID and SN
 		slotIdx, added := storage.AddItemWithCashID(takenItem, sn, cashItemID)
 		if !added {
 			// Failed to add, return item to player

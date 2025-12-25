@@ -162,6 +162,8 @@ CREATE TABLE `items` (
   `jump` smallint(6) NOT NULL DEFAULT '0',
   `expireTime` bigint(20) NOT NULL DEFAULT '0',
   `creatorName` tinytext NOT NULL,
+  `cashID` bigint(20) DEFAULT NULL,
+  `cashSN` int(11) DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `characterID` (`characterID`),
   CONSTRAINT `items_ibfk_5` FOREIGN KEY (`characterID`) REFERENCES `characters` (`id`) ON DELETE CASCADE
@@ -276,6 +278,7 @@ CREATE TABLE IF NOT EXISTS account_cashshop_storage_items (
     id           BIGINT(20) NOT NULL AUTO_INCREMENT,
     accountID    INT(10) UNSIGNED NOT NULL,
     itemID       INT(11) NOT NULL,
+    cashID       BIGINT(20) DEFAULT NULL,
     sn           INT(11) NOT NULL DEFAULT 0,
     slotNumber   INT(11) NOT NULL,
     amount       INT(11) NOT NULL DEFAULT 1,

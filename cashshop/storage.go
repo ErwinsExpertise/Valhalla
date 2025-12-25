@@ -1,13 +1,37 @@
 package cashshop
 
 import (
+	"crypto/rand"
 	"database/sql"
+	"encoding/binary"
 	"fmt"
 	"log"
 
 	"github.com/Hucaru/Valhalla/channel"
 	"github.com/Hucaru/Valhalla/common"
 )
+
+// generateCashID generates a unique cash ID similar to OpenMG's implementation
+// Returns a 56-bit cryptographically random value (clears first byte to match OpenMG behavior)
+func generateCashID() int64 {
+	// Generate 8 random bytes using crypto/rand
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		// Fallback to a basic random if crypto fails (shouldn't happen)
+		log.Println("Warning: crypto/rand failed, using fallback")
+		b[0] = 0
+		for i := 1; i < 8; i++ {
+			b[i] = byte(i * 17) // deterministic fallback
+		}
+	}
+	
+	// Convert to int64
+	cashID := int64(binary.LittleEndian.Uint64(b[:]))
+	
+	// Clear first byte to get 56-bit value (0x00FFFFFFFFFFFFFF mask)
+	// This matches OpenMG behavior
+	return cashID & 0x00FFFFFFFFFFFFFF
+}
 
 // Cash shop storage capacity bounds
 const (
@@ -25,9 +49,10 @@ type CashShopStorage struct {
 
 // CashShopItem represents an item in the cash shop storage
 type CashShopItem struct {
-	sn        int32         // Serial number from commodity (used as cash ID)
-	purchased int64         // Unix timestamp of purchase
-	item      channel.Item  // The actual item
+	cashID    int64        // Unique cash ID (random 64-bit value, like UUID)
+	sn        int32        // Serial number from commodity
+	purchased int64        // Unix timestamp of purchase
+	item      channel.Item // The actual item
 }
 
 func clampByte(v, min, max byte) byte {
@@ -93,7 +118,7 @@ func (s *CashShopStorage) Load() error {
 
 	rows, qerr := common.DB.Query(`
 		SELECT 
-			itemID, sn, slotNumber, amount,
+			itemID, cashID, sn, slotNumber, amount,
 			flag, upgradeSlots, level, str, dex, intt, luk, hp, mp,
 			watk, matk, wdef, mdef, accuracy, avoid, hands, speed, jump,
 			expireTime, creatorName, UNIX_TIMESTAMP(purchaseDate)
@@ -108,6 +133,7 @@ func (s *CashShopStorage) Load() error {
 	for rows.Next() {
 		var csItem CashShopItem
 		var creatorName sql.NullString
+		var cashIDNullable sql.NullInt64
 		var slotNumber int16
 		var itemID int32
 		var amount int16
@@ -120,7 +146,7 @@ func (s *CashShopStorage) Load() error {
 		var expireTime int64
 		
 		if err := rows.Scan(
-			&itemID, &csItem.sn, &slotNumber, &amount,
+			&itemID, &cashIDNullable, &csItem.sn, &slotNumber, &amount,
 			&flag, &upgradeSlots, &scrollLevel,
 			&str, &dex, &intt, &luk,
 			&hp, &mp, &watk, &matk,
@@ -130,6 +156,13 @@ func (s *CashShopStorage) Load() error {
 		); err != nil {
 			log.Println("Error scanning cash shop storage item:", err)
 			continue
+		}
+		
+		// Handle existing items without cash ID by generating one
+		if cashIDNullable.Valid {
+			csItem.cashID = cashIDNullable.Int64
+		} else {
+			csItem.cashID = generateCashID()
 		}
 		
 		// Create the item using the new helper function
@@ -196,10 +229,10 @@ func (s *CashShopStorage) Save() (err error) {
 
 	const ins = `
 		INSERT INTO account_cashshop_storage_items(
-			accountID, itemID, sn, slotNumber, amount, flag, upgradeSlots, level,
+			accountID, itemID, cashID, sn, slotNumber, amount, flag, upgradeSlots, level,
 			str, dex, intt, luk, hp, mp, watk, matk, wdef, mdef, accuracy, avoid, hands,
 			speed, jump, expireTime, creatorName
-		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 	`
 	stmt, perr := tx.Prepare(ins)
 	if perr != nil {
@@ -217,7 +250,7 @@ func (s *CashShopStorage) Save() (err error) {
 		slotNumber := int16(i + 1)
 		
 		_, ierr := stmt.Exec(
-			s.accountID, csItem.item.GetID(), csItem.sn, slotNumber, csItem.item.GetAmount(),
+			s.accountID, csItem.item.GetID(), csItem.cashID, csItem.sn, slotNumber, csItem.item.GetAmount(),
 			csItem.item.GetFlag(), csItem.item.GetUpgradeSlots(), csItem.item.GetScrollLevel(),
 			csItem.item.GetStr(), csItem.item.GetDex(), csItem.item.GetIntt(), csItem.item.GetLuk(),
 			csItem.item.GetHP(), csItem.item.GetMP(), csItem.item.GetWatk(), csItem.item.GetMatk(),
@@ -247,18 +280,30 @@ func (s *CashShopStorage) AddItem(item channel.Item, sn int32) (int, bool) {
 		}
 		s.totalSlotsUsed++
 		s.items[i] = CashShopItem{
-			sn:   sn,
-			item: item,
+			cashID: generateCashID(),
+			sn:     sn,
+			item:   item,
 		}
 		return i, true
 	}
 	return -1, false
 }
 
-// AddItemWithCashID adds an item to storage with a specific SN (used when moving from inventory back to locker)
+// AddItemWithCashID adds an item to storage with a specific cash ID (used when moving from inventory back to locker)
 func (s *CashShopStorage) AddItemWithCashID(item channel.Item, sn int32, cashID int64) (int, bool) {
-	// cashID is actually the SN, so we just use sn parameter
-	return s.AddItem(item, sn)
+	for i := 0; i < int(s.maxSlots); i++ {
+		if s.items[i].item.GetID() != 0 {
+			continue
+		}
+		s.totalSlotsUsed++
+		s.items[i] = CashShopItem{
+			cashID: cashID,
+			sn:     sn,
+			item:   item,
+		}
+		return i, true
+	}
+	return -1, false
 }
 
 // RemoveAt removes an item at the given index

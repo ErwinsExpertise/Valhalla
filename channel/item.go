@@ -49,7 +49,8 @@ type Item struct {
 	dbID         int64
 	uuid         uuid.UUID
 	cash         bool
-	cashID       int64 // Cash shop storage ID (dbID from account_cashshop_storage_items)
+	cashID       int64 // Cash shop storage ID (unique random value for cash shop items)
+	cashSN       int32 // Commodity serial number (for cash shop items)
 	invID        byte
 	slotID       int16
 	ID           int32
@@ -96,7 +97,7 @@ type Item struct {
 const neverExpire int64 = 150842304000000000
 
 func loadInventoryFromDb(charID int32) ([]Item, []Item, []Item, []Item, []Item) {
-	filter := "ID,inventoryID,itemID,slotNumber,amount,flag,upgradeSlots,level,str,dex,intt,luk,hp,mp,watk,matk,wdef,mdef,accuracy,avoid,hands,speed,jump,expireTime,creatorName"
+	filter := "ID,inventoryID,itemID,slotNumber,amount,flag,upgradeSlots,level,str,dex,intt,luk,hp,mp,watk,matk,wdef,mdef,accuracy,avoid,hands,speed,jump,expireTime,creatorName,cashID,cashSN"
 	row, err := common.DB.Query("SELECT "+filter+" FROM items WHERE characterID=?", charID)
 
 	if err != nil {
@@ -114,6 +115,8 @@ func loadInventoryFromDb(charID int32) ([]Item, []Item, []Item, []Item, []Item) 
 	for row.Next() {
 
 		item := Item{uuid: uuid.New()}
+		var cashIDNullable sql.NullInt64
+		var cashSNNullable sql.NullInt32
 
 		err := row.Scan(&item.dbID,
 			&item.invID,
@@ -139,11 +142,21 @@ func loadInventoryFromDb(charID int32) ([]Item, []Item, []Item, []Item, []Item) 
 			&item.speed,
 			&item.jump,
 			&item.expireTime,
-			&item.creatorName)
+			&item.creatorName,
+			&cashIDNullable,
+			&cashSNNullable)
 
 		if err != nil {
 			log.Println(err)
 			continue
+		}
+
+		// Handle cashID and cashSN (may be NULL for non-cash shop items)
+		if cashIDNullable.Valid {
+			item.cashID = cashIDNullable.Int64
+		}
+		if cashSNNullable.Valid {
+			item.cashSN = cashSNNullable.Int32
 		}
 
 		if nxInfo, err := nx.GetItem(item.ID); err == nil {
@@ -387,6 +400,13 @@ func (v Item) GetHands() int16       { return v.hands }
 
 // SetCashID sets the cash shop storage ID for tracking items from cash shop
 func (v *Item) SetCashID(cashID int64) { v.cashID = cashID }
+
+// SetCashSN sets the commodity serial number for cash shop items
+func (v *Item) SetCashSN(sn int32) { v.cashSN = sn }
+
+// GetCashSN returns the commodity serial number
+func (v Item) GetCashSN() int32 { return v.cashSN }
+
 func (v Item) GetSpeed() int16       { return v.speed }
 func (v Item) GetJump() int16        { return v.jump }
 func (v Item) GetExpireTime() int64  { return v.expireTime }
@@ -404,14 +424,14 @@ func (v *Item) save(charID int32) (bool, error) {
 	if v.dbID == 0 {
 		props := `characterID,inventoryID,itemID,slotNumber,amount,flag,upgradeSlots,level,
 				str,dex,intt,luk,hp,mp,watk,matk,wdef,mdef,accuracy,avoid,hands,speed,jump,
-				expireTime,creatorName`
+				expireTime,creatorName,cashID,cashSN`
 
-		query := "INSERT into items (" + props + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+		query := "INSERT into items (" + props + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
 
 		res, err := common.DB.Exec(query,
 			charID, v.invID, v.ID, v.slotID, v.amount, v.flag, v.upgradeSlots, v.scrollLevel,
 			v.str, v.dex, v.intt, v.luk, v.hp, v.mp, v.watk, v.matk, v.wdef, v.mdef, v.accuracy, v.avoid, v.hands, v.speed, v.jump,
-			v.expireTime, v.creatorName)
+			v.expireTime, v.creatorName, sql.NullInt64{Int64: v.cashID, Valid: v.cashID != 0}, sql.NullInt32{Int32: v.cashSN, Valid: v.cashSN != 0})
 
 		if err != nil {
 			return false, err
@@ -425,14 +445,14 @@ func (v *Item) save(charID int32) (bool, error) {
 	} else {
 		props := `slotNumber=?,amount=?,flag=?,upgradeSlots=?,level=?,
 			str=?,dex=?,intt=?,luk=?,hp=?,mp=?,watk=?,matk=?,wdef=?,mdef=?,accuracy=?,avoid=?,hands=?,speed=?,jump=?,
-			expireTime=?`
+			expireTime=?,cashID=?,cashSN=?`
 
 		query := "UPDATE items SET " + props + " WHERE ID=?"
 
 		_, err := common.DB.Exec(query,
 			v.slotID, v.amount, v.flag, v.upgradeSlots, v.scrollLevel,
 			v.str, v.dex, v.intt, v.luk, v.hp, v.mp, v.watk, v.matk, v.wdef, v.mdef, v.accuracy, v.avoid, v.hands, v.speed, v.jump,
-			v.expireTime, v.dbID)
+			v.expireTime, sql.NullInt64{Int64: v.cashID, Valid: v.cashID != 0}, sql.NullInt32{Int32: v.cashSN, Valid: v.cashSN != 0}, v.dbID)
 
 		if err != nil {
 			return false, err
