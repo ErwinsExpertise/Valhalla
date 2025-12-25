@@ -554,11 +554,8 @@ func (v Item) bytes(shortSlot, storage bool) []byte {
 
 	p.WriteBool(v.cash)
 	if v.cash {
-		if sn, ok := nx.GetCommoditySNByItemID(v.ID); ok {
-			p.WriteUint64(uint64(sn))
-		} else {
-			p.WriteUint64(uint64(v.ID))
-		}
+		// Write the unique cash ID (not the SN) for cash shop tracking
+		p.WriteUint64(uint64(v.cashID))
 	}
 
 	p.WriteInt64(v.expireTime)
