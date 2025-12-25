@@ -190,6 +190,13 @@ func loadInventoryFromDb(charID int32) ([]Item, []Item, []Item, []Item, []Item) 
 				item.cashID = GenerateCashID()
 			}
 			
+			// If this is a cash item and doesn't have a cashSN yet, look it up from nx data
+			if item.cash && item.cashSN == 0 {
+				if sn, ok := nx.GetCommoditySNByItemID(item.ID); ok {
+					item.cashSN = sn
+				}
+			}
+			
 			item.pet = nxInfo.Pet
 			if item.pet {
 				petRow := common.DB.QueryRow(`
