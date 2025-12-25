@@ -143,7 +143,7 @@ func packetCashShopLoadLocker(storage *CashShopStorage, accountID, characterID i
 	
 	for _, csItem := range items {
 		// LockerItem.Encode structure from OpenMG
-		p.WriteInt64(int64(csItem.dbID))       // CashId
+		p.WriteInt64(int64(csItem.sn))         // CashId (use SN as cash ID)
 		p.WriteInt32(accountID)                // UserId (account ID)
 		p.WriteInt32(characterID)              // CharacterId (character ID)
 		p.WriteInt32(csItem.item.GetID())      // ItemId
@@ -171,7 +171,7 @@ func packetCashShopMoveStoLDone(csItem CashShopItem, accountID, characterID int3
 	p := mpacket.CreateWithOpcode(opcode.SendChannelCSAction)
 	p.WriteByte(opcode.SendCashShopMoveStoLDone)
 	// LockerItem.Encode structure
-	p.WriteInt64(int64(csItem.dbID))       // CashId
+	p.WriteInt64(int64(csItem.sn))         // CashId (use SN as cash ID)
 	p.WriteInt32(accountID)                // UserId (account ID)
 	p.WriteInt32(characterID)              // CharacterId (character ID)
 	p.WriteInt32(csItem.item.GetID())      // ItemId
@@ -186,7 +186,7 @@ func packetCashShopBuyDone(csItem CashShopItem, accountID, characterID int32) mp
 	p := mpacket.CreateWithOpcode(opcode.SendChannelCSAction)
 	p.WriteByte(opcode.SendCashShopBuyDone)
 	// LockerItem.Encode structure
-	p.WriteInt64(int64(csItem.dbID))       // CashId
+	p.WriteInt64(int64(csItem.sn))         // CashId (use SN as cash ID)
 	p.WriteInt32(accountID)                // UserId (account ID)
 	p.WriteInt32(characterID)              // CharacterId (character ID)
 	p.WriteInt32(csItem.item.GetID())      // ItemId

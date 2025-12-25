@@ -25,8 +25,7 @@ type CashShopStorage struct {
 
 // CashShopItem represents an item in the cash shop storage
 type CashShopItem struct {
-	dbID      int64         // Database ID for this cash shop item entry
-	sn        int32         // Serial number from commodity
+	sn        int32         // Serial number from commodity (used as cash ID)
 	purchased int64         // Unix timestamp of purchase
 	item      channel.Item  // The actual item
 }
@@ -94,7 +93,7 @@ func (s *CashShopStorage) Load() error {
 
 	rows, qerr := common.DB.Query(`
 		SELECT 
-			id, itemID, sn, slotNumber, amount,
+			itemID, sn, slotNumber, amount,
 			flag, upgradeSlots, level, str, dex, intt, luk, hp, mp,
 			watk, matk, wdef, mdef, accuracy, avoid, hands, speed, jump,
 			expireTime, creatorName, UNIX_TIMESTAMP(purchaseDate)
@@ -121,7 +120,7 @@ func (s *CashShopStorage) Load() error {
 		var expireTime int64
 		
 		if err := rows.Scan(
-			&csItem.dbID, &itemID, &csItem.sn, &slotNumber, &amount,
+			&itemID, &csItem.sn, &slotNumber, &amount,
 			&flag, &upgradeSlots, &scrollLevel,
 			&str, &dex, &intt, &luk,
 			&hp, &mp, &watk, &matk,
@@ -197,10 +196,10 @@ func (s *CashShopStorage) Save() (err error) {
 
 	const ins = `
 		INSERT INTO account_cashshop_storage_items(
-			id, accountID, itemID, sn, slotNumber, amount, flag, upgradeSlots, level,
+			accountID, itemID, sn, slotNumber, amount, flag, upgradeSlots, level,
 			str, dex, intt, luk, hp, mp, watk, matk, wdef, mdef, accuracy, avoid, hands,
 			speed, jump, expireTime, creatorName
-		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 	`
 	stmt, perr := tx.Prepare(ins)
 	if perr != nil {
@@ -217,16 +216,8 @@ func (s *CashShopStorage) Save() (err error) {
 
 		slotNumber := int16(i + 1)
 		
-		// If dbID is 0, pass NULL to let MySQL auto-generate the ID
-		var idParam interface{}
-		if csItem.dbID > 0 {
-			idParam = csItem.dbID
-		} else {
-			idParam = nil
-		}
-		
-		result, ierr := stmt.Exec(
-			idParam, s.accountID, csItem.item.GetID(), csItem.sn, slotNumber, csItem.item.GetAmount(),
+		_, ierr := stmt.Exec(
+			s.accountID, csItem.item.GetID(), csItem.sn, slotNumber, csItem.item.GetAmount(),
 			csItem.item.GetFlag(), csItem.item.GetUpgradeSlots(), csItem.item.GetScrollLevel(),
 			csItem.item.GetStr(), csItem.item.GetDex(), csItem.item.GetIntt(), csItem.item.GetLuk(),
 			csItem.item.GetHP(), csItem.item.GetMP(), csItem.item.GetWatk(), csItem.item.GetMatk(),
@@ -237,14 +228,6 @@ func (s *CashShopStorage) Save() (err error) {
 		if ierr != nil {
 			err = fmt.Errorf("failed inserting cash shop item %d (acct %d, slot %d): %w", csItem.item.GetID(), s.accountID, slotNumber, ierr)
 			return
-		}
-		
-		// Get the auto-generated ID only if we didn't provide one
-		if csItem.dbID == 0 {
-			lastID, lidErr := result.LastInsertId()
-			if lidErr == nil {
-				s.items[i].dbID = lastID
-			}
 		}
 	}
 
@@ -272,21 +255,10 @@ func (s *CashShopStorage) AddItem(item channel.Item, sn int32) (int, bool) {
 	return -1, false
 }
 
-// AddItemWithCashID adds an item to storage with a specific cash ID (used when moving from inventory back to locker)
+// AddItemWithCashID adds an item to storage with a specific SN (used when moving from inventory back to locker)
 func (s *CashShopStorage) AddItemWithCashID(item channel.Item, sn int32, cashID int64) (int, bool) {
-	for i := 0; i < int(s.maxSlots); i++ {
-		if s.items[i].item.GetID() != 0 {
-			continue
-		}
-		s.totalSlotsUsed++
-		s.items[i] = CashShopItem{
-			dbID: cashID, // Use the existing cash ID
-			sn:   sn,
-			item: item,
-		}
-		return i, true
-	}
-	return -1, false
+	// cashID is actually the SN, so we just use sn parameter
+	return s.AddItem(item, sn)
 }
 
 // RemoveAt removes an item at the given index
