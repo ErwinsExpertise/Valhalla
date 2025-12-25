@@ -1,13 +1,15 @@
 package channel
 
 import (
+	"crypto/rand"
 	"database/sql"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"math"
-	"math/rand"
+	mathrand "math/rand"
 	"os"
 	"time"
 
@@ -96,6 +98,27 @@ type Item struct {
 
 const neverExpire int64 = 150842304000000000
 
+// GenerateCashID generates a unique cash ID using crypto/rand
+// Returns a 56-bit cryptographically random value (clears first byte)
+func GenerateCashID() int64 {
+	// Generate 8 random bytes using crypto/rand
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		// Fallback to a basic random if crypto fails (shouldn't happen)
+		log.Println("Warning: crypto/rand failed in GenerateCashID")
+		b[0] = 0
+		for i := 1; i < 8; i++ {
+			b[i] = byte(i * 17) // deterministic fallback
+		}
+	}
+	
+	// Convert to int64
+	cashID := int64(binary.LittleEndian.Uint64(b[:]))
+	
+	// Clear first byte to get 56-bit value (0x00FFFFFFFFFFFFFF mask)
+	return cashID & 0x00FFFFFFFFFFFFFF
+}
+
 func loadInventoryFromDb(charID int32) ([]Item, []Item, []Item, []Item, []Item) {
 	filter := "ID,inventoryID,itemID,slotNumber,amount,flag,upgradeSlots,level,str,dex,intt,luk,hp,mp,watk,matk,wdef,mdef,accuracy,avoid,hands,speed,jump,expireTime,creatorName,cashID,cashSN"
 	row, err := common.DB.Query("SELECT "+filter+" FROM items WHERE characterID=?", charID)
@@ -161,6 +184,12 @@ func loadInventoryFromDb(charID int32) ([]Item, []Item, []Item, []Item, []Item) 
 
 		if nxInfo, err := nx.GetItem(item.ID); err == nil {
 			item.cash = nxInfo.Cash
+			
+			// If this is a cash item and doesn't have a cashID yet, generate one
+			if item.cash && item.cashID == 0 {
+				item.cashID = GenerateCashID()
+			}
+			
 			item.pet = nxInfo.Pet
 			if item.pet {
 				petRow := common.DB.QueryRow(`
@@ -256,9 +285,9 @@ func createBiasItemFromID(id int32, amount int16, bias int8, average bool) (Item
 			return int16(max)
 		}
 
-		rand.Seed(time.Now().Unix())
+		mathrand.Seed(time.Now().Unix())
 
-		return int16(rand.Intn(max-min) + min)
+		return int16(mathrand.Intn(max-min) + min)
 	}
 
 	newItem := Item{dbID: 0, uuid: uuid.New()}

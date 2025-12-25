@@ -1,37 +1,13 @@
 package cashshop
 
 import (
-	"crypto/rand"
 	"database/sql"
-	"encoding/binary"
 	"fmt"
 	"log"
 
 	"github.com/Hucaru/Valhalla/channel"
 	"github.com/Hucaru/Valhalla/common"
 )
-
-// generateCashID generates a unique cash ID similar to OpenMG's implementation
-// Returns a 56-bit cryptographically random value (clears first byte to match OpenMG behavior)
-func generateCashID() int64 {
-	// Generate 8 random bytes using crypto/rand
-	var b [8]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		// Fallback to a basic random if crypto fails (shouldn't happen)
-		log.Println("Warning: crypto/rand failed, using fallback")
-		b[0] = 0
-		for i := 1; i < 8; i++ {
-			b[i] = byte(i * 17) // deterministic fallback
-		}
-	}
-	
-	// Convert to int64
-	cashID := int64(binary.LittleEndian.Uint64(b[:]))
-	
-	// Clear first byte to get 56-bit value (0x00FFFFFFFFFFFFFF mask)
-	// This matches OpenMG behavior
-	return cashID & 0x00FFFFFFFFFFFFFF
-}
 
 // Cash shop storage capacity bounds
 const (
@@ -162,7 +138,7 @@ func (s *CashShopStorage) Load() error {
 		if cashIDNullable.Valid {
 			csItem.cashID = cashIDNullable.Int64
 		} else {
-			csItem.cashID = generateCashID()
+			csItem.cashID = channel.GenerateCashID()
 		}
 		
 		// Create the item using the new helper function
@@ -280,7 +256,7 @@ func (s *CashShopStorage) AddItem(item channel.Item, sn int32) (int, bool) {
 		}
 		s.totalSlotsUsed++
 		s.items[i] = CashShopItem{
-			cashID: generateCashID(),
+			cashID: channel.GenerateCashID(),
 			sn:     sn,
 			item:   item,
 		}
