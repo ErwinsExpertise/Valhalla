@@ -111,10 +111,10 @@ func GenerateCashID() int64 {
 			b[i] = byte(i * 17) // deterministic fallback
 		}
 	}
-	
+
 	// Convert to int64
 	cashID := int64(binary.LittleEndian.Uint64(b[:]))
-	
+
 	// Clear first byte to get 56-bit value (0x00FFFFFFFFFFFFFF mask)
 	return cashID & 0x00FFFFFFFFFFFFFF
 }
@@ -184,19 +184,19 @@ func loadInventoryFromDb(charID int32) ([]Item, []Item, []Item, []Item, []Item) 
 
 		if nxInfo, err := nx.GetItem(item.ID); err == nil {
 			item.cash = nxInfo.Cash
-			
+
 			// If this is a cash item and doesn't have a cashID yet, generate one
 			if item.cash && item.cashID == 0 {
 				item.cashID = GenerateCashID()
 			}
-			
+
 			// If this is a cash item and doesn't have a cashSN yet, look it up from nx data
 			if item.cash && item.cashSN == 0 {
 				if sn, ok := nx.GetCommoditySNByItemID(item.ID); ok {
 					item.cashSN = sn
 				}
 			}
-			
+
 			item.pet = nxInfo.Pet
 			if item.pet {
 				petRow := common.DB.QueryRow(`
@@ -443,9 +443,9 @@ func (v *Item) SetCashSN(sn int32) { v.cashSN = sn }
 // GetCashSN returns the commodity serial number
 func (v Item) GetCashSN() int32 { return v.cashSN }
 
-func (v Item) GetSpeed() int16       { return v.speed }
-func (v Item) GetJump() int16        { return v.jump }
-func (v Item) GetExpireTime() int64  { return v.expireTime }
+func (v Item) GetSpeed() int16        { return v.speed }
+func (v Item) GetJump() int16         { return v.jump }
+func (v Item) GetExpireTime() int64   { return v.expireTime }
 func (v Item) GetCreatorName() string { return v.creatorName }
 
 func (v Item) isRechargeable() bool {
@@ -521,12 +521,12 @@ func (v Item) InventoryBytes() []byte {
 	return v.bytes(false, false)
 }
 
-func (v Item) storageBytes() []byte {
+func (v Item) StorageBytes() []byte {
 	return v.bytes(false, true)
 }
 
 // ShortBytes e.g. inventory operation, storage window
-func (v Item) shortBytes() []byte {
+func (v Item) ShortBytes() []byte {
 	return v.bytes(true, false)
 }
 
@@ -680,13 +680,13 @@ func (v *Item) incrementScrollCount() {
 func CreateItemFromDBValues(itemID int32, slotID int16, amount int16, flag int16, upgradeSlots, scrollLevel byte,
 	str, dex, intt, luk, hp, mp, watk, matk, wdef, mdef, accuracy, avoid, hands, speed, jump int16,
 	expireTime int64, creatorName string) (Item, error) {
-	
+
 	// Create base item to get metadata
 	item, err := CreateItemFromID(itemID, amount)
 	if err != nil {
 		return item, err
 	}
-	
+
 	// Override with saved stat values
 	item.slotID = slotID
 	item.flag = flag
@@ -709,7 +709,7 @@ func CreateItemFromDBValues(itemID int32, slotID int16, amount int16, flag int16
 	item.jump = jump
 	item.expireTime = expireTime
 	item.creatorName = creatorName
-	
+
 	return item, nil
 }
 

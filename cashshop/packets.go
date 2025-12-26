@@ -137,48 +137,47 @@ func packetCashShopWishList(sns []int32, update bool) mpacket.Packet {
 func packetCashShopLoadLocker(storage *CashShopStorage, accountID, characterID int32) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelCSAction)
 	p.WriteByte(opcode.SendCashShopLoadLockerDone)
-	
+
 	items := storage.GetAllItems()
+	// First list: uint16 count, then 55 bytes per entry
 	p.WriteInt16(int16(len(items)))
-	
+
 	for _, csItem := range items {
-		// LockerItem.Encode structure from OpenMG
-		p.WriteInt64(csItem.cashID)               // CashId (unique cash ID)
-		p.WriteInt32(accountID)                   // UserId (account ID)
-		p.WriteInt32(characterID)                 // CharacterId (character ID)
-		p.WriteInt32(csItem.item.GetID())         // ItemId
-		p.WriteInt32(csItem.sn)                   // CommodityId (serial number)
-		p.WriteInt16(csItem.item.GetAmount())     // Amount
-		p.WritePaddedString("", 13)               // GiftName (empty, padded to 13)
-		p.WriteInt64(csItem.item.GetExpireTime()) // Expiration as FileTime
+		p.WriteInt64(csItem.cashID)
+		p.WriteInt32(accountID)
+		p.WriteInt32(characterID)
+		p.WriteInt32(csItem.item.ID)
+		p.WriteInt32(csItem.sn)
+		p.WriteInt16(csItem.item.GetAmount())
+		p.WritePaddedString("", 13)
+		p.WriteInt64(csItem.item.GetExpireTime())
+		p.WriteInt64(0) // Padding
 	}
-	
+
 	p.WriteInt16(0) // Gift count (no gifts)
-	p.WriteInt16(int16(storage.maxSlots)) // Storage slots
-	
+	p.WriteInt16(int16(storage.maxSlots))
 	return p
 }
 
 func packetCashShopMoveLtoSDone(item channel.Item, slot int16) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelCSAction)
 	p.WriteByte(opcode.SendCashShopMoveLtoSDone)
-	p.WriteInt16(slot) // Inventory slot
-	p.WriteBytes(item.InventoryBytes())
+	p.WriteBytes(item.ShortBytes())
 	return p
 }
 
 func packetCashShopMoveStoLDone(csItem CashShopItem, accountID, characterID int32) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelCSAction)
 	p.WriteByte(opcode.SendCashShopMoveStoLDone)
-	// LockerItem.Encode structure
 	p.WriteInt64(csItem.cashID)               // CashId (unique cash ID)
 	p.WriteInt32(accountID)                   // UserId (account ID)
-	p.WriteInt32(characterID)                 // CharacterId (character ID)
+	p.WriteInt32(0)                           // CharacterId (character ID)
 	p.WriteInt32(csItem.item.GetID())         // ItemId
 	p.WriteInt32(csItem.sn)                   // CommodityId (serial number)
 	p.WriteInt16(csItem.item.GetAmount())     // Amount
 	p.WritePaddedString("", 13)               // GiftName (empty, padded to 13)
 	p.WriteInt64(csItem.item.GetExpireTime()) // Expiration as FileTime
+	p.WriteInt64(0)                           // Padding
 	return p
 }
 
@@ -194,6 +193,7 @@ func packetCashShopBuyDone(csItem CashShopItem, accountID, characterID int32) mp
 	p.WriteInt16(csItem.item.GetAmount())     // Amount
 	p.WritePaddedString("", 13)               // GiftName (empty, padded to 13)
 	p.WriteInt64(csItem.item.GetExpireTime()) // Expiration as FileTime
+	p.WriteInt64(0)                           // Padding
 	return p
 }
 

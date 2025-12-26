@@ -406,7 +406,7 @@ func (d *Player) getHPGainForJob() int16 {
 func (d *Player) getMPGainForJob() int16 {
 	mainClass := d.job / constant.JobClassDivisor
 	baseMp := int16(constant.DefaultApMpGain)
-	
+
 	switch {
 	case d.job == constant.BeginnerJobID || mainClass == 0: // Beginner
 		baseMp = constant.BeginnerApMpGain
@@ -419,7 +419,7 @@ func (d *Player) getMPGainForJob() int16 {
 	case mainClass == 4: // Thief
 		baseMp = constant.ThiefApMpGain
 	}
-	
+
 	// Add INT bonus for MP (INT * multiplier / divisor)
 	// Magicians get more MP from INT
 	intMultiplier := int16(constant.IntMpMultiplierNormal)
@@ -427,7 +427,7 @@ func (d *Player) getMPGainForJob() int16 {
 		intMultiplier = constant.IntMpMultiplierMagician
 	}
 	baseMp += (d.intt * intMultiplier) / int16(constant.IntMpDivisor)
-	
+
 	return baseMp
 }
 
@@ -441,13 +441,13 @@ func (d *Player) getWeaponMasterySkillID() int32 {
 			break
 		}
 	}
-	
+
 	if weaponID == 0 {
 		return 0
 	}
-	
+
 	weaponType := weaponID / 10000
-	
+
 	// Map weapon types to mastery skills based on job
 	// Use exact job ID ranges to avoid ambiguity
 	switch {
@@ -486,7 +486,7 @@ func (d *Player) getWeaponMasterySkillID() int32 {
 			return int32(skill.DaggerMastery)
 		}
 	}
-	
+
 	return 0
 }
 
@@ -497,12 +497,12 @@ func (d *Player) getMasteryDisplay() byte {
 	if masterySkillID == 0 {
 		return 0
 	}
-	
+
 	if ps, ok := d.skills[masterySkillID]; ok {
 		// Apply formula: (level + 1) / 2
 		return (ps.Level + 1) / constant.MasteryDisplayDivisor
 	}
-	
+
 	return 0
 }
 
@@ -516,7 +516,7 @@ func (d *Player) getRechargeBonus() int16 {
 			return int16(ps.Level * constant.ClawMasteryRechargeMultiplier)
 		}
 	}
-	
+
 	return 0
 }
 
@@ -993,7 +993,7 @@ func (d *Player) addStackableItemToInventory(newItem Item, items *[]Item, slotSi
 	// Use a separate variable to track remaining items as we place them in slots
 	// We can't modify newItem.amount directly as it affects the item being saved
 	remaining := newItem.amount
-	
+
 	for remaining > 0 {
 		// First, try to find an existing stack to merge with
 		var index int = -1
@@ -1056,7 +1056,7 @@ func (d *Player) addStackableItemToInventory(newItem Item, items *[]Item, slotSi
 			remaining -= newSlotAmount
 		}
 	}
-	
+
 	return nil
 }
 
@@ -1364,7 +1364,7 @@ func (d *Player) removeItem(item Item) {
 		log.Println(err)
 		return
 	}
-	d.Send(packetInventoryRemoveItem(item))
+	//d.Send(packetInventoryRemoveItem(item))
 }
 
 func (d *Player) dropMesos(amount int32) error {
@@ -3094,7 +3094,7 @@ func packetInventoryAddItem(item Item, newItem bool) mpacket.Packet {
 	p.WriteByte(item.invID)
 
 	if newItem {
-		p.WriteBytes(item.shortBytes())
+		p.WriteBytes(item.ShortBytes())
 	} else {
 		p.WriteInt16(item.slotID)
 		p.WriteInt16(item.amount)
@@ -3131,7 +3131,7 @@ func packetInventoryAddItems(items []Item, newItem []bool) mpacket.Packet {
 		p.WriteByte(v.invID)
 
 		if newItem[i] {
-			p.WriteBytes(v.shortBytes())
+			p.WriteBytes(v.ShortBytes())
 		} else {
 			p.WriteInt16(v.slotID)
 			p.WriteInt16(v.amount)
