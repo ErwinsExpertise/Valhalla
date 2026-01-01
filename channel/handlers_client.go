@@ -3248,7 +3248,22 @@ func (server Server) roomWindow(conn mnet.Client, reader mpacket.Reader) {
 				}
 			}
 		case constant.MiniRoomTypePlayerShop:
-			log.Println("Personal shop not implemented")
+			name := reader.ReadString(reader.ReadInt16())
+			description := reader.ReadString(reader.ReadInt16())
+
+			r, valid := newShopRoom(inst.nextID(), name, description).(roomer)
+
+			if !valid {
+				return
+			}
+
+			if r.addPlayer(plr) {
+				err = pool.addRoom(r)
+
+				if err != nil {
+					log.Println(err)
+				}
+			}
 		default:
 			log.Println("Unknown room type", roomType)
 		}
@@ -3346,6 +3361,16 @@ func (server Server) roomWindow(conn mnet.Client, reader mpacket.Reader) {
 
 			if err != nil {
 				log.Println(err)
+			}
+		} else if shop, valid := r.(*shopRoom); valid {
+			shop.removePlayer(plr)
+			
+			if r.closed() {
+				err = pool.removeRoom(shop.roomID)
+
+				if err != nil {
+					log.Println(err)
+				}
 			}
 		}
 	case constant.MiniRoomTradePutItem:
@@ -3601,6 +3626,128 @@ func (server Server) roomWindow(conn mnet.Client, reader mpacket.Reader) {
 				}
 			}
 		}
+	case constant.MiniRoomAddShopItem:
+		invType := reader.ReadByte()
+		invSlot := reader.ReadInt16()
+		quantity := reader.ReadInt16()
+		price := reader.ReadInt32()
+		shopSlot := reader.ReadByte()
+
+		r, err := pool.getPlayerRoom(plr.ID)
+
+		if err != nil {
+			return
+		}
+
+		shop, valid := r.(*shopRoom)
+		if !valid {
+			return
+		}
+
+		// Only owner can add items
+		if shop.ownerID() != plr.ID {
+			return
+		}
+
+		item, err := plr.getItem(invType, invSlot)
+		if err != nil || item.amount < quantity {
+			plr.Send(packetPlayerNoChange())
+			return
+		}
+
+		// Take item from owner's inventory
+		_, err = plr.takeItem(item.ID, invSlot, quantity, invType)
+		if err != nil {
+			plr.Send(packetPlayerNoChange())
+			return
+		}
+
+		newItem := item
+		newItem.amount = quantity
+
+		if shop.addItem(newItem, price, shopSlot) {
+			shop.send(packetRoomShopAddItem(shopSlot, newItem, price))
+		} else {
+			// Rollback if failed to add
+			if err, _ := plr.GiveItem(newItem); err != nil {
+				log.Printf("Failed to rollback item for player %s: %v", plr.Name, err)
+			}
+		}
+
+		plr.Send(packetPlayerNoChange())
+
+	case constant.MiniRoomBuyShopItem:
+		shopSlot := reader.ReadByte()
+		quantity := reader.ReadInt16()
+
+		r, err := pool.getPlayerRoom(plr.ID)
+
+		if err != nil {
+			return
+		}
+
+		shop, valid := r.(*shopRoom)
+		if !valid {
+			return
+		}
+
+		// Owner cannot buy from their own shop
+		if shop.ownerID() == plr.ID {
+			return
+		}
+
+		result := shop.buyItem(shopSlot, quantity, plr.ID)
+
+		if result != 0 {
+			plr.Send(packetRoomShopBuyItemResult(result))
+			return
+		}
+
+		// Get buyer index in room
+		var buyerIndex byte
+		for i, p := range shop.players {
+			if p.ID == plr.ID {
+				buyerIndex = byte(i)
+				break
+			}
+		}
+
+		shop.send(packetRoomShopSoldItem(shopSlot, quantity, buyerIndex))
+		plr.Send(packetPlayerNoChange())
+
+	case constant.MiniRoomMoveItemShopToInv:
+		shopSlot := reader.ReadByte()
+
+		r, err := pool.getPlayerRoom(plr.ID)
+
+		if err != nil {
+			return
+		}
+
+		shop, valid := r.(*shopRoom)
+		if !valid {
+			return
+		}
+
+		// Only owner can remove items
+		if shop.ownerID() != plr.ID {
+			return
+		}
+
+		if shopItem, exists := shop.items[shopSlot]; exists {
+			// Return item to owner's inventory
+			if err, _ := plr.GiveItem(shopItem.item); err != nil {
+				log.Printf("Failed to return item to player %s: %v", plr.Name, err)
+				return
+			}
+
+			if shop.removeItem(shopSlot) {
+				shop.send(packetRoomShopRemoveItem(shopSlot))
+			}
+		}
+
+		plr.Send(packetPlayerNoChange())
+
 	default:
 		log.Println("Unknown room operation", operation)
 	}

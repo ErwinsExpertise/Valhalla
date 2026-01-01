@@ -926,6 +926,170 @@ func (r *tradeRoom) rollback() {
 	r.finalized = true
 }
 
+type shopItem struct {
+	item  Item
+	price int32
+	slot  byte
+}
+
+type shopRoom struct {
+	room
+	name        string
+	description string
+	items       map[byte]*shopItem // slot -> shop item
+	nextSlot    byte
+}
+
+func newShopRoom(id int32, name, description string) roomer {
+	r := room{roomID: id, roomType: constant.MiniRoomTypePlayerShop}
+	return &shopRoom{
+		room:        r,
+		name:        name,
+		description: description,
+		items:       make(map[byte]*shopItem),
+		nextSlot:    0,
+	}
+}
+
+func (r *shopRoom) addPlayer(plr *Player) bool {
+	if !r.room.addPlayer(plr) {
+		return false
+	}
+
+	plr.Send(packetRoomShopShowWindow(r, byte(len(r.players)-1)))
+
+	if len(r.players) > 1 {
+		r.sendExcept(packetRoomJoin(r.roomType, byte(len(r.players)-1), r.players[len(r.players)-1]), plr)
+	}
+
+	return true
+}
+
+func (r *shopRoom) removePlayer(plr *Player) {
+	for i, v := range r.players {
+		if v.Conn == plr.Conn {
+			r.players = append(r.players[:i], r.players[i+1:]...)
+			plr.Send(packetRoomLeave(byte(i), constant.MiniRoomLeaveReason))
+			
+			if i == constant.RoomOwnerSlot {
+				// Owner left, close shop and kick everyone
+				for j := range r.players {
+					r.players[j].Send(packetRoomLeave(byte(j+1), constant.MiniRoomClosed))
+				}
+				r.players = []*Player{}
+			} else {
+				r.send(packetRoomLeave(byte(i), constant.MiniRoomLeaveReason))
+			}
+			return
+		}
+	}
+}
+
+func (r *shopRoom) addItem(item Item, price int32, slot byte) bool {
+	if _, exists := r.items[slot]; exists {
+		return false
+	}
+
+	r.items[slot] = &shopItem{
+		item:  item,
+		price: price,
+		slot:  slot,
+	}
+
+	if slot >= r.nextSlot {
+		r.nextSlot = slot + 1
+	}
+
+	return true
+}
+
+func (r *shopRoom) buyItem(slot byte, quantity int16, buyerID int32) byte {
+	shopItem, exists := r.items[slot]
+	if !exists {
+		return constant.PlayerShopNotEnoughInStock
+	}
+
+	if shopItem.item.amount < quantity {
+		return constant.PlayerShopNotEnoughInStock
+	}
+
+	totalCost := int64(shopItem.price) * int64(quantity)
+	if totalCost > int64(math.MaxInt32) {
+		return constant.PlayerShopPriceTooHighForTrade
+	}
+
+	var buyer *Player
+	for _, plr := range r.players {
+		if plr.ID == buyerID {
+			buyer = plr
+			break
+		}
+	}
+
+	if buyer == nil {
+		return constant.PlayerShopNotEnoughMesos
+	}
+
+	if int64(buyer.mesos) < totalCost {
+		return constant.PlayerShopBuyerNotEnoughMoney
+	}
+
+	// Create item to give to buyer
+	purchasedItem := shopItem.item
+	purchasedItem.amount = quantity
+
+	if !buyer.canReceiveItems([]Item{purchasedItem}) {
+		return constant.PlayerShopInventoryFull
+	}
+
+	// Take mesos from buyer
+	buyer.takeMesos(int32(totalCost))
+
+	// Give item to buyer
+	err, _ := buyer.GiveItem(purchasedItem)
+	if err != nil {
+		// Rollback mesos
+		buyer.giveMesos(int32(totalCost))
+		return constant.PlayerShopInventoryFull
+	}
+
+	// Update or remove shop item
+	shopItem.item.amount -= quantity
+	if shopItem.item.amount <= 0 {
+		delete(r.items, slot)
+	}
+
+	// Give mesos to owner
+	if len(r.players) > 0 && r.players[0] != nil {
+		r.players[0].giveMesos(int32(totalCost))
+	}
+
+	return 0
+}
+
+func (r *shopRoom) removeItem(slot byte) bool {
+	if _, exists := r.items[slot]; !exists {
+		return false
+	}
+
+	delete(r.items, slot)
+	return true
+}
+
+func (r shopRoom) displayBytes() []byte {
+	p := mpacket.NewPacket()
+
+	p.WriteInt32(r.players[0].ID)
+	p.WriteByte(r.roomType)
+	p.WriteInt32(r.roomID)
+	p.WriteString(r.name)
+	p.WriteByte(byte(len(r.players)))
+	p.WriteByte(constant.RoomMaxPlayers)
+	p.WriteBool(false) // password protected (shops don't have passwords)
+
+	return p
+}
+
 func packetRoomShowWindow(roomType, boardType, maxPlayers, roomSlot byte, roomTitle string, players []*Player) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelRoom)
 	p.WriteByte(constant.RoomPacketShowWindow)
@@ -1229,6 +1393,66 @@ func packetRoomTradeAccept() mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelRoom)
 	p.WriteByte(constant.MiniRoomTradeAccept)
 
+	return p
+}
+
+func packetRoomShopShowWindow(shop *shopRoom, roomSlot byte) mpacket.Packet {
+	p := mpacket.CreateWithOpcode(opcode.SendChannelRoom)
+	p.WriteByte(constant.RoomPacketShowWindow)
+	p.WriteByte(shop.roomType)
+	p.WriteByte(constant.RoomMaxPlayers)
+	p.WriteByte(roomSlot)
+
+	for i, v := range shop.players {
+		p.WriteByte(byte(i))
+		p.Append(v.displayBytes())
+		p.WriteString(v.Name)
+	}
+
+	p.WriteByte(0xFF)
+	p.WriteString(shop.description)
+
+	p.WriteByte(0x10) // unknown
+	p.WriteByte(byte(len(shop.items)))
+
+	for _, shopItem := range shop.items {
+		p.WriteByte(shopItem.slot)
+		p.Append(shopItem.item.StorageBytes())
+		p.WriteInt32(shopItem.price)
+	}
+
+	return p
+}
+
+func packetRoomShopAddItem(slot byte, item Item, price int32) mpacket.Packet {
+	p := mpacket.CreateWithOpcode(opcode.SendChannelRoom)
+	p.WriteByte(constant.MiniRoomAddShopItem)
+	p.WriteByte(slot)
+	p.Append(item.StorageBytes())
+	p.WriteInt32(price)
+	return p
+}
+
+func packetRoomShopBuyItemResult(result byte) mpacket.Packet {
+	p := mpacket.CreateWithOpcode(opcode.SendChannelRoom)
+	p.WriteByte(constant.MiniRoomPlayerShopItemResult)
+	p.WriteByte(result)
+	return p
+}
+
+func packetRoomShopSoldItem(slot byte, quantity int16, buyerIndex byte) mpacket.Packet {
+	p := mpacket.CreateWithOpcode(opcode.SendChannelRoom)
+	p.WriteByte(constant.MiniRoomPlayerShopSoldItem)
+	p.WriteByte(slot)
+	p.WriteInt16(quantity)
+	p.WriteByte(buyerIndex)
+	return p
+}
+
+func packetRoomShopRemoveItem(slot byte) mpacket.Packet {
+	p := mpacket.CreateWithOpcode(opcode.SendChannelRoom)
+	p.WriteByte(constant.MiniRoomMoveItemShopToInv)
+	p.WriteByte(slot)
 	return p
 }
 
