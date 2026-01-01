@@ -5,6 +5,7 @@ import (
 	"log"
 	"math"
 	"math/rand"
+	"sort"
 	"time"
 
 	"github.com/Hucaru/Valhalla/common/opcode"
@@ -1072,15 +1073,17 @@ func (r *shopRoom) buyItem(slot byte, quantity int16, buyerID int32) byte {
 
 	// Update shop item bundles
 	shopItem.bundles -= quantity
-	if shopItem.bundles <= 0 {
-		// Remove item from shop, and if owner is present, remove from their inventory
-		if owner != nil {
-			// Now actually take the item from owner's inventory since it was sold
-			_, err := owner.takeItem(shopItem.item.ID, shopItem.item.slotID, shopItem.item.amount, shopItem.item.invID)
-			if err != nil {
-				log.Printf("Warning: Failed to remove sold item from owner inventory: %v", err)
-			}
+	
+	// Actually take the sold amount from owner's inventory
+	if owner != nil {
+		_, err := owner.takeItem(shopItem.item.ID, shopItem.item.slotID, realAmount, shopItem.item.invID)
+		if err != nil {
+			log.Printf("Warning: Failed to remove sold item from owner inventory: %v", err)
 		}
+	}
+	
+	if shopItem.bundles <= 0 {
+		// Remove item completely from shop
 		delete(r.items, slot)
 	} else {
 		// Update the amount in the shop item
@@ -1450,8 +1453,16 @@ func packetRoomShopShowWindow(shop *shopRoom, roomSlot byte) mpacket.Packet {
 	p.WriteByte(0x10) // unknown
 	p.WriteByte(byte(len(shop.items)))
 
+	// Sort by slot for deterministic ordering
+	slots := make([]byte, 0, len(shop.items))
+	for slot := range shop.items {
+		slots = append(slots, slot)
+	}
+	sort.Slice(slots, func(i, j int) bool { return slots[i] < slots[j] })
+
 	// According to OpenMG: bundles, bundleAmount, price, then item
-	for _, shopItem := range shop.items {
+	for _, slot := range slots {
+		shopItem := shop.items[slot]
 		p.WriteInt16(shopItem.bundles)
 		p.WriteInt16(shopItem.bundleAmount)
 		p.WriteInt32(shopItem.price)
@@ -1466,8 +1477,16 @@ func packetRoomShopRefresh(shop *shopRoom) mpacket.Packet {
 	p.WriteByte(0x15) // PersonalShopRefresh opcode from OpenMG
 	p.WriteByte(byte(len(shop.items)))
 
+	// Sort by slot for deterministic ordering
+	slots := make([]byte, 0, len(shop.items))
+	for slot := range shop.items {
+		slots = append(slots, slot)
+	}
+	sort.Slice(slots, func(i, j int) bool { return slots[i] < slots[j] })
+
 	// According to OpenMG: bundles, bundleAmount, price, then item
-	for _, shopItem := range shop.items {
+	for _, slot := range slots {
+		shopItem := shop.items[slot]
 		p.WriteInt16(shopItem.bundles)
 		p.WriteInt16(shopItem.bundleAmount)
 		p.WriteInt32(shopItem.price)

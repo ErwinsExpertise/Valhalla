@@ -3746,8 +3746,8 @@ func (server Server) roomWindow(conn mnet.Client, reader mpacket.Reader) {
 				shopItem.item.amount = remainingBundles * shopItem.bundleAmount
 			}
 
-			// Send packet with remaining bundles and slot
-			shop.send(packetRoomShopRemoveItem(remaining, shopItem.item.slotID))
+			// Send packet with remaining bundles and shop slot (not inventory slot)
+			shop.send(packetRoomShopRemoveItem(remaining, int16(shopSlot)))
 		}
 
 		plr.Send(packetPlayerNoChange())
