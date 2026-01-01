@@ -961,26 +961,8 @@ func (r *shopRoom) addPlayer(plr *Player) bool {
 		return false
 	}
 
-	// Send base room window (similar to EncodeEnterResult in OpenMG)
-	p := mpacket.CreateWithOpcode(opcode.SendChannelRoom)
-	p.WriteByte(constant.RoomPacketShowWindow)
-	p.WriteByte(r.roomType)
-	p.WriteByte(constant.RoomMaxPlayers)
-	p.WriteByte(byte(len(r.players) - 1)) // room slot
-
-	for i, v := range r.players {
-		p.WriteByte(byte(i))
-		p.Append(v.displayBytes())
-		p.WriteString(v.Name)
-	}
-
-	p.WriteByte(constant.RoomPacketEndList)
-	
-	// Shop-specific data (from PlayerShop.EncodeEnterResult)
-	p.WriteString(r.description)
-	p.WriteByte(constant.RoomShopItemListUnknown)
-	p.WriteByte(0) // Item count (initially 0 on enter)
-
+	// Use base packetRoomShowWindow which will handle shop type correctly
+	p := packetRoomShowWindow(r.roomType, 0, byte(constant.RoomMaxPlayers), byte(len(r.players)-1), r.description, r.players)
 	plr.Send(p)
 
 	if len(r.players) > 1 {
@@ -1158,13 +1140,23 @@ func packetRoomShowWindow(roomType, boardType, maxPlayers, roomSlot byte, roomTi
 	for i, v := range players {
 		p.WriteByte(byte(i))
 		p.Append(v.displayBytes())
-		p.WriteInt32(0) // not sure what this is - memory card game seed? board settings?
+		if roomType != constant.MiniRoomTypeTrade && roomType != constant.MiniRoomTypePlayerShop {
+			p.WriteInt32(0) // games only - memory card game seed? board settings?
+		}
 		p.WriteString(v.Name)
 	}
 
 	p.WriteByte(constant.RoomPacketEndList)
 
-	if roomType == constant.MiniRoomTypeTrade || roomType == constant.MiniRoomTypePlayerShop {
+	if roomType == constant.MiniRoomTypeTrade {
+		return p
+	}
+
+	if roomType == constant.MiniRoomTypePlayerShop {
+		// Shop-specific data (from PlayerShop.EncodeEnterResult)
+		p.WriteString(roomTitle) // shop description/title
+		p.WriteByte(constant.RoomShopItemListUnknown)
+		p.WriteByte(0) // Item count (initially 0 on enter)
 		return p
 	}
 
