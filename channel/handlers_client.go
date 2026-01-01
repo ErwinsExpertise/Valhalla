@@ -3664,6 +3664,9 @@ func (server Server) roomWindow(conn mnet.Client, reader mpacket.Reader) {
 
 		newItem := item
 		newItem.amount = quantity
+		// Clear internal IDs for the shop item
+		newItem.dbID = 0
+		newItem.slotID = 0
 
 		if shop.addItem(newItem, price, shopSlot) {
 			shop.send(packetRoomShopAddItem(shopSlot, newItem, price))

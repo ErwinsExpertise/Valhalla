@@ -1027,16 +1027,19 @@ func (r *shopRoom) buyItem(slot byte, quantity int16, buyerID int32) byte {
 	}
 
 	if buyer == nil {
-		return constant.PlayerShopNotEnoughMesos
+		return constant.PlayerShopInventoryFull // Buyer not found in room
 	}
 
 	if int64(buyer.mesos) < totalCost {
 		return constant.PlayerShopBuyerNotEnoughMoney
 	}
 
-	// Create item to give to buyer
+	// Create item to give to buyer - make a proper copy
 	purchasedItem := shopItem.item
 	purchasedItem.amount = quantity
+	// Clear internal IDs since this is a new item instance
+	purchasedItem.dbID = 0
+	purchasedItem.slotID = 0
 
 	if !buyer.canReceiveItems([]Item{purchasedItem}) {
 		return constant.PlayerShopInventoryFull
@@ -1059,7 +1062,7 @@ func (r *shopRoom) buyItem(slot byte, quantity int16, buyerID int32) byte {
 		delete(r.items, slot)
 	}
 
-	// Give mesos to owner
+	// Give mesos to owner if present
 	if len(r.players) > 0 && r.players[0] != nil {
 		r.players[0].giveMesos(int32(totalCost))
 	}
@@ -1078,6 +1081,10 @@ func (r *shopRoom) removeItem(slot byte) bool {
 
 func (r shopRoom) displayBytes() []byte {
 	p := mpacket.NewPacket()
+
+	if len(r.players) == 0 {
+		return p
+	}
 
 	p.WriteInt32(r.players[0].ID)
 	p.WriteByte(r.roomType)
