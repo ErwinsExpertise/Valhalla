@@ -961,7 +961,27 @@ func (r *shopRoom) addPlayer(plr *Player) bool {
 		return false
 	}
 
-	plr.Send(packetRoomShopShowWindow(r, byte(len(r.players)-1)))
+	// Send base room window (similar to EncodeEnterResult in OpenMG)
+	p := mpacket.CreateWithOpcode(opcode.SendChannelRoom)
+	p.WriteByte(constant.RoomPacketShowWindow)
+	p.WriteByte(r.roomType)
+	p.WriteByte(constant.RoomMaxPlayers)
+	p.WriteByte(byte(len(r.players) - 1)) // room slot
+
+	for i, v := range r.players {
+		p.WriteByte(byte(i))
+		p.Append(v.displayBytes())
+		p.WriteString(v.Name)
+	}
+
+	p.WriteByte(constant.RoomPacketEndList)
+	
+	// Shop-specific data (from PlayerShop.EncodeEnterResult)
+	p.WriteString(r.description)
+	p.WriteByte(constant.RoomShopItemListUnknown)
+	p.WriteByte(0) // Item count (initially 0 on enter)
+
+	plr.Send(p)
 
 	if len(r.players) > 1 {
 		r.sendExcept(packetRoomJoin(r.roomType, byte(len(r.players)-1), r.players[len(r.players)-1]), plr)
@@ -1142,9 +1162,9 @@ func packetRoomShowWindow(roomType, boardType, maxPlayers, roomSlot byte, roomTi
 		p.WriteString(v.Name)
 	}
 
-	p.WriteByte(0xFF)
+	p.WriteByte(constant.RoomPacketEndList)
 
-	if roomType == constant.MiniRoomTypeTrade {
+	if roomType == constant.MiniRoomTypeTrade || roomType == constant.MiniRoomTypePlayerShop {
 		return p
 	}
 
@@ -1157,7 +1177,7 @@ func packetRoomShowWindow(roomType, boardType, maxPlayers, roomSlot byte, roomTi
 		p.WriteInt32(v.miniGamePoints)
 	}
 
-	p.WriteByte(0xFF)
+	p.WriteByte(constant.RoomPacketEndList)
 	p.WriteString(roomTitle)
 	p.WriteByte(boardType)
 	p.WriteByte(0)
@@ -1434,47 +1454,9 @@ func packetRoomTradeAccept() mpacket.Packet {
 	return p
 }
 
-func packetRoomShopShowWindow(shop *shopRoom, roomSlot byte) mpacket.Packet {
-	p := mpacket.CreateWithOpcode(opcode.SendChannelRoom)
-	p.WriteByte(constant.RoomPacketShowWindow)
-	p.WriteByte(shop.roomType)
-	p.WriteByte(constant.RoomMaxPlayers)
-	p.WriteByte(roomSlot)
-
-	for i, v := range shop.players {
-		p.WriteByte(byte(i))
-		p.Append(v.displayBytes())
-		p.WriteString(v.Name)
-	}
-
-	p.WriteByte(0xFF)
-	p.WriteString(shop.description)
-
-	p.WriteByte(0x10) // unknown
-	p.WriteByte(byte(len(shop.items)))
-
-	// Sort by slot for deterministic ordering
-	slots := make([]byte, 0, len(shop.items))
-	for slot := range shop.items {
-		slots = append(slots, slot)
-	}
-	sort.Slice(slots, func(i, j int) bool { return slots[i] < slots[j] })
-
-	// According to OpenMG: bundles, bundleAmount, price, then item
-	for _, slot := range slots {
-		shopItem := shop.items[slot]
-		p.WriteInt16(shopItem.bundles)
-		p.WriteInt16(shopItem.bundleAmount)
-		p.WriteInt32(shopItem.price)
-		p.Append(shopItem.item.StorageBytes())
-	}
-
-	return p
-}
-
 func packetRoomShopRefresh(shop *shopRoom) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelRoom)
-	p.WriteByte(0x15) // PersonalShopRefresh opcode from OpenMG
+	p.WriteByte(constant.RoomShopRefresh)
 	p.WriteByte(byte(len(shop.items)))
 
 	// Sort by slot for deterministic ordering
@@ -1524,7 +1506,7 @@ func packetRoomShopSoldItem(slot byte, quantity int16, buyerName string) mpacket
 
 func packetRoomShopRemoveItem(remaining byte, slot int16) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelRoom)
-	p.WriteByte(0x17) // MoveItemToInventory opcode from OpenMG
+	p.WriteByte(constant.RoomShopMoveItemToInv)
 	p.WriteByte(remaining)
 	p.WriteInt16(slot)
 	return p

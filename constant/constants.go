@@ -367,6 +367,11 @@ const (
 	RoomPacketInviteResult     = 0x03
 	RoomPacketShowAccept       = 0x0F
 	RoomPacketMemoryStart      = 0x0C
+	RoomPacketEndList          = 0xFF
+	
+	RoomShopItemListUnknown    = 0x10
+	RoomShopRefresh            = 0x15
+	RoomShopMoveItemToInv      = 0x17
 
 	RoomRequestTie            byte = 42
 	RoomRequestTieResult      byte = 43
