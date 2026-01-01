@@ -3629,9 +3629,9 @@ func (server Server) roomWindow(conn mnet.Client, reader mpacket.Reader) {
 	case constant.MiniRoomAddShopItem:
 		invType := reader.ReadByte()
 		invSlot := reader.ReadInt16()
-		quantity := reader.ReadInt16()
+		bundles := reader.ReadInt16()
+		bundleAmount := reader.ReadInt16()
 		price := reader.ReadInt32()
-		shopSlot := reader.ReadByte()
 
 		r, err := pool.getPlayerRoom(plr.ID)
 
@@ -3650,31 +3650,28 @@ func (server Server) roomWindow(conn mnet.Client, reader mpacket.Reader) {
 		}
 
 		item, err := plr.getItem(invType, invSlot)
-		if err != nil || item.amount < quantity {
-			plr.Send(packetPlayerNoChange())
-			return
-		}
-
-		// Take item from owner's inventory
-		_, err = plr.takeItem(item.ID, invSlot, quantity, invType)
 		if err != nil {
 			plr.Send(packetPlayerNoChange())
 			return
 		}
 
-		newItem := item
-		newItem.amount = quantity
-		// Clear internal IDs for the shop item
-		newItem.dbID = 0
-		newItem.slotID = 0
+		totalAmount := bundles * bundleAmount
+		if item.amount < totalAmount || bundles <= 0 || bundleAmount <= 0 {
+			plr.Send(packetPlayerNoChange())
+			return
+		}
 
-		if shop.addItem(newItem, price, shopSlot) {
-			shop.send(packetRoomShopAddItem(shopSlot, newItem, price))
-		} else {
-			// Rollback if failed to add
-			if err, _ := plr.GiveItem(newItem); err != nil {
-				log.Printf("Failed to rollback item for player %s: %v", plr.Name, err)
-			}
+		// Create a copy of the item for the shop - DON'T actually take from inventory
+		// Item stays in player inventory but is tracked by the shop
+		newItem := item
+		newItem.amount = totalAmount
+
+		// Find next available shop slot
+		shopSlot := shop.nextSlot
+
+		if shop.addItem(newItem, bundles, bundleAmount, price, shopSlot) {
+			// Send refresh packet to all players in shop
+			shop.send(packetRoomShopRefresh(shop))
 		}
 
 		plr.Send(packetPlayerNoChange())
@@ -3706,16 +3703,8 @@ func (server Server) roomWindow(conn mnet.Client, reader mpacket.Reader) {
 			return
 		}
 
-		// Get buyer index in room
-		var buyerIndex byte
-		for i, p := range shop.players {
-			if p.ID == plr.ID {
-				buyerIndex = byte(i)
-				break
-			}
-		}
-
-		shop.send(packetRoomShopSoldItem(shopSlot, quantity, buyerIndex))
+		// Send sold item notification to owner with buyer's name
+		shop.send(packetRoomShopSoldItem(shopSlot, quantity, plr.Name))
 		plr.Send(packetPlayerNoChange())
 
 	case constant.MiniRoomMoveItemShopToInv:
@@ -3738,15 +3727,27 @@ func (server Server) roomWindow(conn mnet.Client, reader mpacket.Reader) {
 		}
 
 		if shopItem, exists := shop.items[shopSlot]; exists {
-			// Return item to owner's inventory
-			if err, _ := plr.GiveItem(shopItem.item); err != nil {
-				log.Printf("Failed to return item to player %s: %v", plr.Name, err)
-				return
+			// Item is still in owner's inventory, so just remove from shop tracking
+			// Calculate remaining amount after removing one bundle
+			remainingBundles := shopItem.bundles - 1
+			var remaining byte
+			if remainingBundles > 0 {
+				remaining = byte(remainingBundles)
+			} else {
+				remaining = 0
 			}
 
-			if shop.removeItem(shopSlot) {
-				shop.send(packetRoomShopRemoveItem(shopSlot))
+			if remainingBundles <= 0 {
+				// Remove completely from shop
+				shop.removeItem(shopSlot)
+			} else {
+				// Update bundles count
+				shopItem.bundles = remainingBundles
+				shopItem.item.amount = remainingBundles * shopItem.bundleAmount
 			}
+
+			// Send packet with remaining bundles and slot
+			shop.send(packetRoomShopRemoveItem(remaining, shopItem.item.slotID))
 		}
 
 		plr.Send(packetPlayerNoChange())

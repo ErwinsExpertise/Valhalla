@@ -927,9 +927,11 @@ func (r *tradeRoom) rollback() {
 }
 
 type shopItem struct {
-	item  Item
-	price int32
-	slot  byte
+	item         Item
+	price        int32
+	slot         byte
+	bundles      int16
+	bundleAmount int16
 }
 
 type shopRoom struct {
@@ -938,6 +940,7 @@ type shopRoom struct {
 	description string
 	items       map[byte]*shopItem // slot -> shop item
 	nextSlot    byte
+	mesos       int32              // Accumulated mesos from sales
 }
 
 func newShopRoom(id int32, name, description string) roomer {
@@ -948,6 +951,7 @@ func newShopRoom(id int32, name, description string) roomer {
 		description: description,
 		items:       make(map[byte]*shopItem),
 		nextSlot:    0,
+		mesos:       0,
 	}
 }
 
@@ -972,7 +976,8 @@ func (r *shopRoom) removePlayer(plr *Player) {
 			plr.Send(packetRoomLeave(byte(i), constant.MiniRoomLeaveReason))
 			
 			if i == constant.RoomOwnerSlot {
-				// Owner left, close shop and kick everyone
+				// Owner left, close shop - items are still in their inventory, so no need to return them
+				// Just kick everyone
 				for j := range r.players {
 					r.players[j].Send(packetRoomLeave(byte(j+1), constant.MiniRoomClosed))
 				}
@@ -985,15 +990,17 @@ func (r *shopRoom) removePlayer(plr *Player) {
 	}
 }
 
-func (r *shopRoom) addItem(item Item, price int32, slot byte) bool {
+func (r *shopRoom) addItem(item Item, bundles, bundleAmount int16, price int32, slot byte) bool {
 	if _, exists := r.items[slot]; exists {
 		return false
 	}
 
 	r.items[slot] = &shopItem{
-		item:  item,
-		price: price,
-		slot:  slot,
+		item:         item,
+		price:        price,
+		slot:         slot,
+		bundles:      bundles,
+		bundleAmount: bundleAmount,
 	}
 
 	if slot >= r.nextSlot {
@@ -1009,20 +1016,27 @@ func (r *shopRoom) buyItem(slot byte, quantity int16, buyerID int32) byte {
 		return constant.PlayerShopNotEnoughInStock
 	}
 
-	if shopItem.item.amount < quantity {
+	// Check if enough bundles available
+	if shopItem.bundles < quantity {
 		return constant.PlayerShopNotEnoughInStock
 	}
 
+	// Calculate total cost and real amount
 	totalCost := int64(shopItem.price) * int64(quantity)
+	realAmount := quantity * shopItem.bundleAmount
+	
 	if totalCost > int64(math.MaxInt32) {
 		return constant.PlayerShopPriceTooHighForTrade
 	}
 
 	var buyer *Player
+	var owner *Player
 	for _, plr := range r.players {
 		if plr.ID == buyerID {
 			buyer = plr
-			break
+		}
+		if plr.ID == r.ownerID() {
+			owner = plr
 		}
 	}
 
@@ -1034,9 +1048,9 @@ func (r *shopRoom) buyItem(slot byte, quantity int16, buyerID int32) byte {
 		return constant.PlayerShopBuyerNotEnoughMoney
 	}
 
-	// Create item to give to buyer - make a proper copy
+	// Create item to give to buyer
 	purchasedItem := shopItem.item
-	purchasedItem.amount = quantity
+	purchasedItem.amount = realAmount
 	// Clear internal IDs since this is a new item instance
 	purchasedItem.dbID = 0
 	purchasedItem.slotID = 0
@@ -1056,15 +1070,29 @@ func (r *shopRoom) buyItem(slot byte, quantity int16, buyerID int32) byte {
 		return constant.PlayerShopInventoryFull
 	}
 
-	// Update or remove shop item
-	shopItem.item.amount -= quantity
-	if shopItem.item.amount <= 0 {
+	// Update shop item bundles
+	shopItem.bundles -= quantity
+	if shopItem.bundles <= 0 {
+		// Remove item from shop, and if owner is present, remove from their inventory
+		if owner != nil {
+			// Now actually take the item from owner's inventory since it was sold
+			_, err := owner.takeItem(shopItem.item.ID, shopItem.item.slotID, shopItem.item.amount, shopItem.item.invID)
+			if err != nil {
+				log.Printf("Warning: Failed to remove sold item from owner inventory: %v", err)
+			}
+		}
 		delete(r.items, slot)
+	} else {
+		// Update the amount in the shop item
+		shopItem.item.amount = shopItem.bundles * shopItem.bundleAmount
 	}
 
 	// Give mesos to owner if present
-	if len(r.players) > 0 && r.players[0] != nil {
-		r.players[0].giveMesos(int32(totalCost))
+	if owner != nil {
+		owner.giveMesos(int32(totalCost))
+	} else {
+		// Track mesos for offline owner
+		r.mesos += int32(totalCost)
 	}
 
 	return 0
@@ -1422,21 +1450,40 @@ func packetRoomShopShowWindow(shop *shopRoom, roomSlot byte) mpacket.Packet {
 	p.WriteByte(0x10) // unknown
 	p.WriteByte(byte(len(shop.items)))
 
+	// According to OpenMG: bundles, bundleAmount, price, then item
 	for _, shopItem := range shop.items {
-		p.WriteByte(shopItem.slot)
-		p.Append(shopItem.item.StorageBytes())
+		p.WriteInt16(shopItem.bundles)
+		p.WriteInt16(shopItem.bundleAmount)
 		p.WriteInt32(shopItem.price)
+		p.Append(shopItem.item.StorageBytes())
 	}
 
 	return p
 }
 
-func packetRoomShopAddItem(slot byte, item Item, price int32) mpacket.Packet {
+func packetRoomShopRefresh(shop *shopRoom) mpacket.Packet {
+	p := mpacket.CreateWithOpcode(opcode.SendChannelRoom)
+	p.WriteByte(0x15) // PersonalShopRefresh opcode from OpenMG
+	p.WriteByte(byte(len(shop.items)))
+
+	// According to OpenMG: bundles, bundleAmount, price, then item
+	for _, shopItem := range shop.items {
+		p.WriteInt16(shopItem.bundles)
+		p.WriteInt16(shopItem.bundleAmount)
+		p.WriteInt32(shopItem.price)
+		p.Append(shopItem.item.StorageBytes())
+	}
+
+	return p
+}
+
+func packetRoomShopAddItem(bundles, bundleAmount int16, price int32, item Item) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelRoom)
 	p.WriteByte(constant.MiniRoomAddShopItem)
-	p.WriteByte(slot)
-	p.Append(item.StorageBytes())
+	p.WriteInt16(bundles)
+	p.WriteInt16(bundleAmount)
 	p.WriteInt32(price)
+	p.Append(item.StorageBytes())
 	return p
 }
 
@@ -1447,19 +1494,20 @@ func packetRoomShopBuyItemResult(result byte) mpacket.Packet {
 	return p
 }
 
-func packetRoomShopSoldItem(slot byte, quantity int16, buyerIndex byte) mpacket.Packet {
+func packetRoomShopSoldItem(slot byte, quantity int16, buyerName string) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelRoom)
 	p.WriteByte(constant.MiniRoomPlayerShopSoldItem)
 	p.WriteByte(slot)
 	p.WriteInt16(quantity)
-	p.WriteByte(buyerIndex)
+	p.WriteString(buyerName)
 	return p
 }
 
-func packetRoomShopRemoveItem(slot byte) mpacket.Packet {
+func packetRoomShopRemoveItem(remaining byte, slot int16) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelRoom)
-	p.WriteByte(constant.MiniRoomMoveItemShopToInv)
-	p.WriteByte(slot)
+	p.WriteByte(0x17) // MoveItemToInventory opcode from OpenMG
+	p.WriteByte(remaining)
+	p.WriteInt16(slot)
 	return p
 }
 
