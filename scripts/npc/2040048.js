@@ -6,7 +6,7 @@ var pass = 4001022; // Pass of Dimension
 var key = 4001023; // Key of Dimension
 
 // Helper function to complete a stage
-function completeStage(itemID, requiredAmount, itemName) {
+function completeStage(itemID, requiredAmount) {
     if (plr.itemCount(itemID) >= requiredAmount) {
         if (npc.sendYesNo("Good job! You have collected " + requiredAmount + " #t" + itemID + "#s. Would you like to move to the next stage?")) {
             plr.removeItemsByID(itemID, requiredAmount);
