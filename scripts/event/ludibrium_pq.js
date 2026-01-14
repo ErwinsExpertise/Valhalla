@@ -22,7 +22,7 @@ function start() {
 }
 
 function beforePortal(plr, src, dst) {
-    props = src.properties();
+    var props = src.properties();
 
     if (props["clear"]) {
         return true;
@@ -35,7 +35,7 @@ function beforePortal(plr, src, dst) {
 function afterPortal(plr, dst) {
     plr.showCountdown(ctrl.remainingTime());
 
-    props = dst.properties();
+    var props = dst.properties();
 
     if (props["clear"]) {
         // send the active portal effect in case we have entered map after party cleared

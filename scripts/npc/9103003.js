@@ -53,14 +53,10 @@ if (rand < 5) {
     rewardAmount = 50;
 }
 
-if (rewardID > 0) {
-    if (plr.giveItem(rewardID, rewardAmount)) {
-        npc.sendOk("Incredible! You've completed all the stages! Here's your reward: " + rewardAmount + " #t" + rewardID + "# and " + expReward + " EXP!");
-    } else {
-        npc.sendOk("Your inventory is full! Please make space and try again.");
-    }
+if (plr.giveItem(rewardID, rewardAmount)) {
+    npc.sendOk("Incredible! You've completed all the stages! Here's your reward: " + rewardAmount + " #t" + rewardID + "# and " + expReward + " EXP!");
 } else {
-    npc.sendOk("Congratulations on completing the Ludibrium Party Quest! You gained " + expReward + " EXP!");
+    npc.sendOk("Your inventory is full! Please make space and try again.");
 }
 
 // Warp player out
