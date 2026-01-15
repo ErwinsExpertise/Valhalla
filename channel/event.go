@@ -28,6 +28,7 @@ type event struct {
 	vm      *goja.Runtime
 
 	closeFinish func()
+	timerReset  chan struct{}
 }
 
 func createEvent(id int32, instID int, players []int32, server *Server, program *goja.Program) (*event, error) {
@@ -39,6 +40,7 @@ func createEvent(id int32, instID int, players []int32, server *Server, program 
 		server:     server,
 		program:    program,
 		vm:         goja.New(),
+		timerReset: make(chan struct{}, 1),
 	}
 
 	ctrl.closeFinish = sync.OnceFunc(func() {
@@ -112,6 +114,15 @@ func (e *event) start() {
 
 				delete(e.server.events, e.id)
 			}
+		case <-e.timerReset:
+			if !timeout.Stop() {
+				select {
+				case <-timeout.C:
+				default:
+				}
+			}
+			timeout.Reset(e.duration)
+
 		case <-e.finished:
 			e.server.dispatch <- func() {
 				for _, id := range e.playerIDs {
@@ -173,6 +184,11 @@ func (e *event) SetDuration(duration string) {
 
 	e.duration = countdown
 	e.endTime = time.Now().Add(countdown)
+
+	select {
+	case e.timerReset <- struct{}{}:
+	default:
+	}
 }
 
 func (e *event) GetMap(id int32) scriptMapWrapper {

@@ -1,0 +1,2 @@
+// Ludi PQ Bonus Stage NPC
+npc.sendOk("Welcome to the bonus stage. I can't believe you actually defeated #b#o9300012##k! Incredible! But we don't have much time, so I'll get right to the point. There are many boxes here. Your task is to break the boxes within the time limit and get the items inside. If you're lucky, you might even snag a great item here and there. If this doesn't excite you, I don't know what will. Good luck!!")

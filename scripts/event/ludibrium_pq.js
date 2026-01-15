@@ -3,6 +3,10 @@ var exitMapID = 221024500; // Exit map
 var pass = 4001022; // Pass of Dimension
 var key = 4001023; // Key of Dimension
 
+var bonusMapID = 922011000;
+var bonusStarted = false;
+var bonusEnded = false;
+
 function start() {
     ctrl.setDuration("60m");
 
@@ -21,6 +25,22 @@ function start() {
     }
 }
 
+function startBonus() {
+    ctrl.setDuration("1m");
+    bonusStarted = true;
+
+    var field = ctrl.getMap(bonusMapID);
+    field.removeDrops();
+    field.clearProperties();
+
+    var players = ctrl.players();
+    var time = ctrl.remainingTime();
+
+    for (let i = 0; i < players.length; i++) {
+        players[i].showCountdown(time);
+    }
+}
+
 function beforePortal(plr, src, dst) {
     var props = src.properties();
 
@@ -33,6 +53,11 @@ function beforePortal(plr, src, dst) {
 }
 
 function afterPortal(plr, dst) {
+    // If the first character enters the bonus map, start the 1 minute timer.
+    if (!bonusStarted && dst.id() == bonusMapID) {
+        startBonus();
+    }
+
     plr.showCountdown(ctrl.remainingTime());
 
     var props = dst.properties();
@@ -44,6 +69,22 @@ function afterPortal(plr, dst) {
 }
 
 function timeout(plr) {
+    // Bonus: when the 1 minute timer ends, force everyone out as if leaving the PQ.
+    if (bonusStarted && !bonusEnded) {
+        bonusEnded = true;
+
+        var players = ctrl.players();
+        for (let i = 0; i < players.length; i++) {
+            players[i].removeItemsByIDSilent(pass, players[i].itemCount(pass));
+            players[i].removeItemsByIDSilent(key, players[i].itemCount(key));
+            ctrl.removePlayer(players[i]);
+            players[i].warp(exitMapID);
+        }
+
+        ctrl.finished();
+        return;
+    }
+
     plr.warp(exitMapID);
 }
 
