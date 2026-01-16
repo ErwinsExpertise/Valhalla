@@ -8,6 +8,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/Hucaru/Valhalla/common"
 )
 
 type devServer struct {
@@ -143,6 +145,9 @@ func (ds *devServer) shutdown() {
 	if ds.loginServer != nil {
 		ds.loginServer.shutdown()
 	}
+	
+	// Stop the metrics server
+	common.StopMetrics()
 	
 	ds.cancel()
 }
