@@ -11,10 +11,14 @@ import (
 )
 
 type devServer struct {
-	configFile string
-	wg         *sync.WaitGroup
-	ctx        context.Context
-	cancel     context.CancelFunc
+	configFile   string
+	wg           *sync.WaitGroup
+	ctx          context.Context
+	cancel       context.CancelFunc
+	loginServer  *loginServer
+	worldServer  *worldServer
+	channelServer *channelServer
+	cashShopServer *cashShopServer
 }
 
 func newDevServer(configFile string) *devServer {
@@ -57,8 +61,8 @@ func (ds *devServer) run() {
 				log.Println("Login server panic:", r)
 			}
 		}()
-		ls := newLoginServer(ds.configFile)
-		ls.run()
+		ds.loginServer = newLoginServer(ds.configFile)
+		ds.loginServer.run()
 	}()
 
 	// Give login server time to start
@@ -73,8 +77,8 @@ func (ds *devServer) run() {
 				log.Println("World server panic:", r)
 			}
 		}()
-		ws := newWorldServer(ds.configFile)
-		ws.run()
+		ds.worldServer = newWorldServer(ds.configFile)
+		ds.worldServer.run()
 	}()
 
 	// Give world server time to connect to login
@@ -89,8 +93,8 @@ func (ds *devServer) run() {
 				log.Println("Channel server panic:", r)
 			}
 		}()
-		cs := newChannelServer(ds.configFile)
-		cs.run()
+		ds.channelServer = newChannelServer(ds.configFile)
+		ds.channelServer.run()
 	}()
 
 	// Give channel server time to connect to world
@@ -105,8 +109,8 @@ func (ds *devServer) run() {
 				log.Println("CashShop server panic:", r)
 			}
 		}()
-		cs := newCashShopServer(ds.configFile)
-		cs.run()
+		ds.cashShopServer = newCashShopServer(ds.configFile)
+		ds.cashShopServer.run()
 	}()
 
 	log.Println("===============================================")
@@ -122,5 +126,23 @@ func (ds *devServer) run() {
 
 func (ds *devServer) shutdown() {
 	log.Println("Shutting down all servers...")
+	
+	// Trigger shutdown on all servers
+	// Note: Each server has its own signal handler that will also trigger
+	// on SIGINT/SIGTERM, so they will shutdown gracefully on their own.
+	// This is a backup to ensure shutdown is triggered.
+	if ds.cashShopServer != nil {
+		ds.cashShopServer.shutdown()
+	}
+	if ds.channelServer != nil {
+		ds.channelServer.shutdown()
+	}
+	if ds.worldServer != nil {
+		ds.worldServer.shutdown()
+	}
+	if ds.loginServer != nil {
+		ds.loginServer.shutdown()
+	}
+	
 	ds.cancel()
 }
