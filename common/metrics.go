@@ -26,7 +26,6 @@ var (
 	
 	// metricsServer stores the HTTP server instance for shutdown
 	metricsServer *http.Server
-	metricsOnce sync.Once
 )
 
 // StartMetrics initializes and handles metrics Prometheus endpoint
@@ -54,13 +53,12 @@ func StartMetrics() {
 
 // StopMetrics gracefully shuts down the metrics server
 func StopMetrics() {
-	metricsOnce.Do(func() {
-		if metricsServer != nil {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			if err := metricsServer.Shutdown(ctx); err != nil {
-				log.Println("Metrics server shutdown error:", err)
-			}
+	if metricsServer != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := metricsServer.Shutdown(ctx); err != nil {
+			log.Println("Metrics server shutdown error:", err)
 		}
-	})
+		metricsServer = nil
+	}
 }
