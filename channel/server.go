@@ -304,16 +304,24 @@ func (server *Server) StartAutosave(ctx context.Context) {
 		default:
 		}
 		time.AfterFunc(interval, func() {
-			server.dispatch <- func() {
+			select {
+			case <-ctx.Done():
+				return
+			case server.dispatch <- func() {
 				server.players.Flush()
 				scheduleNext()
+			}:
 			}
 		})
 	}
 
-	server.dispatch <- func() {
+	select {
+	case <-ctx.Done():
+		return
+	case server.dispatch <- func() {
 		server.players.Flush()
 		scheduleNext()
+	}:
 	}
 }
 
