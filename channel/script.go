@@ -307,6 +307,20 @@ func (ctrl *scriptPlayerWrapper) IsPartyLeader() bool {
 	return false
 }
 
+func (ctrl *scriptPlayerWrapper) IsPartyOnMap() bool {
+	if !ctrl.InParty() {
+		return true
+	}
+
+	for _, v := range ctrl.plr.party.players {
+		if v.mapID != ctrl.MapID() && v.event != nil {
+			return false
+		}
+	}
+
+	return true
+}
+
 func (ctrl *scriptPlayerWrapper) PartyMembersOnMapCount() int {
 	if !ctrl.InParty() {
 		return 0
