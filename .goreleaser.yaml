@@ -92,7 +92,7 @@ release:
     
     ### Quick Start (Dev Mode - All-in-One)
     
-    **New in this release:** Dev mode allows you to run all servers (login, world, channel, cashshop) in a single process!
+    Dev mode allows you to run all servers (login, world, channel, cashshop) in a single process!
     
     1. Download the appropriate archive for your platform
     2. Extract the archive
