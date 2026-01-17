@@ -2744,14 +2744,10 @@ func getAttackInfo(reader mpacket.Reader, player Player, attackType int) (attack
 			for j := byte(0); j < ai.hitCount; j++ {
 				dmg := reader.ReadInt32()
 				
-				// Calculate critical hit for each damage line
-				isCrit := player.rollCritical()
+				// Calculate critical hit for ranged attacks only
+				// Don't modify damage value - just mark if it's critical
+				isCrit := player.rollCritical(attackType)
 				ai.isCritical[j] = isCrit
-				
-				// Apply critical damage multiplier if critical
-				if isCrit && dmg > 0 {
-					dmg = int32(float64(dmg) * criticalDamageMultiplier)
-				}
 				
 				data.totalDamage += dmg
 				ai.damages[j] = dmg
@@ -2806,11 +2802,8 @@ func getAttackInfo(reader mpacket.Reader, player Player, attackType int) (attack
 		int32(rest[delayIdx+4])<<16 |
 		int32(rest[delayIdx+5])<<24
 
-	// Roll for critical hit on summon attack
-	isCrit := player.rollCritical()
-	if isCrit && dmg > 0 {
-		dmg = int32(float64(dmg) * criticalDamageMultiplier)
-	}
+	// Roll for critical hit on summon attack (summons can't crit in v83)
+	isCrit := false
 
 	data.attackInfo = []attackInfo{{
 		spawnID:    spawnID,
