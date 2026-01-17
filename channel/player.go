@@ -520,6 +520,29 @@ func (d *Player) getRechargeBonus() int16 {
 	return 0
 }
 
+// getCriticalRate calculates the player's critical hit rate as a percentage
+// Formula: LUK / 10 (capped at 40%)
+func (d *Player) getCriticalRate() float64 {
+	// Base critical rate from LUK stat
+	// In MapleStory v83, critical rate is typically LUK / 10
+	baseRate := float64(d.luk) / 10.0
+	
+	// Cap at 40% to prevent excessive critical hits
+	if baseRate > 40.0 {
+		baseRate = 40.0
+	}
+	
+	return baseRate
+}
+
+// rollCritical determines if an attack is a critical hit
+func (d *Player) rollCritical() bool {
+	critRate := d.getCriticalRate()
+	// Roll a random number between 0-100
+	roll := float64(d.randIntn(100))
+	return roll < critRate
+}
+
 // Send the Data a packet
 func (d *Player) Send(packet mpacket.Packet) {
 	if d == nil || d.Conn == nil {
@@ -3691,8 +3714,13 @@ func packetSkillMelee(char Player, ad attackData) mpacket.Packet {
 			p.WriteByte(byte(len(info.damages)))
 		}
 
-		for _, dmg := range info.damages {
-			p.WriteInt32(dmg)
+		for idx, dmg := range info.damages {
+			// Send negative damage for critical hits to trigger client animation
+			if idx < len(info.isCritical) && info.isCritical[idx] {
+				p.WriteInt32(-dmg)
+			} else {
+				p.WriteInt32(dmg)
+			}
 		}
 	}
 
@@ -3730,8 +3758,13 @@ func packetSkillRanged(char Player, ad attackData) mpacket.Packet {
 			p.WriteByte(byte(len(info.damages)))
 		}
 
-		for _, dmg := range info.damages {
-			p.WriteInt32(dmg)
+		for idx, dmg := range info.damages {
+			// Send negative damage for critical hits to trigger client animation
+			if idx < len(info.isCritical) && info.isCritical[idx] {
+				p.WriteInt32(-dmg)
+			} else {
+				p.WriteInt32(dmg)
+			}
 		}
 	}
 
@@ -3769,8 +3802,13 @@ func packetSkillMagic(char Player, ad attackData) mpacket.Packet {
 			p.WriteByte(byte(len(info.damages)))
 		}
 
-		for _, dmg := range info.damages {
-			p.WriteInt32(dmg)
+		for idx, dmg := range info.damages {
+			// Send negative damage for critical hits to trigger client animation
+			if idx < len(info.isCritical) && info.isCritical[idx] {
+				p.WriteInt32(-dmg)
+			} else {
+				p.WriteInt32(dmg)
+			}
 		}
 	}
 

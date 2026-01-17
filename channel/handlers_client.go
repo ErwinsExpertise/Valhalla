@@ -2607,6 +2607,7 @@ type attackInfo struct {
 	hitCount                                               byte
 	damages                                                []int32
 	mesoDropIDs                                            []int32
+	isCritical                                             []bool // Track which hits are critical
 }
 
 type attackData struct {
@@ -2731,8 +2732,19 @@ func getAttackInfo(reader mpacket.Reader, player Player, attackType int) (attack
 			}
 
 			ai.damages = make([]int32, ai.hitCount)
+			ai.isCritical = make([]bool, ai.hitCount)
 			for j := byte(0); j < ai.hitCount; j++ {
 				dmg := reader.ReadInt32()
+				
+				// Calculate critical hit for each damage line
+				isCrit := player.rollCritical()
+				ai.isCritical[j] = isCrit
+				
+				// Apply critical damage multiplier (1.5x) if critical
+				if isCrit && dmg > 0 {
+					dmg = int32(float64(dmg) * 1.5)
+				}
+				
 				data.totalDamage += dmg
 				ai.damages[j] = dmg
 			}
@@ -4580,7 +4592,16 @@ func (server *Server) playerSummonAttack(conn mnet.Client, reader mpacket.Reader
 		if at.spawnID <= 0 || len(at.damages) == 0 {
 			continue
 		}
-		mobDamages[at.spawnID] = append(mobDamages[at.spawnID], at.damages...)
+		// Apply critical negation for summon attacks too
+		criticalDamages := make([]int32, len(at.damages))
+		for idx, dmg := range at.damages {
+			if idx < len(at.isCritical) && at.isCritical[idx] {
+				criticalDamages[idx] = -dmg // Negative for critical display
+			} else {
+				criticalDamages[idx] = dmg
+			}
+		}
+		mobDamages[at.spawnID] = append(mobDamages[at.spawnID], criticalDamages...)
 	}
 	if len(mobDamages) == 0 {
 		return
@@ -4594,8 +4615,13 @@ func (server *Server) playerSummonAttack(conn mnet.Client, reader mpacket.Reader
 	inst.sendExcept(packetSummonAttack(plr.ID, data.summonType, anim, byte(len(mobDamages)), mobDamages), conn)
 	for spawnID, damages := range mobDamages {
 		for _, d := range damages {
-			if d > 0 {
-				inst.lifePool.mobDamaged(spawnID, plr, d)
+			// Use absolute value for actual damage calculation
+			actualDamage := d
+			if actualDamage < 0 {
+				actualDamage = -actualDamage
+			}
+			if actualDamage > 0 {
+				inst.lifePool.mobDamaged(spawnID, plr, actualDamage))
 			}
 		}
 	}
