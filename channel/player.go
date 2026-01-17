@@ -520,6 +520,13 @@ func (d *Player) getRechargeBonus() int16 {
 	return 0
 }
 
+// Critical rate constants for v83
+const (
+	criticalBaseRate      = 15 // Base critical rate percentage
+	criticalRatePerLevel  = 2  // Additional percentage per skill level
+	criticalRateMax       = 100 // Maximum critical rate cap
+)
+
 // getCriticalSkillAndRate returns the critical skill ID and rate for ranged attacks
 // Returns (skillID, critRate) where critRate is the percentage chance from skill
 func (d *Player) getCriticalSkillAndRate() (int32, int) {
@@ -541,9 +548,11 @@ func (d *Player) getCriticalSkillAndRate() (int32, int) {
 	// Check for Critical Shot (Bow/Crossbow)
 	if weaponType == constant.WeaponTypeBow || weaponType == constant.WeaponTypeCrossbow {
 		if ps, ok := d.skills[int32(skill.CriticalShot)]; ok {
-			// Get critical rate from skill level
-			// Critical Shot gives 15% base + 2% per level
-			critRate := 15 + (int(ps.Level) * 2)
+			// Calculate critical rate: base + (level * rate per level)
+			critRate := criticalBaseRate + (int(ps.Level) * criticalRatePerLevel)
+			if critRate > criticalRateMax {
+				critRate = criticalRateMax
+			}
 			return int32(skill.CriticalShot), critRate
 		}
 	}
@@ -551,8 +560,11 @@ func (d *Player) getCriticalSkillAndRate() (int32, int) {
 	// Check for Critical Throw (Claw)
 	if weaponType == constant.WeaponTypeClaw {
 		if ps, ok := d.skills[int32(skill.CriticalThrow)]; ok {
-			// Critical Throw gives 15% base + 2% per level
-			critRate := 15 + (int(ps.Level) * 2)
+			// Calculate critical rate: base + (level * rate per level)
+			critRate := criticalBaseRate + (int(ps.Level) * criticalRatePerLevel)
+			if critRate > criticalRateMax {
+				critRate = criticalRateMax
+			}
 			return int32(skill.CriticalThrow), critRate
 		}
 	}
@@ -560,29 +572,21 @@ func (d *Player) getCriticalSkillAndRate() (int32, int) {
 	return 0, 0
 }
 
-// canCritical checks if this attack can be a critical hit
+// rollCritical determines if an attack is a critical hit based on skill
 // Only ranged attacks with proper weapon and skill can crit
-func (d *Player) canCritical(attackType int) bool {
+func (d *Player) rollCritical(attackType int) bool {
+	// Only ranged attacks can crit
 	if attackType != attackRanged {
 		return false
 	}
 	
-	skillID, _ := d.getCriticalSkillAndRate()
-	return skillID != 0
-}
-
-// rollCritical determines if an attack is a critical hit based on skill
-func (d *Player) rollCritical(attackType int) bool {
-	if !d.canCritical(attackType) {
+	// Get skill and critical rate
+	skillID, critRate := d.getCriticalSkillAndRate()
+	if skillID == 0 || critRate == 0 {
 		return false
 	}
 	
-	_, critRate := d.getCriticalSkillAndRate()
-	if critRate == 0 {
-		return false
-	}
-	
-	// Roll for critical
+	// Roll for critical (0-99 < rate)
 	roll := d.randIntn(100)
 	return roll < critRate
 }
