@@ -3686,6 +3686,18 @@ func packetPlayerChairUpdate() mpacket.Packet {
 	return p
 }
 
+// writeAttackDamages writes damage values to packet, negating for critical hits
+func writeAttackDamages(p *mpacket.Packet, info attackInfo) {
+	for idx, dmg := range info.damages {
+		// Send negative damage for critical hits to trigger client animation
+		if idx < len(info.isCritical) && info.isCritical[idx] {
+			p.WriteInt32(-dmg)
+		} else {
+			p.WriteInt32(dmg)
+		}
+	}
+}
+
 func packetSkillMelee(char Player, ad attackData) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelPlayerUseMeleeSkill)
 	p.WriteInt32(char.ID)
@@ -3717,14 +3729,7 @@ func packetSkillMelee(char Player, ad attackData) mpacket.Packet {
 			p.WriteByte(byte(len(info.damages)))
 		}
 
-		for idx, dmg := range info.damages {
-			// Send negative damage for critical hits to trigger client animation
-			if idx < len(info.isCritical) && info.isCritical[idx] {
-				p.WriteInt32(-dmg)
-			} else {
-				p.WriteInt32(dmg)
-			}
-		}
+		writeAttackDamages(&p, info)
 	}
 
 	return p
@@ -3761,14 +3766,7 @@ func packetSkillRanged(char Player, ad attackData) mpacket.Packet {
 			p.WriteByte(byte(len(info.damages)))
 		}
 
-		for idx, dmg := range info.damages {
-			// Send negative damage for critical hits to trigger client animation
-			if idx < len(info.isCritical) && info.isCritical[idx] {
-				p.WriteInt32(-dmg)
-			} else {
-				p.WriteInt32(dmg)
-			}
-		}
+		writeAttackDamages(&p, info)
 	}
 
 	return p
@@ -3805,14 +3803,7 @@ func packetSkillMagic(char Player, ad attackData) mpacket.Packet {
 			p.WriteByte(byte(len(info.damages)))
 		}
 
-		for idx, dmg := range info.damages {
-			// Send negative damage for critical hits to trigger client animation
-			if idx < len(info.isCritical) && info.isCritical[idx] {
-				p.WriteInt32(-dmg)
-			} else {
-				p.WriteInt32(dmg)
-			}
-		}
+		writeAttackDamages(&p, info)
 	}
 
 	return p
