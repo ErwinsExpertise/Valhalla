@@ -3734,9 +3734,13 @@ func packetPlayerChairUpdate() mpacket.Packet {
 // writeAttackDamages writes damage values to packet, negating for critical hits
 func writeAttackDamages(p *mpacket.Packet, info attackInfo) {
 	for idx, dmg := range info.damages {
-		// Ensure damage is positive (defensive check)
+		// Ensure damage is positive and handle int32 overflow edge case
 		if dmg < 0 {
-			dmg = -dmg
+			if dmg == -2147483648 { // math.MinInt32
+				dmg = 2147483647 // math.MaxInt32 (best we can do)
+			} else {
+				dmg = -dmg
+			}
 		}
 		
 		// Send negative damage for critical hits to trigger client animation
