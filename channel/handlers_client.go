@@ -2606,9 +2606,6 @@ const (
 	attackSummon
 )
 
-// Critical damage multiplier (1.5x for MapleStory v83)
-const criticalDamageMultiplier = 1.5
-
 type attackInfo struct {
 	spawnID                                                int32
 	hitAction, foreAction, frameIndex, calcDamageStatIndex byte
@@ -2809,9 +2806,16 @@ func getAttackInfo(reader mpacket.Reader, player Player, attackType int) (attack
 		int32(rest[delayIdx+4])<<16 |
 		int32(rest[delayIdx+5])<<24
 
+	// Roll for critical hit on summon attack
+	isCrit := player.rollCritical()
+	if isCrit && dmg > 0 {
+		dmg = int32(float64(dmg) * criticalDamageMultiplier)
+	}
+
 	data.attackInfo = []attackInfo{{
-		spawnID: spawnID,
-		damages: []int32{dmg},
+		spawnID:    spawnID,
+		damages:    []int32{dmg},
+		isCritical: []bool{isCrit},
 	}}
 	data.targets = 1
 	data.totalDamage = dmg

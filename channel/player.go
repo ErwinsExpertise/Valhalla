@@ -520,6 +520,9 @@ func (d *Player) getRechargeBonus() int16 {
 	return 0
 }
 
+// Critical damage multiplier (1.5x for MapleStory v83)
+const criticalDamageMultiplier = 1.5
+
 // getCriticalRate calculates the player's critical hit rate as a percentage
 // Formula: LUK / 10 (capped at 40%)
 func (d *Player) getCriticalRate() float64 {
