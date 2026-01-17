@@ -1003,7 +1003,7 @@ Many commands support optional player targeting:
 
 ### Permission Levels
 
-The command system has a TODO note about implementing rank-based permissions:
+The command system currently does not implement rank-based permissions, but this is planned for future development:
 - **Admin** - Everything, server-wide commands, item generation
 - **Game Master** - Bans, channel-wide commands, monster spawning
 - **Support** - Player assistance, issue resolution
