@@ -2473,8 +2473,6 @@ func (server Server) playerMeleeSkill(conn mnet.Client, reader mpacket.Reader) {
 		server.handleMesoExplosion(plr, inst, data)
 	} else {
 		for _, attack := range data.attackInfo {
-			// Note: attack.damages contains positive values with critical multiplier already applied
-			// The negation for critical display happens only in the packet functions
 			inst.lifePool.mobDamaged(attack.spawnID, plr, attack.damages...)
 		}
 	}
@@ -2517,8 +2515,6 @@ func (server Server) playerRangedSkill(conn mnet.Client, reader mpacket.Reader) 
 
 	inst.sendExcept(packetSkillRanged(*plr, data), conn)
 
-	// Note: attack.damages contains positive values with critical multiplier already applied
-	// The negation for critical display happens only in the packet functions
 	for _, attack := range data.attackInfo {
 		inst.lifePool.mobDamaged(attack.spawnID, plr, attack.damages...)
 	}
@@ -2567,8 +2563,6 @@ func (server Server) playerMagicSkill(conn mnet.Client, reader mpacket.Reader) {
 
 	inst.sendExcept(packetSkillMagic(*plr, data), conn)
 
-	// Note: attack.damages contains positive values with critical multiplier already applied
-	// The negation for critical display happens only in the packet functions
 	for _, attack := range data.attackInfo {
 		inst.lifePool.mobDamaged(attack.spawnID, plr, attack.damages...)
 	}
@@ -2591,8 +2585,6 @@ func (server *Server) handleMesoExplosion(plr *Player, inst *fieldInstance, data
 			}
 		}
 
-		// Note: at.damages contains positive values with critical multiplier already applied
-		// The negation for critical display happens only in the packet functions
 		if at.spawnID != 0 && len(at.damages) > 0 && found {
 			inst.lifePool.mobDamaged(at.spawnID, plr, at.damages...)
 		}
@@ -2744,8 +2736,6 @@ func getAttackInfo(reader mpacket.Reader, player Player, attackType int) (attack
 			for j := byte(0); j < ai.hitCount; j++ {
 				dmg := reader.ReadInt32()
 				
-				// Calculate critical hit for ranged attacks only
-				// Don't modify damage value - just mark if it's critical
 				isCrit := player.rollCritical(attackType)
 				ai.isCritical[j] = isCrit
 				
