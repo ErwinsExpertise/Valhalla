@@ -2473,6 +2473,8 @@ func (server Server) playerMeleeSkill(conn mnet.Client, reader mpacket.Reader) {
 		server.handleMesoExplosion(plr, inst, data)
 	} else {
 		for _, attack := range data.attackInfo {
+			// Note: attack.damages contains positive values with critical multiplier already applied
+			// The negation for critical display happens only in the packet functions
 			inst.lifePool.mobDamaged(attack.spawnID, plr, attack.damages...)
 		}
 	}
@@ -2515,6 +2517,8 @@ func (server Server) playerRangedSkill(conn mnet.Client, reader mpacket.Reader) 
 
 	inst.sendExcept(packetSkillRanged(*plr, data), conn)
 
+	// Note: attack.damages contains positive values with critical multiplier already applied
+	// The negation for critical display happens only in the packet functions
 	for _, attack := range data.attackInfo {
 		inst.lifePool.mobDamaged(attack.spawnID, plr, attack.damages...)
 	}
@@ -2563,6 +2567,8 @@ func (server Server) playerMagicSkill(conn mnet.Client, reader mpacket.Reader) {
 
 	inst.sendExcept(packetSkillMagic(*plr, data), conn)
 
+	// Note: attack.damages contains positive values with critical multiplier already applied
+	// The negation for critical display happens only in the packet functions
 	for _, attack := range data.attackInfo {
 		inst.lifePool.mobDamaged(attack.spawnID, plr, attack.damages...)
 	}
@@ -2585,6 +2591,8 @@ func (server *Server) handleMesoExplosion(plr *Player, inst *fieldInstance, data
 			}
 		}
 
+		// Note: at.damages contains positive values with critical multiplier already applied
+		// The negation for critical display happens only in the packet functions
 		if at.spawnID != 0 && len(at.damages) > 0 && found {
 			inst.lifePool.mobDamaged(at.spawnID, plr, at.damages...)
 		}
@@ -2597,6 +2605,9 @@ const (
 	attackMagic
 	attackSummon
 )
+
+// Critical damage multiplier (1.5x for MapleStory v83)
+const criticalDamageMultiplier = 1.5
 
 type attackInfo struct {
 	spawnID                                                int32
@@ -2740,9 +2751,9 @@ func getAttackInfo(reader mpacket.Reader, player Player, attackType int) (attack
 				isCrit := player.rollCritical()
 				ai.isCritical[j] = isCrit
 				
-				// Apply critical damage multiplier (1.5x) if critical
+				// Apply critical damage multiplier if critical
 				if isCrit && dmg > 0 {
-					dmg = int32(float64(dmg) * 1.5)
+					dmg = int32(float64(dmg) * criticalDamageMultiplier)
 				}
 				
 				data.totalDamage += dmg
@@ -4592,11 +4603,12 @@ func (server *Server) playerSummonAttack(conn mnet.Client, reader mpacket.Reader
 		if at.spawnID <= 0 || len(at.damages) == 0 {
 			continue
 		}
-		// Apply critical negation for summon attacks too
+		// Negate damage values for critical hits to trigger client animation
+		// at.damages contains positive values with multiplier, we negate for display only
 		criticalDamages := make([]int32, len(at.damages))
 		for idx, dmg := range at.damages {
 			if idx < len(at.isCritical) && at.isCritical[idx] {
-				criticalDamages[idx] = -dmg // Negative for critical display
+				criticalDamages[idx] = -dmg // Negative for critical display in client
 			} else {
 				criticalDamages[idx] = dmg
 			}
@@ -4615,7 +4627,8 @@ func (server *Server) playerSummonAttack(conn mnet.Client, reader mpacket.Reader
 	inst.sendExcept(packetSummonAttack(plr.ID, data.summonType, anim, byte(len(mobDamages)), mobDamages), conn)
 	for spawnID, damages := range mobDamages {
 		for _, d := range damages {
-			// Use absolute value for actual damage calculation
+			// Packet contains negated values for critical display
+			// Use absolute value for actual mob damage calculation
 			actualDamage := d
 			if actualDamage < 0 {
 				actualDamage = -actualDamage
