@@ -4621,7 +4621,7 @@ func (server *Server) playerSummonAttack(conn mnet.Client, reader mpacket.Reader
 				actualDamage = -actualDamage
 			}
 			if actualDamage > 0 {
-				inst.lifePool.mobDamaged(spawnID, plr, actualDamage))
+				inst.lifePool.mobDamaged(spawnID, plr, actualDamage)
 			}
 		}
 	}
