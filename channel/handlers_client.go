@@ -2467,6 +2467,21 @@ func (server Server) playerMeleeSkill(conn mnet.Client, reader mpacket.Reader) {
 		return
 	}
 
+	// Calculate server-side damage
+	calcDamage := NewCalcDamage(plr, &data, attackMelee)
+	
+	// Replace client-sent damage with server-calculated damage
+	for targetIdx, targetAttack := range calcDamage.TargetAttacks {
+		if targetAttack != nil && targetIdx < len(data.attackInfo) {
+			for hitIdx, hit := range targetAttack.Hits {
+				if hit != nil && hitIdx < len(data.attackInfo[targetIdx].damages) {
+					data.attackInfo[targetIdx].damages[hitIdx] = int32(hit.Damage)
+					data.attackInfo[targetIdx].isCritical[hitIdx] = hit.IsCrit
+				}
+			}
+		}
+	}
+
 	inst.sendExcept(packetSkillMelee(*plr, data), conn)
 
 	if data.isMesoExplosion {
@@ -2509,6 +2524,21 @@ func (server Server) playerRangedSkill(conn mnet.Client, reader mpacket.Reader) 
 	if err != nil {
 		// Send packet to stop?
 		return
+	}
+
+	// Calculate server-side damage
+	calcDamage := NewCalcDamage(plr, &data, attackRanged)
+	
+	// Replace client-sent damage with server-calculated damage
+	for targetIdx, targetAttack := range calcDamage.TargetAttacks {
+		if targetAttack != nil && targetIdx < len(data.attackInfo) {
+			for hitIdx, hit := range targetAttack.Hits {
+				if hit != nil && hitIdx < len(data.attackInfo[targetIdx].damages) {
+					data.attackInfo[targetIdx].damages[hitIdx] = int32(hit.Damage)
+					data.attackInfo[targetIdx].isCritical[hitIdx] = hit.IsCrit
+				}
+			}
+		}
 	}
 
 	// if Player in party extract
@@ -2558,6 +2588,21 @@ func (server Server) playerMagicSkill(conn mnet.Client, reader mpacket.Reader) {
 			duration := skillData[data.skillLevel-1].Time
 			magicAttack := int16(skillData[data.skillLevel-1].Mad)
 			inst.mistPool.createMist(plr.ID, data.skillID, data.skillLevel, plr.pos, duration, true, magicAttack)
+		}
+	}
+
+	// Calculate server-side damage
+	calcDamage := NewCalcDamage(plr, &data, attackMagic)
+	
+	// Replace client-sent damage with server-calculated damage
+	for targetIdx, targetAttack := range calcDamage.TargetAttacks {
+		if targetAttack != nil && targetIdx < len(data.attackInfo) {
+			for hitIdx, hit := range targetAttack.Hits {
+				if hit != nil && hitIdx < len(data.attackInfo[targetIdx].damages) {
+					data.attackInfo[targetIdx].damages[hitIdx] = int32(hit.Damage)
+					data.attackInfo[targetIdx].isCritical[hitIdx] = hit.IsCrit
+				}
+			}
 		}
 	}
 
