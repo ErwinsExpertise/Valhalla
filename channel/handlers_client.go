@@ -2467,9 +2467,10 @@ func (server Server) playerMeleeSkill(conn mnet.Client, reader mpacket.Reader) {
 		return
 	}
 
-	// Calculate server-side damage
-	calcDamage := NewCalcDamage(plr, &data, attackMelee)
-	applyCalculatedDamage(calcDamage, &data)
+	// Validate damage and determine critical hits server-side
+	calc := NewDamageCalculator(plr, &data, attackMelee)
+	results := calc.ValidateAttack()
+	validateAndApplyCriticals(plr, &data, results)
 
 	inst.sendExcept(packetSkillMelee(*plr, data), conn)
 
@@ -2482,14 +2483,28 @@ func (server Server) playerMeleeSkill(conn mnet.Client, reader mpacket.Reader) {
 	}
 }
 
-// applyCalculatedDamage replaces client-sent damage with server-calculated damage
-func applyCalculatedDamage(calcDamage *CalcDamage, data *attackData) {
-	for targetIdx, targetAttack := range calcDamage.TargetAttacks {
-		if targetAttack != nil && targetIdx < len(data.attackInfo) {
-			for hitIdx, hit := range targetAttack.Hits {
-				if hit != nil && hitIdx < len(data.attackInfo[targetIdx].damages) {
-					data.attackInfo[targetIdx].damages[hitIdx] = int32(hit.Damage)
-					data.attackInfo[targetIdx].isCritical[hitIdx] = hit.IsCrit
+// validateAndApplyCriticals validates client damage and applies server-determined criticals
+func validateAndApplyCriticals(plr *Player, data *attackData, results [][]CalcHitResult) {
+	for targetIdx, targetResults := range results {
+		if targetIdx >= len(data.attackInfo) {
+			continue
+		}
+		for hitIdx, result := range targetResults {
+			if hitIdx >= len(data.attackInfo[targetIdx].damages) {
+				continue
+			}
+			
+			// Apply server-determined critical hit
+			data.attackInfo[targetIdx].isCritical[hitIdx] = result.IsCrit
+			
+			// If damage is wildly out of range, log and potentially invalidate
+			if !result.IsValid {
+				log.Printf("Invalid damage from player %s (ID: %d): client=%d, expected=[%.0f-%.0f], skill=%d, crit=%v",
+					plr.Name, plr.ID, result.ClientDamage, result.MinDamage, result.MaxDamage, data.skillID, result.IsCrit)
+				
+				// If damage is suspiciously high (more than max + tolerance), cap it
+				if float64(result.ClientDamage) > result.MaxDamage*(1.0+constant.DamageVarianceTolerance) {
+					data.attackInfo[targetIdx].damages[hitIdx] = int32(result.MaxDamage)
 				}
 			}
 		}
@@ -2529,9 +2544,10 @@ func (server Server) playerRangedSkill(conn mnet.Client, reader mpacket.Reader) 
 		return
 	}
 
-	// Calculate server-side damage
-	calcDamage := NewCalcDamage(plr, &data, attackRanged)
-	applyCalculatedDamage(calcDamage, &data)
+	// Validate damage and determine critical hits server-side
+	calc := NewDamageCalculator(plr, &data, attackRanged)
+	results := calc.ValidateAttack()
+	validateAndApplyCriticals(plr, &data, results)
 
 	// if Player in party extract
 
@@ -2583,9 +2599,10 @@ func (server Server) playerMagicSkill(conn mnet.Client, reader mpacket.Reader) {
 		}
 	}
 
-	// Calculate server-side damage
-	calcDamage := NewCalcDamage(plr, &data, attackMagic)
-	applyCalculatedDamage(calcDamage, &data)
+	// Validate damage and determine critical hits server-side
+	calc := NewDamageCalculator(plr, &data, attackMagic)
+	results := calc.ValidateAttack()
+	validateAndApplyCriticals(plr, &data, results)
 
 	inst.sendExcept(packetSkillMagic(*plr, data), conn)
 
