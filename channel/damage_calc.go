@@ -215,14 +215,22 @@ func (calc *DamageCalculator) CalculateHit(
 
 	// STEP 1: Calculate min and max damage from base formula
 	minDmg, maxDmg := calc.CalculateBaseDamageRange(mob, hitIdx)
+	
+	// Check if this is a special skill with a complete damage formula
+	// These skills should not have defense reduction or skill % applied
+	isCompleteFormula := calc.isCompleteFormula()
 
-	// STEP 2: Multiply by skill modifiers (including elemental)
-	minDmg, maxDmg = calc.ApplySkillModifiers(minDmg, maxDmg, ampData, mob)
+	// STEP 2: Multiply by skill modifiers (including elemental) - skip for complete formulas
+	if !isCompleteFormula {
+		minDmg, maxDmg = calc.ApplySkillModifiers(minDmg, maxDmg, ampData, mob)
+	}
 
-	// STEP 3: Calculate defense reduction
-	defReduction := calc.CalculateDefenseReduction(mob, roller)
-	minDmg -= defReduction
-	maxDmg -= defReduction
+	// STEP 3: Calculate defense reduction - skip for complete formulas
+	if !isCompleteFormula {
+		defReduction := calc.CalculateDefenseReduction(mob, roller)
+		minDmg -= defReduction
+		maxDmg -= defReduction
+	}
 
 	// Ensure damage doesn't go negative
 	if minDmg < 0 {
@@ -236,9 +244,9 @@ func (calc *DamageCalculator) CalculateHit(
 	// We'll calculate expected damage as midpoint for reference
 	baseDmg := (minDmg + maxDmg) / 2.0
 
-	// STEP 5: Find damage multiplier (skill damage%)
+	// STEP 5: Find damage multiplier (skill damage%) - skip for complete formulas
 	multiplier := 1.0
-	if calc.skill != nil && calc.skill.Damage > 0 {
+	if !isCompleteFormula && calc.skill != nil && calc.skill.Damage > 0 {
 		multiplier = float64(calc.skill.Damage) / 100.0
 	}
 
@@ -688,6 +696,34 @@ func (calc *DamageCalculator) GetIsMiss(roller *Roller, targetAccuracy float64, 
 	mobAvoid := math.Min(999, float64(mob.eva))
 
 	return randTACC < mobAvoid
+}
+
+// isCompleteFormula returns true if the skill has a complete damage formula
+// that should not have defense reduction or skill damage % applied
+func (calc *DamageCalculator) isCompleteFormula() bool {
+	// Skills with complete formulas that already include all modifiers
+	switch skill.Skill(calc.skillID) {
+	case skill.LuckySeven:
+		return true
+	case skill.DragonRoar:
+		return true
+	case skill.PowerKnockback, skill.CBPowerKnockback:
+		return true
+	}
+	
+	// Claw punching (melee)
+	if calc.weaponType == constant.WeaponTypeClaw2 && 
+		(calc.attackAction == constant.AttackActionProne ||
+		(calc.attackAction >= constant.AttackActionSwing1H1 && calc.attackAction <= constant.AttackActionSwing2H7)) {
+		return true
+	}
+	
+	// Bare hands
+	if calc.weaponType == constant.WeaponTypeNone {
+		return true
+	}
+	
+	return false
 }
 
 // GetElementAmplification calculates element amplification
