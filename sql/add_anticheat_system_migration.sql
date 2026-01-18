@@ -74,6 +74,7 @@ CREATE TABLE `violation_counters` (
   `updatedAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`accountID`, `characterID`, `violationType`),
   KEY `idx_window` (`violationType`, `windowStart`),
+  KEY `idx_last_violation` (`lastViolation`),
   CONSTRAINT `violation_counters_fk_account` FOREIGN KEY (`accountID`) REFERENCES `accounts` (`accountID`) ON DELETE CASCADE,
   CONSTRAINT `violation_counters_fk_character` FOREIGN KEY (`characterID`) REFERENCES `characters` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;

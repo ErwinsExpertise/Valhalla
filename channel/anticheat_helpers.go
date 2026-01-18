@@ -12,8 +12,15 @@ func getPlayerIP(player *Player) string {
 		return "unknown"
 	}
 	addr := player.Conn.String()
-	// RemoteAddr().String() returns "IP:port", we want just the IP
+	// Handle both IPv4 (IP:port) and IPv6 ([IP]:port) formats
 	if idx := strings.LastIndex(addr, ":"); idx != -1 {
+		// For IPv6, check if there's a bracket
+		if strings.HasPrefix(addr, "[") {
+			if bracketEnd := strings.Index(addr, "]"); bracketEnd != -1 {
+				return addr[1:bracketEnd] // Extract IP from [IP]:port
+			}
+		}
+		// For IPv4, extract before the last colon
 		return addr[:idx]
 	}
 	return addr

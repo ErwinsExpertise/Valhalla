@@ -218,8 +218,8 @@ func (bs *BanService) checkEscalation(accountID int32) error {
 	}
 
 	// Check if threshold reached
-	if tempBanCount >= bs.config.TempBansBeforePermanent {
-		log.Printf("Account %d has reached escalation threshold (%d temp bans), issuing permanent ban",
+	if tempBanCount > bs.config.TempBansBeforePermanent {
+		log.Printf("Account %d has exceeded escalation threshold (%d temp bans), issuing permanent ban",
 			accountID, tempBanCount)
 
 		// Issue permanent ban
