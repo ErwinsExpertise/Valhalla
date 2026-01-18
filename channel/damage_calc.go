@@ -4,6 +4,7 @@ import (
 	"log"
 	"math"
 	"math/rand"
+	"time"
 
 	"github.com/Hucaru/Valhalla/constant"
 	"github.com/Hucaru/Valhalla/constant/skill"
@@ -35,6 +36,10 @@ type Roller struct {
 
 // NewRoller creates a new roller with pre-generated random numbers
 func NewRoller(randomizer *rand.Rand, numRolls int) *Roller {
+	if randomizer == nil {
+		randomizer = rand.New(rand.NewSource(time.Now().UTC().UnixNano()))
+	}
+
 	rolls := make([]uint32, numRolls)
 	for i := 0; i < numRolls; i++ {
 		rolls[i] = randomizer.Uint32()
@@ -51,7 +56,7 @@ func (r *Roller) Roll(modifier float64) float64 {
 	if r == nil || len(r.rolls) == 0 {
 		return 0.5 // Return middle of the typical 0-1 range
 	}
-	
+
 	idx := r.rollIndex % len(r.rolls)
 	r.rollIndex++
 	roll := r.rolls[idx]
@@ -280,7 +285,7 @@ func (calc *DamageCalculator) CalculateHit(
 	// If damage is under, we don't care (client may have weaker gear, buffs expired, etc.)
 	tolerance := constant.DamageVarianceTolerance
 	toleranceMax := maxDmg * (1.0 + tolerance)
-	
+
 	clientDmgFloat := float64(result.ClientDamage)
 	result.IsValid = (clientDmgFloat <= toleranceMax)
 
@@ -299,7 +304,7 @@ func (calc *DamageCalculator) handleSpecialSkillDamage(result *CalcHitResult, mo
 	str := float64(calc.player.str)
 	dex := float64(calc.player.dex)
 	luk := float64(calc.player.luk)
-	
+
 	// Shadow Meso - uses meso count
 	if skill.Skill(calc.skillID) == skill.ShadowMeso {
 		// Shadow Meso: Damage = 10 * Number of Mesos Thrown
@@ -310,7 +315,7 @@ func (calc *DamageCalculator) handleSpecialSkillDamage(result *CalcHitResult, mo
 			result.MinDamage = 10.0 * mesoCount
 			result.MaxDamage = 10.0 * mesoCount
 			result.ExpectedDmg = 10.0 * mesoCount
-			
+
 			// Check for crit on shadow meso
 			if roller != nil && calc.skill.Prop > 0 {
 				roll := roller.Roll(constant.DamagePropModifier)
@@ -322,12 +327,12 @@ func (calc *DamageCalculator) handleSpecialSkillDamage(result *CalcHitResult, mo
 					result.ExpectedDmg *= bonusDmg * 0.01
 				}
 			}
-			
+
 			result.IsValid = float64(result.ClientDamage) <= result.MaxDamage*(1.0+constant.DamageVarianceTolerance)
 			return true
 		}
 	}
-	
+
 	// Shadow Web - damage based on mob HP
 	if skill.Skill(calc.skillID) == skill.ShadowWeb {
 		// Damage per 3-sec tick = Monster HP / (50 - Skill Level)
@@ -344,7 +349,7 @@ func (calc *DamageCalculator) handleSpecialSkillDamage(result *CalcHitResult, mo
 			return true
 		}
 	}
-	
+
 	// Venom DPS (Assassin skill)
 	if skill.Skill(calc.skillID) == skill.Drain { // Assuming Drain is venom-like
 		// This might need different skill ID
@@ -357,11 +362,11 @@ func (calc *DamageCalculator) handleSpecialSkillDamage(result *CalcHitResult, mo
 		result.IsValid = float64(result.ClientDamage) <= result.MaxDamage*(1.0+constant.DamageVarianceTolerance)
 		return true
 	}
-	
+
 	// Ninja Ambush DPS
 	// This would be a DOT skill - damage per second = 2 * [STR + LUK] * Skill Damage %
 	// Would need specific skill ID check
-	
+
 	// Poison Brace / Poison Mist / Fire Demon / Ice Demon DPS
 	if skill.Skill(calc.skillID) == skill.PoisonMyst {
 		// DPS = Monster HP / (70 - Skill Level)
@@ -378,7 +383,7 @@ func (calc *DamageCalculator) handleSpecialSkillDamage(result *CalcHitResult, mo
 			return true
 		}
 	}
-	
+
 	// Phoenix / Frostprey / Octopus / Gaviota (Summons)
 	if calc.attackType == attackSummon {
 		// MAX = (DEX * 2.5 + STR) * Attack Rate / 100
@@ -393,7 +398,7 @@ func (calc *DamageCalculator) handleSpecialSkillDamage(result *CalcHitResult, mo
 		result.IsValid = float64(result.ClientDamage) <= result.MaxDamage*(1.0+constant.DamageVarianceTolerance)
 		return true
 	}
-	
+
 	return false
 }
 
@@ -492,7 +497,7 @@ func (calc *DamageCalculator) CalculateBaseDamageRange(mob *monster, hitIdx int)
 			// Lucky Seven / Triple Throw formula
 			minStatMod = luk * 2.5
 			maxStatMod = luk * 5.0
-		} else if calc.attackAction == constant.AttackActionProne || 
+		} else if calc.attackAction == constant.AttackActionProne ||
 			(calc.attackAction >= constant.AttackActionSwing1H1 && calc.attackAction <= constant.AttackActionSwing2H7) {
 			// Claw punching (melee without throwing stars)
 			minStatMod = luk*0.1 + str + dex
@@ -515,16 +520,16 @@ func (calc *DamageCalculator) CalculateBaseDamageRange(mob *monster, hitIdx int)
 			if bareHandsATT > 31 {
 				bareHandsATT = 31
 			}
-			
+
 			// J = 3.0 for beginners/pirates, 4.2 for 2nd+ job pirates
 			J := 3.0
 			if calc.player.job >= 500 && calc.player.job < 600 {
 				J = 4.2
 			}
-			
+
 			minStatMod = str*J*0.1*0.9 + dex
 			maxStatMod = str*J + dex
-			
+
 			minDmg := minStatMod * bareHandsATT / 100.0
 			maxDmg := maxStatMod * bareHandsATT / 100.0
 			return minDmg, maxDmg
@@ -554,15 +559,15 @@ func (calc *DamageCalculator) CalculateMagicDamageRange() (float64, float64) {
 	if skill.Skill(calc.skillID) == skill.Heal {
 		// Heal damage formula with proper target multiplier
 		numTargets := float64(len(calc.data.attackInfo) + 1) // +1 for self
-		
+
 		// Target multiplier = 1.5 + 5 / numTargets
 		targetMultiplier := 1.5 + 5.0/numTargets
-		
+
 		// MIN = (INT * 0.3 + LUK) * Magic / 1000 * Target Multiplier
 		// MAX = (INT * 1.2 + LUK) * Magic / 1000 * Target Multiplier
 		minDmg := (intl*0.3 + luk) * totalMAD / 1000.0 * targetMultiplier
 		maxDmg := (intl*1.2 + luk) * totalMAD / 1000.0 * targetMultiplier
-		
+
 		return minDmg, maxDmg
 	}
 
@@ -614,7 +619,7 @@ func (calc *DamageCalculator) CalculateDefenseReduction(mob *monster, roller *Ro
 	// Defense reduces damage by 50-60% with RNG
 	redMin := mobDef * 0.5
 	redMax := mobDef * 0.6
-	
+
 	// Use roller for variance
 	roll := roller.Roll(constant.DamageStatModifier)
 	reduction := redMin + (redMax-redMin)*roll
@@ -825,7 +830,7 @@ func (calc *DamageCalculator) GetCritSkill() (byte, *nx.PlayerSkill) {
 // GetTotalWatk returns total weapon attack
 func (calc *DamageCalculator) GetTotalWatk() int16 {
 	watk := int16(0)
-	
+
 	for _, item := range calc.player.equip {
 		if item.slotID == -11 { // Weapon slot
 			watk += item.watk
@@ -833,9 +838,9 @@ func (calc *DamageCalculator) GetTotalWatk() int16 {
 			watk += item.watk
 		}
 	}
-	
+
 	// Add base STR contribution
 	watk += calc.player.str / 10
-	
+
 	return int16(math.Min(float64(constant.DamageMaxPAD), float64(watk)))
 }
