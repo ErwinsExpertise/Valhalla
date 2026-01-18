@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Hucaru/Valhalla/anticheat"
 	"github.com/Hucaru/Valhalla/common"
 	"github.com/Hucaru/Valhalla/constant"
 	"github.com/Hucaru/Valhalla/internal"
@@ -1741,7 +1742,7 @@ func (server *Server) gmCommand(conn mnet.Client, msg string) {
 			return
 		}
 
-		var banType BanType = BanTypeTemporary
+		var banType anticheat.BanType = anticheat.BanTypeTemporary
 		var reason string
 		reasonStart := 2
 
@@ -1749,13 +1750,13 @@ func (server *Server) gmCommand(conn mnet.Client, msg string) {
 		if len(command) >= 3 {
 			durationStr := command[2]
 			if durationStr == "perm" || durationStr == "permanent" {
-				banType = BanTypePermanent
+				banType = anticheat.BanTypePermanent
 				reasonStart = 3
 			} else {
 				// Try to parse as duration
 				duration, err := strconv.Atoi(durationStr)
 				if err == nil && duration == 0 {
-					banType = BanTypePermanent
+					banType = anticheat.BanTypePermanent
 					reasonStart = 3
 				} else if err == nil {
 					// Valid temporary ban duration in hours
@@ -1781,7 +1782,7 @@ func (server *Server) gmCommand(conn mnet.Client, msg string) {
 
 		// Issue the ban
 		err = server.banService.IssueBan(&targetPlayer.accountID, &targetPlayer.ID, nil,
-			banType, BanTargetAccount, reason, gmName, true)
+			banType, anticheat.BanTargetAccount, reason, gmName, true)
 		if err != nil {
 			conn.Send(packetMessageRedText(fmt.Sprintf("Failed to ban player: %v", err)))
 			return

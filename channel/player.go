@@ -3888,3 +3888,41 @@ func packetPlayerHpChange(plrID, hp, maxHp int32) mpacket.Packet {
 
 	return p
 }
+
+// PlayerInfo interface implementation for anti-cheat system
+func (plr *Player) GetAccountID() int32 {
+return plr.accountID
+}
+
+func (plr *Player) GetCharacterID() int32 {
+return plr.ID
+}
+
+func (plr *Player) GetIPAddress() string {
+if plr.Conn == nil {
+return "unknown"
+}
+addr := plr.Conn.String()
+// Handle both IPv4 (IP:port) and IPv6 ([IP]:port) formats
+if idx := len(addr) - 1; idx >= 0 {
+for i := len(addr) - 1; i >= 0; i-- {
+if addr[i] == ':' {
+// For IPv6, check if there's a bracket
+if addr[0] == '[' {
+for j := 0; j < len(addr); j++ {
+if addr[j] == ']' {
+return addr[1:j]
+}
+}
+}
+// For IPv4, return everything before the last colon
+return addr[:i]
+}
+}
+}
+return addr
+}
+
+func (plr *Player) GetMapID() int32 {
+return plr.mapID
+}

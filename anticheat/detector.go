@@ -1,4 +1,4 @@
-package channel
+package anticheat
 
 import (
 	"database/sql"
@@ -89,7 +89,7 @@ type ViolationCounter struct {
 
 // ViolationDetector handles violation detection and tracking
 type ViolationDetector struct {
-	config      AntiCheatConfig
+	config      Config
 	banService  *BanService
 	mu          sync.RWMutex
 	counters    map[string]*ViolationCounter // key: "accountID:characterID:violationType"
@@ -97,7 +97,7 @@ type ViolationDetector struct {
 }
 
 // NewViolationDetector creates a new violation detector
-func NewViolationDetector(config AntiCheatConfig, banService *BanService) *ViolationDetector {
+func NewViolationDetector(config Config, banService *BanService) *ViolationDetector {
 	vd := &ViolationDetector{
 		config:     config,
 		banService: banService,

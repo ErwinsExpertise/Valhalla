@@ -1,9 +1,9 @@
-package channel
+package anticheat
 
 import "time"
 
-// AntiCheatConfig contains all anti-cheat and ban system configuration
-type AntiCheatConfig struct {
+// Config contains all anti-cheat and ban system configuration
+type Config struct {
 	Enabled                    bool                       `toml:"enabled" mapstructure:"enabled"`
 	DefaultTempBanDuration     time.Duration              `toml:"defaultTempBanDuration" mapstructure:"defaultTempBanDuration"`
 	TempBansBeforePermanent    int                        `toml:"tempBansBeforePermanent" mapstructure:"tempBansBeforePermanent"`
@@ -108,9 +108,9 @@ type PacketDetectionConfig struct {
 	MalformedPacketBanType     string        `toml:"malformedPacketBanType" mapstructure:"malformedPacketBanType"`
 }
 
-// DefaultAntiCheatConfig returns a configuration with sensible defaults
-func DefaultAntiCheatConfig() AntiCheatConfig {
-	return AntiCheatConfig{
+// DefaultConfig returns a configuration with sensible defaults
+func DefaultConfig() Config {
+	return Config{
 		Enabled:                 true,
 		DefaultTempBanDuration:  7 * 24 * time.Hour, // 7 days
 		TempBansBeforePermanent: 3,

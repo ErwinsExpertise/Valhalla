@@ -1,4 +1,4 @@
-package channel
+package anticheat
 
 import (
 	"database/sql"
@@ -46,11 +46,11 @@ type Ban struct {
 
 // BanService handles ban operations
 type BanService struct {
-	config AntiCheatConfig
+	config Config
 }
 
 // NewBanService creates a new ban service
-func NewBanService(config AntiCheatConfig) *BanService {
+func NewBanService(config Config) *BanService {
 	return &BanService{
 		config: config,
 	}
@@ -158,6 +158,14 @@ func (bs *BanService) IssueBan(accountID *int32, characterID *int32, ipAddress *
 		return fmt.Errorf("failed to issue ban: %w", err)
 	}
 
+	// Update accounts.isBanned field if this is an account ban
+	if accountID != nil && banTarget == BanTargetAccount {
+		_, err = common.DB.Exec(`UPDATE accounts SET isBanned = 1 WHERE accountID = ?`, *accountID)
+		if err != nil {
+			log.Printf("Failed to update accounts.isBanned: %v", err)
+		}
+	}
+
 	// Update escalation counter if applicable
 	if accountID != nil && banType == BanTypeTemporary {
 		if issuedByGM && !bs.config.GMBansIncrementCounter {
@@ -242,6 +250,18 @@ func (bs *BanService) checkEscalation(accountID int32) error {
 
 // Unban removes an active ban
 func (bs *BanService) Unban(banID int64, unbannedBy string) error {
+	// First, get the ban details to know which account to update
+	var accountID sql.NullInt32
+	var banTarget string
+	err := common.DB.QueryRow(`SELECT accountID, banTarget FROM bans WHERE id = ?`, banID).Scan(&accountID, &banTarget)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("no ban found with ID %d", banID)
+		}
+		return fmt.Errorf("failed to query ban: %w", err)
+	}
+
+	// Update the ban record
 	query := `UPDATE bans SET isActive = 0, updatedAt = NOW() WHERE id = ?`
 	result, err := common.DB.Exec(query, banID)
 	if err != nil {
@@ -254,6 +274,20 @@ func (bs *BanService) Unban(banID int64, unbannedBy string) error {
 	}
 	if rows == 0 {
 		return fmt.Errorf("no ban found with ID %d", banID)
+	}
+
+	// Update accounts.isBanned field if this was an account ban
+	if accountID.Valid && banTarget == string(BanTargetAccount) {
+		// Check if there are any other active account bans
+		var otherBansCount int
+		err = common.DB.QueryRow(`SELECT COUNT(*) FROM bans WHERE accountID = ? AND isActive = 1 AND banTarget = 'account'`, accountID.Int32).Scan(&otherBansCount)
+		if err == nil && otherBansCount == 0 {
+			// No other active bans, clear the isBanned flag
+			_, err = common.DB.Exec(`UPDATE accounts SET isBanned = 0 WHERE accountID = ?`, accountID.Int32)
+			if err != nil {
+				log.Printf("Failed to update accounts.isBanned: %v", err)
+			}
+		}
 	}
 
 	log.Printf("Ban %d removed by %s", banID, unbannedBy)
@@ -328,6 +362,26 @@ func (bs *BanService) GetBanHistory(accountID *int32, characterID *int32, limit 
 
 // ExpireOldBans marks old temporary bans as inactive
 func (bs *BanService) ExpireOldBans() error {
+	// Find expired bans before updating them
+	rows, err := common.DB.Query(`
+		SELECT DISTINCT accountID 
+		FROM bans 
+		WHERE isActive = 1 AND banType = 'temporary' AND banEndTime < NOW() AND banTarget = 'account'
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to query expired bans: %w", err)
+	}
+	defer rows.Close()
+
+	var expiredAccounts []int32
+	for rows.Next() {
+		var accountID sql.NullInt32
+		if err := rows.Scan(&accountID); err == nil && accountID.Valid {
+			expiredAccounts = append(expiredAccounts, accountID.Int32)
+		}
+	}
+
+	// Mark bans as inactive
 	query := `UPDATE bans SET isActive = 0 
 			WHERE isActive = 1 AND banType = 'temporary' AND banEndTime < NOW()`
 	
@@ -336,13 +390,27 @@ func (bs *BanService) ExpireOldBans() error {
 		return fmt.Errorf("failed to expire old bans: %w", err)
 	}
 
-	rows, err := result.RowsAffected()
+	rowsAffected, err := result.RowsAffected()
 	if err != nil {
 		return fmt.Errorf("failed to get rows affected: %w", err)
 	}
 
-	if rows > 0 {
-		log.Printf("Expired %d old temporary bans", rows)
+	if rowsAffected > 0 {
+		log.Printf("Expired %d old temporary bans", rowsAffected)
+
+		// Update accounts.isBanned for expired account bans
+		for _, accountID := range expiredAccounts {
+			// Check if there are any other active account bans
+			var otherBansCount int
+			err = common.DB.QueryRow(`SELECT COUNT(*) FROM bans WHERE accountID = ? AND isActive = 1 AND banTarget = 'account'`, accountID).Scan(&otherBansCount)
+			if err == nil && otherBansCount == 0 {
+				// No other active bans, clear the isBanned flag
+				_, err = common.DB.Exec(`UPDATE accounts SET isBanned = 0 WHERE accountID = ?`, accountID)
+				if err != nil {
+					log.Printf("Failed to update accounts.isBanned for account %d: %v", accountID, err)
+				}
+			}
+		}
 	}
 
 	return nil

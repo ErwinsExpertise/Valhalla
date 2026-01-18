@@ -11,6 +11,7 @@ import (
 	_ "github.com/go-sql-driver/mysql" // don't need full import
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/Hucaru/Valhalla/anticheat"
 	"github.com/Hucaru/Valhalla/common"
 	"github.com/Hucaru/Valhalla/common/opcode"
 	"github.com/Hucaru/Valhalla/internal"
@@ -47,9 +48,9 @@ type Server struct {
 	guilds             map[int32]*guild
 	events             map[int32]*event
 	rates              rates
-	antiCheatConfig    AntiCheatConfig
-	banService         *BanService
-	violationDetector  *ViolationDetector
+	antiCheatConfig    anticheat.Config
+	banService         *anticheat.BanService
+	violationDetector  *anticheat.ViolationDetector
 }
 
 // Initialise the server
@@ -164,9 +165,9 @@ func (server *Server) Initialise(work chan func(), dbuser, dbpassword, dbaddress
 	server.events = make(map[int32]*event)
 
 	// Initialize anti-cheat system
-	server.antiCheatConfig = DefaultAntiCheatConfig()
-	server.banService = NewBanService(server.antiCheatConfig)
-	server.violationDetector = NewViolationDetector(server.antiCheatConfig, server.banService)
+	server.antiCheatConfig = anticheat.DefaultConfig()
+	server.banService = anticheat.NewBanService(server.antiCheatConfig)
+	server.violationDetector = anticheat.NewViolationDetector(server.antiCheatConfig, server.banService)
 	log.Println("Anti-cheat system initialized")
 
 	// Start background tasks
@@ -229,31 +230,36 @@ func (server *Server) CheckPlayerBan(accountID int32, characterID int32, ipAddre
 		return false, ""
 	}
 
-	// Check account ban
-	banned, ban, err := server.banService.IsAccountBanned(accountID)
-	if err != nil {
-		log.Printf("Error checking account ban: %v", err)
-		return false, ""
-	}
-	if banned {
-		reason := fmt.Sprintf("Account banned: %s", ban.Reason)
-		if ban.BanType == BanTypePermanent {
-			reason += " (Permanent)"
-		} else if ban.BanEndTime != nil {
-			reason += fmt.Sprintf(" (Until: %s)", ban.BanEndTime.Format("2006-01-02 15:04"))
+	// Quick check using accounts.isBanned field
+	var isBanned bool
+	err := common.DB.QueryRow(`SELECT isBanned FROM accounts WHERE accountID = ?`, accountID).Scan(&isBanned)
+	if err == nil && isBanned {
+		// Account is flagged as banned, get details from bans table
+		banned, ban, err := server.banService.IsAccountBanned(accountID)
+		if err != nil {
+			log.Printf("Error checking account ban: %v", err)
+			return false, ""
 		}
-		return true, reason
+		if banned {
+			reason := fmt.Sprintf("Account banned: %s", ban.Reason)
+			if ban.BanType == anticheat.BanTypePermanent {
+				reason += " (Permanent)"
+			} else if ban.BanEndTime != nil {
+				reason += fmt.Sprintf(" (Until: %s)", ban.BanEndTime.Format("2006-01-02 15:04"))
+			}
+			return true, reason
+		}
 	}
 
 	// Check character ban
-	banned, ban, err = server.banService.IsCharacterBanned(characterID)
+	banned, ban, err := server.banService.IsCharacterBanned(characterID)
 	if err != nil {
 		log.Printf("Error checking character ban: %v", err)
 		return false, ""
 	}
 	if banned {
 		reason := fmt.Sprintf("Character banned: %s", ban.Reason)
-		if ban.BanType == BanTypePermanent {
+		if ban.BanType == anticheat.BanTypePermanent {
 			reason += " (Permanent)"
 		} else if ban.BanEndTime != nil {
 			reason += fmt.Sprintf(" (Until: %s)", ban.BanEndTime.Format("2006-01-02 15:04"))
@@ -269,7 +275,7 @@ func (server *Server) CheckPlayerBan(accountID int32, characterID int32, ipAddre
 	}
 	if banned {
 		reason := fmt.Sprintf("IP address banned: %s", ban.Reason)
-		if ban.BanType == BanTypePermanent {
+		if ban.BanType == anticheat.BanTypePermanent {
 			reason += " (Permanent)"
 		} else if ban.BanEndTime != nil {
 			reason += fmt.Sprintf(" (Until: %s)", ban.BanEndTime.Format("2006-01-02 15:04"))
