@@ -2469,18 +2469,7 @@ func (server Server) playerMeleeSkill(conn mnet.Client, reader mpacket.Reader) {
 
 	// Calculate server-side damage
 	calcDamage := NewCalcDamage(plr, &data, attackMelee)
-	
-	// Replace client-sent damage with server-calculated damage
-	for targetIdx, targetAttack := range calcDamage.TargetAttacks {
-		if targetAttack != nil && targetIdx < len(data.attackInfo) {
-			for hitIdx, hit := range targetAttack.Hits {
-				if hit != nil && hitIdx < len(data.attackInfo[targetIdx].damages) {
-					data.attackInfo[targetIdx].damages[hitIdx] = int32(hit.Damage)
-					data.attackInfo[targetIdx].isCritical[hitIdx] = hit.IsCrit
-				}
-			}
-		}
-	}
+	applyCalculatedDamage(calcDamage, &data)
 
 	inst.sendExcept(packetSkillMelee(*plr, data), conn)
 
@@ -2489,6 +2478,20 @@ func (server Server) playerMeleeSkill(conn mnet.Client, reader mpacket.Reader) {
 	} else {
 		for _, attack := range data.attackInfo {
 			inst.lifePool.mobDamaged(attack.spawnID, plr, attack.damages...)
+		}
+	}
+}
+
+// applyCalculatedDamage replaces client-sent damage with server-calculated damage
+func applyCalculatedDamage(calcDamage *CalcDamage, data *attackData) {
+	for targetIdx, targetAttack := range calcDamage.TargetAttacks {
+		if targetAttack != nil && targetIdx < len(data.attackInfo) {
+			for hitIdx, hit := range targetAttack.Hits {
+				if hit != nil && hitIdx < len(data.attackInfo[targetIdx].damages) {
+					data.attackInfo[targetIdx].damages[hitIdx] = int32(hit.Damage)
+					data.attackInfo[targetIdx].isCritical[hitIdx] = hit.IsCrit
+				}
+			}
 		}
 	}
 }
@@ -2528,18 +2531,7 @@ func (server Server) playerRangedSkill(conn mnet.Client, reader mpacket.Reader) 
 
 	// Calculate server-side damage
 	calcDamage := NewCalcDamage(plr, &data, attackRanged)
-	
-	// Replace client-sent damage with server-calculated damage
-	for targetIdx, targetAttack := range calcDamage.TargetAttacks {
-		if targetAttack != nil && targetIdx < len(data.attackInfo) {
-			for hitIdx, hit := range targetAttack.Hits {
-				if hit != nil && hitIdx < len(data.attackInfo[targetIdx].damages) {
-					data.attackInfo[targetIdx].damages[hitIdx] = int32(hit.Damage)
-					data.attackInfo[targetIdx].isCritical[hitIdx] = hit.IsCrit
-				}
-			}
-		}
-	}
+	applyCalculatedDamage(calcDamage, &data)
 
 	// if Player in party extract
 
@@ -2593,18 +2585,7 @@ func (server Server) playerMagicSkill(conn mnet.Client, reader mpacket.Reader) {
 
 	// Calculate server-side damage
 	calcDamage := NewCalcDamage(plr, &data, attackMagic)
-	
-	// Replace client-sent damage with server-calculated damage
-	for targetIdx, targetAttack := range calcDamage.TargetAttacks {
-		if targetAttack != nil && targetIdx < len(data.attackInfo) {
-			for hitIdx, hit := range targetAttack.Hits {
-				if hit != nil && hitIdx < len(data.attackInfo[targetIdx].damages) {
-					data.attackInfo[targetIdx].damages[hitIdx] = int32(hit.Damage)
-					data.attackInfo[targetIdx].isCritical[hitIdx] = hit.IsCrit
-				}
-			}
-		}
-	}
+	applyCalculatedDamage(calcDamage, &data)
 
 	inst.sendExcept(packetSkillMagic(*plr, data), conn)
 

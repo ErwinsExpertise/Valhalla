@@ -83,6 +83,10 @@ const (
 	MaxHits    = 15
 	MaxTargets = 15
 	MaxPAD     = 999
+	
+	// RollsPerTarget is the number of random rolls needed for each attack target
+	// Used for: miss check, stat roll, defense reduction, element checks, crit check, combo checks, etc.
+	RollsPerTarget = 7
 )
 
 var (
@@ -127,16 +131,31 @@ var (
 
 // GetWeaponType extracts weapon type from item ID
 func GetWeaponType(weaponID int32) WeaponType {
+	// Weapons are category 1 (1xxxxxxx)
 	if weaponID/1000000 != 1 {
 		return WeaponTypeNone
 	}
+	
+	// Weapon type is in the 5th and 6th digits (xx[YY]xxxx)
 	weaponType := (weaponID / 10000) % 100
+	
+	// Valid weapon types are 30-33 (1H weapons), 37-38 (wands/staves), 40-47 (2H/ranged weapons)
 	if weaponType < 30 {
 		return WeaponTypeNone
 	}
-	if weaponType > 33 && (weaponType <= 36 || weaponType > 38 && (weaponType <= 39 || weaponType > 47)) {
+	// Exclude 34-36 (unused range)
+	if weaponType > 33 && weaponType <= 36 {
 		return WeaponTypeNone
 	}
+	// Exclude 39 (unused)
+	if weaponType == 39 {
+		return WeaponTypeNone
+	}
+	// Exclude > 47 (unused range)
+	if weaponType > 47 {
+		return WeaponTypeNone
+	}
+	
 	return WeaponType(weaponType)
 }
 
@@ -351,7 +370,7 @@ func NewCalcDamage(chr *Player, data *attackData, attackType int) *CalcDamage {
 			continue
 		}
 
-		roller := NewRoller(chr.rng, 7)
+		roller := NewRoller(chr.rng, RollsPerTarget)
 		targetDmg := &CalcTargetAttack{
 			Character: chr,
 			Mob:       &mob,
@@ -598,8 +617,9 @@ func (h *CalcHit) CalcMesoExplosion() {
 		return
 	}
 
-	// Get meso amount from drop (simplified)
-	mesosUsed := float64(100) // Placeholder - need to look up actual drop
+	// TODO: Look up actual meso amount from drop pool
+	// This requires access to inst.dropPool.drops[mesoDropID].mesos
+	mesosUsed := float64(100) // Placeholder
 
 	var mesoModifier float64
 	if mesosUsed <= 1000 {
@@ -896,9 +916,9 @@ func (h *CalcHit) ApplySpecialElementModifiers(dmg float64) {
 
 		total := 0.0
 		for _, elem := range elements {
-			// Get mob's resistance to this element
-			// Simplified - actual implementation would read from mob.elemAttr
-			_ = elem // Mark as used
+			// TODO: Get mob's actual resistance to this element from mob.elemAttr
+			// For now using normal modifier as fallback
+			_ = elem // Element ID for future use
 			mobModifier := ElementModifierNormal
 			total += h.ApplyMobElemModifier(halfDmg, mobModifier, 1.0)
 		}
@@ -1184,8 +1204,22 @@ func (h *CalcHit) RollStat(stat float64, masteryModifier float64, statModifier f
 	return modifiedStat
 }
 
-// getTotalWatk returns total weapon attack (simplified)
+// getTotalWatk returns total weapon attack including equipment bonuses
 func (p *Player) getTotalWatk() int16 {
-	// Simplified - should include equipment bonuses
-	return 50 // Placeholder
+	watk := int16(0)
+	
+	// Get weapon attack from equipped weapon
+	for _, item := range p.equip {
+		if item.slotID == -11 { // Weapon slot
+			watk += item.watk
+		} else if item.slotID < 0 { // Other equipped items
+			watk += item.watk
+		}
+	}
+	
+	// Add base STR contribution (simplified - actual formula may vary)
+	// TODO: Verify exact STR to WATK conversion
+	watk += p.str / 10
+	
+	return watk
 }
