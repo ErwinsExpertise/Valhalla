@@ -2,6 +2,7 @@ package channel
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/Hucaru/Valhalla/mpacket"
 )
@@ -184,8 +185,36 @@ func generateMovementBytes(moveData movement) mpacket.Packet {
 	return p
 }
 
-func (data movement) validateChar(player *Player) bool {
+func (data movement) validateChar(player *Player, server *Server) bool {
 	// run through the movement data and make sure characters are not moving too fast (going to have to take into account gear and buffs "-_- )
+	// For now, we'll do basic validation and integrate anti-cheat detection
+
+	if server != nil && server.violationDetector != nil {
+		// Check for impossible position jumps (teleport hacks)
+		// This is a simplified check - production would need more sophisticated validation
+		if len(data.frags) > 0 {
+			for _, frag := range data.frags {
+				// Check for immediate teleport movement types that aren't from valid skills
+				if frag.mType == movementType.immediate && frag.posSet {
+					// Calculate distance moved
+					dx := float64(frag.x - data.origX)
+					dy := float64(frag.y - data.origY)
+					distance := math.Sqrt(dx*dx + dy*dy)
+					
+					// If distance is suspiciously large, it might be a teleport hack
+					// Normal immediate movement (GM teleport, flash jump) has limits
+					if distance > 1000 { // 1000 pixels is a reasonable threshold
+						server.violationDetector.DetectTeleportHack(
+							player,
+							data.origX, data.origY,
+							frag.x, frag.y,
+							fmt.Sprintf("Suspicious immediate movement: %.0f pixels", distance),
+						)
+					}
+				}
+			}
+		}
+	}
 
 	return true
 }
