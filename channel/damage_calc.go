@@ -414,10 +414,10 @@ func (calc *DamageCalculator) handleSpecialSkillDamage(result *CalcHitResult, mo
 
 // CalculateBaseDamageRange calculates min and max base damage
 func (calc *DamageCalculator) CalculateBaseDamageRange(mob *monster, hitIdx int) (float64, float64) {
-	// Get stat values
-	str := float64(calc.player.str)
-	dex := float64(calc.player.dex)
-	luk := float64(calc.player.luk)
+	// Get total stat values including equipment bonuses
+	str := float64(calc.GetTotalStr())
+	dex := float64(calc.GetTotalDex())
+	luk := float64(calc.GetTotalLuk())
 	watk := float64(calc.watk)
 
 	// Magic damage uses different formula
@@ -874,20 +874,17 @@ func (calc *DamageCalculator) GetCritSkill() (byte, *nx.PlayerSkill) {
 
 // GetTotalWatk returns total weapon attack
 func (calc *DamageCalculator) GetTotalWatk() int16 {
-	watk := int16(0)
+	return calc.player.totalWatk
+}
 
-	for _, item := range calc.player.equip {
-		if item.slotID == -11 { // Weapon slot
-			watk += item.watk
-		} else if item.slotID < 0 { // Other equipped items
-			watk += item.watk
-		}
-	}
+// GetTotalMatk returns total magic attack including equipment bonuses
+func (calc *DamageCalculator) GetTotalMatk() int16 {
+	return calc.player.totalMatk
+}
 
-	// Add base STR contribution
-	watk += calc.player.str / 10
-
-	return int16(math.Min(float64(constant.DamageMaxPAD), float64(watk)))
+// GetTotalAccuracy returns total accuracy including equipment bonuses
+func (calc *DamageCalculator) GetTotalAccuracy() int16 {
+	return calc.player.totalAccuracy
 }
 
 // GetProjectileWatk returns projectile (throwing star/arrow/bullet) attack power
@@ -904,4 +901,24 @@ func (calc *DamageCalculator) GetProjectileWatk() int16 {
 	}
 	
 	return 0
+}
+
+// GetTotalStr returns total STR including equipment bonuses
+func (calc *DamageCalculator) GetTotalStr() int16 {
+	return calc.player.totalStr
+}
+
+// GetTotalDex returns total DEX including equipment bonuses
+func (calc *DamageCalculator) GetTotalDex() int16 {
+	return calc.player.totalDex
+}
+
+// GetTotalInt returns total INT including equipment bonuses
+func (calc *DamageCalculator) GetTotalInt() int16 {
+	return calc.player.totalInt
+}
+
+// GetTotalLuk returns total LUK including equipment bonuses
+func (calc *DamageCalculator) GetTotalLuk() int16 {
+	return calc.player.totalLuk
 }
