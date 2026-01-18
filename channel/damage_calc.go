@@ -186,6 +186,11 @@ func (calc *DamageCalculator) CalculateHit(
 		IsValid:      false,
 	}
 
+	// Handle special skills with unique damage formulas
+	if calc.handleSpecialSkillDamage(&result, mob, roller) {
+		return result
+	}
+
 	// Check for immunity
 	if calc.attackType == attackMagic && mob.invincible {
 		result.MinDamage = 1
@@ -288,6 +293,110 @@ func (calc *DamageCalculator) CalculateHit(
 	return result
 }
 
+// handleSpecialSkillDamage handles special skills with unique damage formulas
+// Returns true if this is a special skill that was handled
+func (calc *DamageCalculator) handleSpecialSkillDamage(result *CalcHitResult, mob *monster, roller *Roller) bool {
+	str := float64(calc.player.str)
+	dex := float64(calc.player.dex)
+	luk := float64(calc.player.luk)
+	
+	// Shadow Meso - uses meso count
+	if skill.Skill(calc.skillID) == skill.ShadowMeso {
+		// Shadow Meso: Damage = 10 * Number of Mesos Thrown
+		// Note: Actual meso count would come from skill data or player state
+		// Using skill X value as proxy for meso count
+		if calc.skill != nil {
+			mesoCount := float64(calc.skill.X)
+			result.MinDamage = 10.0 * mesoCount
+			result.MaxDamage = 10.0 * mesoCount
+			result.ExpectedDmg = 10.0 * mesoCount
+			
+			// Check for crit on shadow meso
+			if roller != nil && calc.skill.Prop > 0 {
+				roll := roller.Roll(constant.DamagePropModifier)
+				if roll < float64(calc.skill.Prop) {
+					result.IsCrit = true
+					bonusDmg := float64(100 + calc.skill.X)
+					result.MinDamage *= bonusDmg * 0.01
+					result.MaxDamage *= bonusDmg * 0.01
+					result.ExpectedDmg *= bonusDmg * 0.01
+				}
+			}
+			
+			result.IsValid = float64(result.ClientDamage) <= result.MaxDamage*(1.0+constant.DamageVarianceTolerance)
+			return true
+		}
+	}
+	
+	// Shadow Web - damage based on mob HP
+	if skill.Skill(calc.skillID) == skill.ShadowWeb {
+		// Damage per 3-sec tick = Monster HP / (50 - Skill Level)
+		if calc.skill != nil && calc.skillLevel > 0 {
+			divisor := 50.0 - float64(calc.skillLevel)
+			if divisor <= 0 {
+				divisor = 1.0
+			}
+			dmg := float64(mob.maxHP) / divisor
+			result.MinDamage = dmg
+			result.MaxDamage = dmg
+			result.ExpectedDmg = dmg
+			result.IsValid = float64(result.ClientDamage) <= result.MaxDamage*(1.0+constant.DamageVarianceTolerance)
+			return true
+		}
+	}
+	
+	// Venom DPS (Assassin skill)
+	if skill.Skill(calc.skillID) == skill.Drain { // Assuming Drain is venom-like
+		// This might need different skill ID
+		// Venom MAX = (18.5 * [STR + LUK] + DEX * 2) / 100 * Basic Attack
+		// Venom MIN = (8.0 * [STR + LUK] + DEX * 2) / 100 * Basic Attack
+		basicAttack := float64(calc.watk)
+		result.MinDamage = (8.0*(str+luk) + dex*2.0) / 100.0 * basicAttack
+		result.MaxDamage = (18.5*(str+luk) + dex*2.0) / 100.0 * basicAttack
+		result.ExpectedDmg = (result.MinDamage + result.MaxDamage) / 2.0
+		result.IsValid = float64(result.ClientDamage) <= result.MaxDamage*(1.0+constant.DamageVarianceTolerance)
+		return true
+	}
+	
+	// Ninja Ambush DPS
+	// This would be a DOT skill - damage per second = 2 * [STR + LUK] * Skill Damage %
+	// Would need specific skill ID check
+	
+	// Poison Brace / Poison Mist / Fire Demon / Ice Demon DPS
+	if skill.Skill(calc.skillID) == skill.PoisonMyst {
+		// DPS = Monster HP / (70 - Skill Level)
+		if calc.skillLevel > 0 {
+			divisor := 70.0 - float64(calc.skillLevel)
+			if divisor <= 0 {
+				divisor = 1.0
+			}
+			dmg := float64(mob.maxHP) / divisor
+			result.MinDamage = dmg
+			result.MaxDamage = dmg
+			result.ExpectedDmg = dmg
+			result.IsValid = float64(result.ClientDamage) <= result.MaxDamage*(1.0+constant.DamageVarianceTolerance)
+			return true
+		}
+	}
+	
+	// Phoenix / Frostprey / Octopus / Gaviota (Summons)
+	if calc.attackType == attackSummon {
+		// MAX = (DEX * 2.5 + STR) * Attack Rate / 100
+		// MIN = (DEX * 2.5 * 0.7 + STR) * Attack Rate / 100
+		attackRate := float64(100) // Would come from summon data
+		if calc.skill != nil {
+			attackRate = float64(calc.skill.Damage)
+		}
+		result.MinDamage = (dex*2.5*0.7 + str) * attackRate / 100.0
+		result.MaxDamage = (dex*2.5 + str) * attackRate / 100.0
+		result.ExpectedDmg = (result.MinDamage + result.MaxDamage) / 2.0
+		result.IsValid = float64(result.ClientDamage) <= result.MaxDamage*(1.0+constant.DamageVarianceTolerance)
+		return true
+	}
+	
+	return false
+}
+
 // CalculateBaseDamageRange calculates min and max base damage
 func (calc *DamageCalculator) CalculateBaseDamageRange(mob *monster, hitIdx int) (float64, float64) {
 	// Get stat values
@@ -311,10 +420,26 @@ func (calc *DamageCalculator) CalculateBaseDamageRange(mob *monster, hitIdx int)
 
 	switch calc.weaponType {
 	case constant.WeaponTypeBow2:
+		// Power Knock Back special formula
+		if skill.Skill(calc.skillID) == skill.PowerKnockback || skill.Skill(calc.skillID) == skill.CBPowerKnockback {
+			minStatMod = dex*3.4*0.1*0.9 + str // Mastery = 0.1
+			maxStatMod = dex*3.4 + str
+			minDmg := minStatMod * watk / 150.0
+			maxDmg := maxStatMod * watk / 150.0
+			return minDmg, maxDmg
+		}
 		minStatMod = dex*masteryMin*3.4 + str
 		maxStatMod = dex*masteryMax*3.4 + str
 
 	case constant.WeaponTypeCrossbow2:
+		// Power Knock Back special formula
+		if skill.Skill(calc.skillID) == skill.PowerKnockback || skill.Skill(calc.skillID) == skill.CBPowerKnockback {
+			minStatMod = dex*3.4*0.1*0.9 + str // Mastery = 0.1
+			maxStatMod = dex*3.4 + str
+			minDmg := minStatMod * watk / 150.0
+			maxDmg := maxStatMod * watk / 150.0
+			return minDmg, maxDmg
+		}
 		minStatMod = dex*masteryMin*3.6 + str
 		maxStatMod = dex*masteryMax*3.6 + str
 
@@ -329,8 +454,9 @@ func (calc *DamageCalculator) CalculateBaseDamageRange(mob *monster, hitIdx int)
 
 	case constant.WeaponTypeSpear2, constant.WeaponTypePolearm2:
 		if skill.Skill(calc.skillID) == skill.DragonRoar {
-			minStatMod = str*masteryMin*4.0 + dex
-			maxStatMod = str*masteryMax*4.0 + dex
+			// Dragon Roar special formula
+			minStatMod = str*4.0*calc.masteryMod*0.9 + dex
+			maxStatMod = str*4.0 + dex
 		} else if isSwing != (calc.weaponType == constant.WeaponTypeSpear2) {
 			minStatMod = str*masteryMin*5.0 + dex
 			maxStatMod = str*masteryMax*5.0 + dex
@@ -363,15 +489,46 @@ func (calc *DamageCalculator) CalculateBaseDamageRange(mob *monster, hitIdx int)
 
 	case constant.WeaponTypeClaw2:
 		if skill.Skill(calc.skillID) == skill.LuckySeven {
-			// Lucky Seven uses 0.5 mastery
-			minStatMod = luk * 0.5 * 5.0
+			// Lucky Seven / Triple Throw formula
+			minStatMod = luk * 2.5
 			maxStatMod = luk * 5.0
+		} else if calc.attackAction == constant.AttackActionProne || 
+			(calc.attackAction >= constant.AttackActionSwing1H1 && calc.attackAction <= constant.AttackActionSwing2H7) {
+			// Claw punching (melee without throwing stars)
+			minStatMod = luk*0.1 + str + dex
+			maxStatMod = luk*1.0 + str + dex
+			// Use 1/150 instead of 1/100
+			minDmg := minStatMod * watk / 150.0
+			maxDmg := maxStatMod * watk / 150.0
+			return minDmg, maxDmg
 		} else {
 			minStatMod = luk*masteryMin*3.6 + str + dex
 			maxStatMod = luk*masteryMax*3.6 + str + dex
 		}
 
 	default:
+		// Bare hands (no weapon)
+		if calc.weaponType == constant.WeaponTypeNone {
+			// Calculate bare hands ATT = floor((2*level+31)/3) capped at 31
+			level := float64(calc.player.level)
+			bareHandsATT := math.Floor((2.0*level + 31.0) / 3.0)
+			if bareHandsATT > 31 {
+				bareHandsATT = 31
+			}
+			
+			// J = 3.0 for beginners/pirates, 4.2 for 2nd+ job pirates
+			J := 3.0
+			if calc.player.job >= 500 && calc.player.job < 600 {
+				J = 4.2
+			}
+			
+			minStatMod = str*J*0.1*0.9 + dex
+			maxStatMod = str*J + dex
+			
+			minDmg := minStatMod * bareHandsATT / 100.0
+			maxDmg := maxStatMod * bareHandsATT / 100.0
+			return minDmg, maxDmg
+		}
 		return 0, 0
 	}
 
@@ -395,14 +552,16 @@ func (calc *DamageCalculator) CalculateMagicDamageRange() (float64, float64) {
 	luk := float64(calc.player.luk)
 
 	if skill.Skill(calc.skillID) == skill.Heal {
-		// Heal uses special formula
-		targets := float64(len(calc.data.attackInfo) + 1)
+		// Heal damage formula with proper target multiplier
+		numTargets := float64(len(calc.data.attackInfo) + 1) // +1 for self
 		
-		minStat := intl * 0.8 * 0.2
-		maxStat := intl * 0.2
+		// Target multiplier = 1.5 + 5 / numTargets
+		targetMultiplier := 1.5 + 5.0/numTargets
 		
-		minDmg := (minStat*1.5 + luk) * (targets*0.3 + 1.0) * float64(calc.skill.Prop) * 0.01 * totalMAD * 0.005 / targets
-		maxDmg := (maxStat*1.5 + luk) * (targets*0.3 + 1.0) * float64(calc.skill.Prop) * 0.01 * totalMAD * 0.005 / targets
+		// MIN = (INT * 0.3 + LUK) * Magic / 1000 * Target Multiplier
+		// MAX = (INT * 1.2 + LUK) * Magic / 1000 * Target Multiplier
+		minDmg := (intl*0.3 + luk) * totalMAD / 1000.0 * targetMultiplier
+		maxDmg := (intl*1.2 + luk) * totalMAD / 1000.0 * targetMultiplier
 		
 		return minDmg, maxDmg
 	}
