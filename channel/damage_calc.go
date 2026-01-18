@@ -84,6 +84,7 @@ type DamageCalculator struct {
 	critSkill    *nx.PlayerSkill
 	critLevel    byte
 	watk         int16
+	projectileID int32
 	attackAction constant.AttackAction
 	attackOption constant.AttackOption
 }
@@ -97,6 +98,7 @@ func NewDamageCalculator(plr *Player, data *attackData, attackType int) *DamageC
 		isRanged:     attackType == attackRanged,
 		skillID:      data.skillID,
 		skillLevel:   data.skillLevel,
+		projectileID: data.projectileID,
 		attackAction: constant.AttackAction(data.action),
 		attackOption: constant.AttackOption(data.option),
 	}
@@ -503,8 +505,15 @@ func (calc *DamageCalculator) CalculateBaseDamageRange(mob *monster, hitIdx int)
 	case constant.WeaponTypeClaw2:
 		if skill.Skill(calc.skillID) == skill.LuckySeven {
 			// Lucky Seven / Triple Throw formula
+			// Uses both weapon attack AND projectile (throwing star) attack
+			projectileWatk := float64(calc.GetProjectileWatk())
+			totalWatk := watk + projectileWatk
 			minStatMod = luk * 2.5
 			maxStatMod = luk * 5.0
+			// Apply total watk (weapon + projectile)
+			minDmg := minStatMod * totalWatk / 100.0
+			maxDmg := maxStatMod * totalWatk / 100.0
+			return minDmg, maxDmg
 		} else if calc.attackAction == constant.AttackActionProne ||
 			(calc.attackAction >= constant.AttackActionSwing1H1 && calc.attackAction <= constant.AttackActionSwing2H7) {
 			// Claw punching (melee without throwing stars)
@@ -879,4 +888,20 @@ func (calc *DamageCalculator) GetTotalWatk() int16 {
 	watk += calc.player.str / 10
 
 	return int16(math.Min(float64(constant.DamageMaxPAD), float64(watk)))
+}
+
+// GetProjectileWatk returns projectile (throwing star/arrow/bullet) attack power
+func (calc *DamageCalculator) GetProjectileWatk() int16 {
+	if calc.projectileID == 0 {
+		return 0
+	}
+	
+	// Check use inventory for projectiles (throwing stars, arrows, bullets)
+	for _, item := range calc.player.use {
+		if item.ID == calc.projectileID {
+			return item.watk
+		}
+	}
+	
+	return 0
 }
