@@ -47,6 +47,11 @@ func NewRoller(randomizer *rand.Rand, numRolls int) *Roller {
 
 // Roll returns a random value using the specified modifier
 func (r *Roller) Roll(modifier float64) float64 {
+	// Nil check: return a mid-range value if roller is not initialized
+	if r == nil || len(r.rolls) == 0 {
+		return 0.5 // Return middle of the typical 0-1 range
+	}
+	
 	idx := r.rollIndex % len(r.rolls)
 	r.rollIndex++
 	roll := r.rolls[idx]
@@ -266,18 +271,18 @@ func (calc *DamageCalculator) CalculateHit(
 	result.MaxDamage = maxDmg
 	result.ExpectedDmg = baseDmg
 
-	// Validate client damage is within acceptable range with tolerance
+	// Validate client damage - only care if it's OVER the acceptable range
+	// If damage is under, we don't care (client may have weaker gear, buffs expired, etc.)
 	tolerance := constant.DamageVarianceTolerance
-	toleranceMin := minDmg * (1.0 - tolerance)
 	toleranceMax := maxDmg * (1.0 + tolerance)
 	
 	clientDmgFloat := float64(result.ClientDamage)
-	result.IsValid = (clientDmgFloat >= toleranceMin && clientDmgFloat <= toleranceMax)
+	result.IsValid = (clientDmgFloat <= toleranceMax)
 
-	// Log suspiciously high damage
-	if !result.IsValid && result.ClientDamage > int32(toleranceMax) {
-		log.Printf("Suspicious damage from player %s: client=%d, expected range=[%.0f, %.0f], skill=%d",
-			calc.player.Name, result.ClientDamage, minDmg, maxDmg, calc.skillID)
+	// Log and cap suspiciously high damage
+	if !result.IsValid {
+		log.Printf("Suspicious high damage from player %s (ID: %d): client=%d, max expected=%.0f (with tolerance), skill=%d",
+			calc.player.Name, calc.player.ID, result.ClientDamage, toleranceMax, calc.skillID)
 	}
 
 	return result

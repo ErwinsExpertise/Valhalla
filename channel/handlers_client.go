@@ -2497,15 +2497,15 @@ func validateAndApplyCriticals(plr *Player, data *attackData, results [][]CalcHi
 			// Apply server-determined critical hit
 			data.attackInfo[targetIdx].isCritical[hitIdx] = result.IsCrit
 			
-			// If damage is wildly out of range, log and potentially invalidate
+			// Only care if damage is OVER the acceptable range (not under)
+			// If damage is invalid (over max + tolerance), cap it
 			if !result.IsValid {
-				log.Printf("Invalid damage from player %s (ID: %d): client=%d, expected=[%.0f-%.0f], skill=%d, crit=%v",
-					plr.Name, plr.ID, result.ClientDamage, result.MinDamage, result.MaxDamage, data.skillID, result.IsCrit)
+				// Cap to max damage with tolerance
+				maxAllowed := int32(result.MaxDamage * (1.0 + constant.DamageVarianceTolerance))
+				data.attackInfo[targetIdx].damages[hitIdx] = maxAllowed
 				
-				// If damage is suspiciously high (more than max + tolerance), cap it
-				if float64(result.ClientDamage) > result.MaxDamage*(1.0+constant.DamageVarianceTolerance) {
-					data.attackInfo[targetIdx].damages[hitIdx] = int32(result.MaxDamage)
-				}
+				log.Printf("Capped excessive damage from player %s (ID: %d): client=%d -> capped=%d, max=%.0f, skill=%d",
+					plr.Name, plr.ID, result.ClientDamage, maxAllowed, result.MaxDamage, data.skillID)
 			}
 		}
 	}
