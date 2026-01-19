@@ -2503,7 +2503,7 @@ func (server Server) playerMeleeSkill(conn mnet.Client, reader mpacket.Reader) {
 
 	calc := NewDamageCalculator(plr, &data, attackMelee)
 	results := calc.ValidateAttack()
-	validateAndApplyCriticals(plr, &data, results)
+	server.validateAndApplyCriticals(conn, plr, &data, results)
 
 	// Check for excessive damage
 	if server.ac != nil {
@@ -2527,7 +2527,7 @@ func (server Server) playerMeleeSkill(conn mnet.Client, reader mpacket.Reader) {
 	}
 }
 
-func validateAndApplyCriticals(plr *Player, data *attackData, results [][]CalcHitResult) {
+func (server Server) validateAndApplyCriticals(conn mnet.Client, plr *Player, data *attackData, results [][]CalcHitResult) {
 	for targetIdx, targetResults := range results {
 		if targetIdx >= len(data.attackInfo) {
 			continue
@@ -2545,11 +2545,10 @@ func validateAndApplyCriticals(plr *Player, data *attackData, results [][]CalcHi
 				log.Printf("Capped excessive damage from player %s (ID: %d): client=%d -> capped=%d, max=%.0f, skill=%d",
 					plr.Name, plr.ID, result.ClientDamage, maxAllowed, result.MaxDamage, data.skillID)
 				
-				// TODO: Track violation - needs server and conn refs
-				// if server.ac != nil && server.ac.Track(conn.GetAccountID(), "damage", 5, 5*time.Minute) {
-				// 	server.ac.IssueBan(conn.GetAccountID(), 168, "Excessive damage hack detected", "", "")
-				// 	conn.Close()
-				// }
+				// Track violation and ban if threshold exceeded
+				if server.ac != nil {
+					server.ac.CheckDamage(plr.accountID, result.ClientDamage, int32(result.MaxDamage))
+				}
 			}
 		}
 	}
@@ -2600,7 +2599,7 @@ func (server Server) playerRangedSkill(conn mnet.Client, reader mpacket.Reader) 
 
 	calc := NewDamageCalculator(plr, &data, attackRanged)
 	results := calc.ValidateAttack()
-	validateAndApplyCriticals(plr, &data, results)
+	server.validateAndApplyCriticals(conn, plr, &data, results)
 
 	// Check for excessive damage
 	if server.ac != nil {
@@ -2675,7 +2674,7 @@ func (server Server) playerMagicSkill(conn mnet.Client, reader mpacket.Reader) {
 	
 	calc := NewDamageCalculator(plr, &data, attackMagic)
 	results := calc.ValidateAttack()
-	validateAndApplyCriticals(plr, &data, results)
+	server.validateAndApplyCriticals(conn, plr, &data, results)
 
 	// Check for excessive damage
 	if server.ac != nil {
