@@ -239,9 +239,10 @@ func (ac *AntiCheat) incrementTempBans(accountID int32) (int, error) {
 	return count, err
 }
 
-// Detection helpers - minimal implementation
+// Detection helpers - track violations and auto-ban on threshold
 func (ac *AntiCheat) CheckDamage(accountID int32, damage, maxDamage int32) {
 	if damage > maxDamage*2 {
+		// Track violation and ban if threshold exceeded (5 in 5min)
 		if ac.Track(accountID, "damage", 5, 5*time.Minute) {
 			ac.IssueBan(accountID, 168, fmt.Sprintf("Excessive damage: %d > %d", damage, maxDamage), "", "")
 		}
@@ -249,11 +250,13 @@ func (ac *AntiCheat) CheckDamage(accountID int32, damage, maxDamage int32) {
 }
 
 func (ac *AntiCheat) CheckAttackSpeed(accountID int32) bool {
+	// Track attack and return true if exceeds rate limit (20/min)
 	return ac.Track(accountID, "attack_speed", 20, 1*time.Minute)
 }
 
 func (ac *AntiCheat) CheckMovement(accountID int32, distance int16) {
 	if distance > 1000 {
+		// Track teleport violation and ban if threshold exceeded (3 in 5min)
 		if ac.Track(accountID, "teleport", 3, 5*time.Minute) {
 			ac.IssueBan(accountID, 168, fmt.Sprintf("Teleport hack: %d pixels", distance), "", "")
 		}
@@ -261,18 +264,21 @@ func (ac *AntiCheat) CheckMovement(accountID int32, distance int16) {
 }
 
 func (ac *AntiCheat) CheckInvalidItem(accountID int32) {
+	// Track invalid item use and ban if threshold exceeded (5 in 5min)
 	if ac.Track(accountID, "invalid_item", 5, 5*time.Minute) {
 		ac.IssueBan(accountID, 168, "Using items not in inventory", "", "")
 	}
 }
 
 func (ac *AntiCheat) CheckInvalidTrade(accountID int32, reason string) {
+	// Track invalid trade and ban if threshold exceeded (5 in 5min)
 	if ac.Track(accountID, "invalid_trade", 5, 5*time.Minute) {
 		ac.IssueBan(accountID, 168, "Invalid trade: "+reason, "", "")
 	}
 }
 
 func (ac *AntiCheat) CheckSkillAbuse(accountID int32, skillID int32) {
+	// Track skill abuse and ban if threshold exceeded (5 in 5min)
 	if ac.Track(accountID, "skill_abuse", 5, 5*time.Minute) {
 		ac.IssueBan(accountID, 168, fmt.Sprintf("Skill abuse: ID %d", skillID), "", "")
 	}
