@@ -2,10 +2,12 @@ package login
 
 import (
 	"crypto/sha512"
+	"database/sql"
 	"encoding/hex"
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/Hucaru/Valhalla/common"
 	"github.com/Hucaru/Valhalla/common/opcode"
@@ -55,6 +57,21 @@ func (server *Server) handleLoginRequest(conn mnet.Client, reader mpacket.Reader
 		hwidBytes[0], hwidBytes[1], hwidBytes[2], 
 		hwidBytes[3], hwidBytes[4], hwidBytes[5])
 	
+	// Get IP address from connection
+	ipAddress := conn.String()
+	
+	// Check for excessive failed login attempts before processing
+	isBanned, attemptCount := server.checkFailedLoginAttempts(username, ipAddress, hwid)
+	if isBanned {
+		// Issue a temporary ban for excessive failed attempts
+		err := issueFailedLoginBan(username, ipAddress, hwid, attemptCount)
+		if err != nil {
+			log.Printf("Error issuing failed login ban: %v", err)
+		}
+		conn.Send(packetLoginResponse(constant.LoginResultBanned, 0, 0, false, username, 1))
+		return
+	}
+	
 	// hash the password
 	hasher := sha512.New()
 	hasher.Write([]byte(password))
@@ -65,12 +82,12 @@ func (server *Server) handleLoginRequest(conn mnet.Client, reader mpacket.Reader
 	var databasePassword string
 	var gender byte
 	var isLogedIn bool
-	var isBanned int
+	var isBannedInt int
 	var adminLevel int
 	var eula byte
 
 	err := common.DB.QueryRow("SELECT accountID, username, password, gender, isLogedIn, isBanned, adminLevel, eula FROM accounts WHERE username=?", username).
-		Scan(&accountID, &user, &databasePassword, &gender, &isLogedIn, &isBanned, &adminLevel, &eula)
+		Scan(&accountID, &user, &databasePassword, &gender, &isLogedIn, &isBannedInt, &adminLevel, &eula)
 
 	result := constant.LoginResultSuccess
 
@@ -92,6 +109,8 @@ func (server *Server) handleLoginRequest(conn mnet.Client, reader mpacket.Reader
 				eula = constant.AutoRegisterDefaultEULA
 				log.Println("Auto-registered new account:", username, "with ID:", accountID)
 				result = constant.LoginResultSuccess
+				// Clear any failed attempts on successful auto-registration
+				server.clearFailedLoginAttempts(username, ipAddress, hwid)
 			} else {
 				log.Println("Failed to get new account ID:", err)
 				result = constant.LoginResultSystemError
@@ -101,9 +120,12 @@ func (server *Server) handleLoginRequest(conn mnet.Client, reader mpacket.Reader
 		}
 	} else if hashedPassword != databasePassword {
 		result = constant.LoginResultInvalidPassword
+		// Record failed password attempt
+		server.recordFailedLoginAttempt(username, ipAddress, hwid)
+		log.Printf("Failed password attempt for username=%s from IP=%s HWID=%s", username, ipAddress, hwid)
 	} else if isLogedIn {
 		result = constant.LoginResultAlreadyOnline
-	} else if isBanned > 0 {
+	} else if isBannedInt > 0 {
 		result = constant.LoginResultBanned
 	} else if eula == 0 {
 		result = constant.LoginResultEULA
@@ -122,6 +144,8 @@ func (server *Server) handleLoginRequest(conn mnet.Client, reader mpacket.Reader
 			if err != nil {
 				log.Printf("Failed to update account HWID: %v", err)
 			}
+			// Clear failed attempts on successful login
+			server.clearFailedLoginAttempts(username, ipAddress, hwid)
 		}
 	}
 
@@ -138,7 +162,7 @@ func (server *Server) handleLoginRequest(conn mnet.Client, reader mpacket.Reader
 		conn.SetAccountID(accountID)
 	}
 
-	conn.Send(packetLoginResponse(result, accountID, gender, adminLevel > 0, username, isBanned))
+	conn.Send(packetLoginResponse(result, accountID, gender, adminLevel > 0, username, isBannedInt))
 }
 
 func (server *Server) handleEULA(conn mnet.Client, reader mpacket.Reader) {
@@ -206,12 +230,34 @@ func (server *Server) handleGoodLogin(conn mnet.Client, reader mpacket.Reader) {
 			pin := string(reader.GetRestAsBytes())
 
 			if pin != pinDB {
+				// Record failed PIN attempt
+				ipAddress := conn.String()
+				var hwid string
+				// Try to get HWID from accounts table
+				err := common.DB.QueryRow("SELECT hwid FROM accounts WHERE accountID = ?", accountID).Scan(&hwid)
+				if err == nil {
+					// Get username for tracking
+					var username string
+					err = common.DB.QueryRow("SELECT username FROM accounts WHERE accountID = ?", accountID).Scan(&username)
+					if err == nil {
+						server.recordFailedLoginAttempt(username, ipAddress, hwid)
+						log.Printf("Failed PIN attempt for accountID=%d username=%s from IP=%s", accountID, username, ipAddress)
+					}
+				}
+				
 				conn.Send(packetRequestPinAfterFailure())
 
 			} else if b1 == 2 { // Changing pin request
 				conn.Send(packetRegisterPin())
 
 			} else { // Authenticated successfully
+				// Clear failed attempts on successful PIN entry
+				ipAddress := conn.String()
+				var hwid, username string
+				err := common.DB.QueryRow("SELECT hwid, username FROM accounts WHERE accountID = ?", accountID).Scan(&hwid, &username)
+				if err == nil {
+					server.clearFailedLoginAttempts(username, ipAddress, hwid)
+				}
 				authDone = true
 			}
 
@@ -576,6 +622,135 @@ func (server *Server) handleNewWorld(conn mnet.Server, reader mpacket.Reader) {
 			log.Println("Re-registered", name)
 		}
 	}
+}
+
+// checkFailedLoginAttempts checks if there have been too many failed login attempts
+// Returns true if the account/IP should be temporarily banned
+func (server *Server) checkFailedLoginAttempts(username, ipAddress, hwid string) (bool, int) {
+	const maxAttempts = 10
+	
+	server.failedAttemptsMux.RLock()
+	defer server.failedAttemptsMux.RUnlock()
+	
+	// Check all three identifiers
+	keys := []string{
+		"user:" + username,
+		"ip:" + ipAddress,
+	}
+	if hwid != "" {
+		keys = append(keys, "hwid:"+hwid)
+	}
+	
+	maxCount := 0
+	for _, key := range keys {
+		if attempt, exists := server.failedAttempts[key]; exists {
+			// Only count attempts within the last 30 minutes
+			if time.Since(attempt.timestamp) <= 30*time.Minute {
+				if attempt.attempts > maxCount {
+					maxCount = attempt.attempts
+				}
+			}
+		}
+	}
+	
+	return maxCount >= maxAttempts, maxCount
+}
+
+// recordFailedLoginAttempt records a failed login attempt in memory
+func (server *Server) recordFailedLoginAttempt(username, ipAddress, hwid string) {
+	server.failedAttemptsMux.Lock()
+	defer server.failedAttemptsMux.Unlock()
+	
+	now := time.Now()
+	keys := []string{
+		"user:" + username,
+		"ip:" + ipAddress,
+	}
+	if hwid != "" {
+		keys = append(keys, "hwid:"+hwid)
+	}
+	
+	for _, key := range keys {
+		if attempt, exists := server.failedAttempts[key]; exists {
+			// If last attempt was within 30 minutes, increment count
+			if now.Sub(attempt.timestamp) <= 30*time.Minute {
+				attempt.attempts++
+				attempt.timestamp = now
+			} else {
+				// Reset if too much time has passed
+				attempt.attempts = 1
+				attempt.timestamp = now
+			}
+		} else {
+			// Create new entry
+			server.failedAttempts[key] = &failedAttempt{
+				timestamp: now,
+				attempts:  1,
+			}
+		}
+	}
+}
+
+// clearFailedLoginAttempts clears failed login attempts for a user after successful login
+func (server *Server) clearFailedLoginAttempts(username, ipAddress, hwid string) {
+	server.failedAttemptsMux.Lock()
+	defer server.failedAttemptsMux.Unlock()
+	
+	keys := []string{
+		"user:" + username,
+		"ip:" + ipAddress,
+	}
+	if hwid != "" {
+		keys = append(keys, "hwid:"+hwid)
+	}
+	
+	for _, key := range keys {
+		delete(server.failedAttempts, key)
+	}
+}
+
+// issueFailedLoginBan issues a temporary ban for excessive failed login attempts
+func issueFailedLoginBan(username, ipAddress, hwid string, attemptCount int) error {
+	// Get accountID if the account exists
+	var accountID sql.NullInt32
+	err := common.DB.QueryRow("SELECT accountID FROM accounts WHERE username = ?", username).Scan(&accountID)
+	if err != nil && err != sql.ErrNoRows {
+		return fmt.Errorf("error checking account: %w", err)
+	}
+	
+	// Issue a 1-hour temporary ban
+	banDuration := 1 * time.Hour
+	banEndTime := time.Now().Add(banDuration)
+	reason := fmt.Sprintf("Excessive failed login attempts (%d attempts in 30 minutes)", attemptCount)
+	
+	// Insert ban record
+	var accountIDPtr *int32
+	if accountID.Valid {
+		id := int32(accountID.Int32)
+		accountIDPtr = &id
+	}
+	
+	_, err = common.DB.Exec(`
+		INSERT INTO bans (accountID, ipAddress, hwid, banType, banTarget, reason, issuedBy, issuedByGM, isActive, banStartTime, banEndTime)
+		VALUES (?, ?, ?, 'temporary', 'account', ?, 'SYSTEM', 0, 1, NOW(), ?)
+	`, accountIDPtr, ipAddress, hwid, reason, banEndTime)
+	
+	if err != nil {
+		return fmt.Errorf("error issuing ban: %w", err)
+	}
+	
+	// Set isBanned flag if account exists
+	if accountID.Valid {
+		_, err = common.DB.Exec("UPDATE accounts SET isBanned = 1 WHERE accountID = ?", accountID.Int32)
+		if err != nil {
+			log.Printf("Error setting isBanned flag: %v", err)
+		}
+	}
+	
+	log.Printf("Issued 1-hour ban for excessive failed login attempts: username=%s ip=%s hwid=%s attempts=%d",
+		username, ipAddress, hwid, attemptCount)
+	
+	return nil
 }
 
 func (server *Server) handleWorldInfo(conn mnet.Server, reader mpacket.Reader) {
