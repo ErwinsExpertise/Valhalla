@@ -3,6 +3,7 @@ package login
 import (
 	"crypto/sha512"
 	"encoding/hex"
+	"fmt"
 	"log"
 	"strings"
 
@@ -47,6 +48,13 @@ func (server *Server) HandleClientPacket(conn mnet.Client, reader mpacket.Reader
 func (server *Server) handleLoginRequest(conn mnet.Client, reader mpacket.Reader) {
 	username := reader.ReadString(reader.ReadInt16())
 	password := reader.ReadString(reader.ReadInt16())
+	
+	// Read HWID (6 bytes representing MAC address)
+	hwidBytes := reader.ReadBytes(6)
+	hwid := fmt.Sprintf("%02X%02X%02X%02X%02X%02X", 
+		hwidBytes[0], hwidBytes[1], hwidBytes[2], 
+		hwidBytes[3], hwidBytes[4], hwidBytes[5])
+	
 	// hash the password
 	hasher := sha512.New()
 	hasher.Write([]byte(password))
@@ -99,6 +107,22 @@ func (server *Server) handleLoginRequest(conn mnet.Client, reader mpacket.Reader
 		result = constant.LoginResultBanned
 	} else if eula == 0 {
 		result = constant.LoginResultEULA
+	} else {
+		// Check for HWID ban on successful login
+		// Import anticheat package at top of file if needed
+		// For now, we'll check using a direct DB query to avoid circular dependency
+		var hwidBanCount int
+		err := common.DB.QueryRow("SELECT COUNT(*) FROM bans WHERE hwid = ? AND isActive = 1 AND (banType = 'permanent' OR banEndTime > NOW())", hwid).Scan(&hwidBanCount)
+		if err == nil && hwidBanCount > 0 {
+			result = constant.LoginResultBanned
+			log.Printf("HWID banned login attempt: username=%s hwid=%s", username, hwid)
+		} else {
+			// Update account with latest HWID
+			_, err = common.DB.Exec("UPDATE accounts SET hwid = ? WHERE accountID = ?", hwid, accountID)
+			if err != nil {
+				log.Printf("Failed to update account HWID: %v", err)
+			}
+		}
 	}
 
 	// Banned = 2, Deleted or Blocked = 3, Invalid Password = 4, Not Registered = 5, Sys Error = 6,

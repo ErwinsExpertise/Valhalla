@@ -8,8 +8,9 @@ CREATE TABLE `bans` (
   `accountID` INT(10) UNSIGNED DEFAULT NULL,
   `characterID` INT(11) DEFAULT NULL,
   `ipAddress` VARCHAR(45) DEFAULT NULL,
+  `hwid` VARCHAR(20) DEFAULT NULL COMMENT 'Hardware ID (machine ID)',
   `banType` ENUM('temporary', 'permanent') NOT NULL DEFAULT 'temporary',
-  `banTarget` ENUM('character', 'account', 'ip') NOT NULL DEFAULT 'account',
+  `banTarget` ENUM('character', 'account', 'ip', 'hwid') NOT NULL DEFAULT 'account',
   `reason` TEXT NOT NULL,
   `issuedBy` VARCHAR(255) DEFAULT NULL,
   `issuedByGM` TINYINT(1) NOT NULL DEFAULT 0,
@@ -22,6 +23,7 @@ CREATE TABLE `bans` (
   KEY `idx_account` (`accountID`, `isActive`),
   KEY `idx_character` (`characterID`, `isActive`),
   KEY `idx_ip` (`ipAddress`, `isActive`),
+  KEY `idx_hwid` (`hwid`, `isActive`),
   KEY `idx_active_bans` (`isActive`, `banEndTime`),
   CONSTRAINT `bans_fk_account` FOREIGN KEY (`accountID`) REFERENCES `accounts` (`accountID`) ON DELETE CASCADE,
   CONSTRAINT `bans_fk_character` FOREIGN KEY (`characterID`) REFERENCES `characters` (`id`) ON DELETE CASCADE
@@ -78,3 +80,7 @@ CREATE TABLE `violation_counters` (
   CONSTRAINT `violation_counters_fk_account` FOREIGN KEY (`accountID`) REFERENCES `accounts` (`accountID`) ON DELETE CASCADE,
   CONSTRAINT `violation_counters_fk_character` FOREIGN KEY (`characterID`) REFERENCES `characters` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+-- Add HWID column to accounts table for tracking hardware IDs
+ALTER TABLE `accounts` ADD COLUMN `hwid` VARCHAR(20) DEFAULT NULL COMMENT 'Hardware ID (machine ID)' AFTER `lastIP`;
+ALTER TABLE `accounts` ADD INDEX `idx_hwid` (`hwid`);

@@ -1,6 +1,7 @@
 package channel
 
 import (
+	"database/sql"
 	"encoding/hex"
 	"fmt"
 	"log"
@@ -1780,12 +1781,33 @@ func (server *Server) gmCommand(conn mnet.Client, msg string) {
 			gmName = gmPlayer.Name
 		}
 
+		// Get target player's HWID from database
+		var hwid sql.NullString
+		err = common.DB.QueryRow(`SELECT hwid FROM accounts WHERE accountID = ?`, targetPlayer.accountID).Scan(&hwid)
+		
+		var hwidPtr *string
+		if err == nil && hwid.Valid && hwid.String != "" {
+			hwidPtr = &hwid.String
+		}
+
 		// Issue the ban
-		err = server.banService.IssueBan(&targetPlayer.accountID, &targetPlayer.ID, nil,
+		err = server.banService.IssueBan(&targetPlayer.accountID, &targetPlayer.ID, nil, hwidPtr,
 			banType, anticheat.BanTargetAccount, reason, gmName, true)
 		if err != nil {
 			conn.Send(packetMessageRedText(fmt.Sprintf("Failed to ban player: %v", err)))
 			return
+		}
+		
+		// For permanent bans, also issue HWID ban
+		if banType == anticheat.BanTypePermanent && hwidPtr != nil {
+			err = server.banService.IssueBan(&targetPlayer.accountID, nil, nil, hwidPtr,
+				anticheat.BanTypePermanent, anticheat.BanTargetHWID,
+				fmt.Sprintf("HWID ban - %s", reason), gmName, true)
+			if err != nil {
+				log.Printf("Failed to issue HWID ban: %v", err)
+			} else {
+				conn.Send(packetMessageNotice("HWID ban also issued"))
+			}
 		}
 
 		conn.Send(packetMessageNotice(fmt.Sprintf("Banned %s (%s): %s", targetName, banType, reason)))

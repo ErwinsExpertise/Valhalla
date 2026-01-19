@@ -24,6 +24,7 @@ const (
 	BanTargetCharacter BanTarget = "character"
 	BanTargetAccount   BanTarget = "account"
 	BanTargetIP        BanTarget = "ip"
+	BanTargetHWID      BanTarget = "hwid"
 )
 
 // Ban represents a ban record
@@ -32,6 +33,7 @@ type Ban struct {
 	AccountID    *int32
 	CharacterID  *int32
 	IPAddress    *string
+	HWID         *string
 	BanType      BanType
 	BanTarget    BanTarget
 	Reason       string
@@ -58,51 +60,64 @@ func NewBanService(config Config) *BanService {
 
 // IsAccountBanned checks if an account is currently banned
 func (bs *BanService) IsAccountBanned(accountID int32) (bool, *Ban, error) {
-	return bs.checkBan(BanTargetAccount, &accountID, nil, nil)
+	return bs.checkBan(BanTargetAccount, &accountID, nil, nil, nil)
 }
 
 // IsCharacterBanned checks if a character is currently banned
 func (bs *BanService) IsCharacterBanned(characterID int32) (bool, *Ban, error) {
-	return bs.checkBan(BanTargetCharacter, nil, &characterID, nil)
+	return bs.checkBan(BanTargetCharacter, nil, &characterID, nil, nil)
 }
 
 // IsIPBanned checks if an IP address is currently banned
 func (bs *BanService) IsIPBanned(ipAddress string) (bool, *Ban, error) {
-	return bs.checkBan(BanTargetIP, nil, nil, &ipAddress)
+	return bs.checkBan(BanTargetIP, nil, nil, &ipAddress, nil)
+}
+
+// IsHWIDBanned checks if a hardware ID is currently banned
+func (bs *BanService) IsHWIDBanned(hwid string) (bool, *Ban, error) {
+	if hwid == "" || hwid == "unknown" {
+		return false, nil, nil
+	}
+	return bs.checkBan(BanTargetHWID, nil, nil, nil, &hwid)
 }
 
 // checkBan is a helper to check ban status
-func (bs *BanService) checkBan(target BanTarget, accountID, characterID *int32, ipAddress *string) (bool, *Ban, error) {
+func (bs *BanService) checkBan(target BanTarget, accountID, characterID *int32, ipAddress, hwid *string) (bool, *Ban, error) {
 	var query string
 	var args []interface{}
 
 	switch target {
 	case BanTargetAccount:
-		query = `SELECT id, accountID, characterID, ipAddress, banType, banTarget, reason, issuedBy, 
+		query = `SELECT id, accountID, characterID, ipAddress, hwid, banType, banTarget, reason, issuedBy, 
 				issuedByGM, isActive, banStartTime, banEndTime, createdAt, updatedAt 
 				FROM bans WHERE accountID = ? AND isActive = 1 AND (banType = 'permanent' OR banEndTime > NOW())`
 		args = []interface{}{*accountID}
 	case BanTargetCharacter:
-		query = `SELECT id, accountID, characterID, ipAddress, banType, banTarget, reason, issuedBy, 
+		query = `SELECT id, accountID, characterID, ipAddress, hwid, banType, banTarget, reason, issuedBy, 
 				issuedByGM, isActive, banStartTime, banEndTime, createdAt, updatedAt 
 				FROM bans WHERE characterID = ? AND isActive = 1 AND (banType = 'permanent' OR banEndTime > NOW())`
 		args = []interface{}{*characterID}
 	case BanTargetIP:
-		query = `SELECT id, accountID, characterID, ipAddress, banType, banTarget, reason, issuedBy, 
+		query = `SELECT id, accountID, characterID, ipAddress, hwid, banType, banTarget, reason, issuedBy, 
 				issuedByGM, isActive, banStartTime, banEndTime, createdAt, updatedAt 
 				FROM bans WHERE ipAddress = ? AND isActive = 1 AND (banType = 'permanent' OR banEndTime > NOW())`
 		args = []interface{}{*ipAddress}
+	case BanTargetHWID:
+		query = `SELECT id, accountID, characterID, ipAddress, hwid, banType, banTarget, reason, issuedBy, 
+				issuedByGM, isActive, banStartTime, banEndTime, createdAt, updatedAt 
+				FROM bans WHERE hwid = ? AND isActive = 1 AND (banType = 'permanent' OR banEndTime > NOW())`
+		args = []interface{}{*hwid}
 	default:
 		return false, nil, fmt.Errorf("invalid ban target: %s", target)
 	}
 
 	var ban Ban
 	var accountIDVal, characterIDVal sql.NullInt32
-	var ipAddressVal, issuedByVal sql.NullString
+	var ipAddressVal, hwidVal, issuedByVal sql.NullString
 	var banEndTimeVal sql.NullTime
 
 	err := common.DB.QueryRow(query, args...).Scan(
-		&ban.ID, &accountIDVal, &characterIDVal, &ipAddressVal,
+		&ban.ID, &accountIDVal, &characterIDVal, &ipAddressVal, &hwidVal,
 		&ban.BanType, &ban.BanTarget, &ban.Reason, &issuedByVal,
 		&ban.IssuedByGM, &ban.IsActive, &ban.BanStartTime, &banEndTimeVal,
 		&ban.CreatedAt, &ban.UpdatedAt,
@@ -127,6 +142,9 @@ func (bs *BanService) checkBan(target BanTarget, accountID, characterID *int32, 
 	if ipAddressVal.Valid {
 		ban.IPAddress = &ipAddressVal.String
 	}
+	if hwidVal.Valid {
+		ban.HWID = &hwidVal.String
+	}
 	if issuedByVal.Valid {
 		ban.IssuedBy = issuedByVal.String
 	}
@@ -138,7 +156,7 @@ func (bs *BanService) checkBan(target BanTarget, accountID, characterID *int32, 
 }
 
 // IssueBan issues a new ban
-func (bs *BanService) IssueBan(accountID *int32, characterID *int32, ipAddress *string, 
+func (bs *BanService) IssueBan(accountID *int32, characterID *int32, ipAddress *string, hwid *string,
 	banType BanType, banTarget BanTarget, reason string, issuedBy string, issuedByGM bool) error {
 	
 	var banEndTime *time.Time
@@ -148,11 +166,11 @@ func (bs *BanService) IssueBan(accountID *int32, characterID *int32, ipAddress *
 	}
 
 	// Insert ban record
-	query := `INSERT INTO bans (accountID, characterID, ipAddress, banType, banTarget, reason, 
+	query := `INSERT INTO bans (accountID, characterID, ipAddress, hwid, banType, banTarget, reason, 
 			issuedBy, issuedByGM, isActive, banStartTime, banEndTime) 
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, NOW(), ?)`
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW(), ?)`
 	
-	_, err := common.DB.Exec(query, accountID, characterID, ipAddress, banType, banTarget, 
+	_, err := common.DB.Exec(query, accountID, characterID, ipAddress, hwid, banType, banTarget, 
 		reason, issuedBy, issuedByGM, banEndTime)
 	if err != nil {
 		return fmt.Errorf("failed to issue ban: %w", err)
@@ -185,8 +203,8 @@ func (bs *BanService) IssueBan(accountID *int32, characterID *int32, ipAddress *
 		}
 	}
 
-	log.Printf("Ban issued: type=%s target=%s accountID=%v characterID=%v ipAddress=%v reason=%s issuedBy=%s",
-		banType, banTarget, accountID, characterID, ipAddress, reason, issuedBy)
+	log.Printf("Ban issued: type=%s target=%s accountID=%v characterID=%v ipAddress=%v hwid=%v reason=%s issuedBy=%s",
+		banType, banTarget, accountID, characterID, ipAddress, hwid, reason, issuedBy)
 
 	return nil
 }
@@ -230,12 +248,31 @@ func (bs *BanService) checkEscalation(accountID int32) error {
 		log.Printf("Account %d has exceeded escalation threshold (%d temp bans), issuing permanent ban",
 			accountID, tempBanCount)
 
-		// Issue permanent ban
-		err = bs.IssueBan(&accountID, nil, nil, BanTypePermanent, BanTargetAccount,
+		// Issue permanent ban with HWID ban for permanent escalation
+		// Get the account's HWID for HWID ban
+		var hwid sql.NullString
+		err = common.DB.QueryRow(`SELECT hwid FROM accounts WHERE accountID = ?`, accountID).Scan(&hwid)
+		
+		var hwidPtr *string
+		if err == nil && hwid.Valid && hwid.String != "" {
+			hwidPtr = &hwid.String
+		}
+		
+		err = bs.IssueBan(&accountID, nil, nil, hwidPtr, BanTypePermanent, BanTargetAccount,
 			fmt.Sprintf("Automatic escalation after %d temporary bans", tempBanCount),
 			"SYSTEM", false)
 		if err != nil {
 			return fmt.Errorf("failed to issue escalation ban: %w", err)
+		}
+		
+		// Also issue HWID ban for permanent bans
+		if hwidPtr != nil {
+			err = bs.IssueBan(&accountID, nil, nil, hwidPtr, BanTypePermanent, BanTargetHWID,
+				fmt.Sprintf("HWID ban - Automatic escalation after %d temporary bans", tempBanCount),
+				"SYSTEM", false)
+			if err != nil {
+				log.Printf("Failed to issue HWID ban: %v", err)
+			}
 		}
 
 		// Mark permanent ban issued
@@ -300,12 +337,12 @@ func (bs *BanService) GetBanHistory(accountID *int32, characterID *int32, limit 
 	var args []interface{}
 
 	if accountID != nil {
-		query = `SELECT id, accountID, characterID, ipAddress, banType, banTarget, reason, issuedBy, 
+		query = `SELECT id, accountID, characterID, ipAddress, hwid, banType, banTarget, reason, issuedBy, 
 				issuedByGM, isActive, banStartTime, banEndTime, createdAt, updatedAt 
 				FROM bans WHERE accountID = ? ORDER BY createdAt DESC LIMIT ?`
 		args = []interface{}{*accountID, limit}
 	} else if characterID != nil {
-		query = `SELECT id, accountID, characterID, ipAddress, banType, banTarget, reason, issuedBy, 
+		query = `SELECT id, accountID, characterID, ipAddress, hwid, banType, banTarget, reason, issuedBy, 
 				issuedByGM, isActive, banStartTime, banEndTime, createdAt, updatedAt 
 				FROM bans WHERE characterID = ? ORDER BY createdAt DESC LIMIT ?`
 		args = []interface{}{*characterID, limit}
@@ -323,10 +360,10 @@ func (bs *BanService) GetBanHistory(accountID *int32, characterID *int32, limit 
 	for rows.Next() {
 		var ban Ban
 		var accountIDVal, characterIDVal sql.NullInt32
-		var ipAddressVal, issuedByVal sql.NullString
+		var ipAddressVal, hwidVal, issuedByVal sql.NullString
 		var banEndTimeVal sql.NullTime
 
-		err := rows.Scan(&ban.ID, &accountIDVal, &characterIDVal, &ipAddressVal,
+		err := rows.Scan(&ban.ID, &accountIDVal, &characterIDVal, &ipAddressVal, &hwidVal,
 			&ban.BanType, &ban.BanTarget, &ban.Reason, &issuedByVal,
 			&ban.IssuedByGM, &ban.IsActive, &ban.BanStartTime, &banEndTimeVal,
 			&ban.CreatedAt, &ban.UpdatedAt)
@@ -346,6 +383,9 @@ func (bs *BanService) GetBanHistory(accountID *int32, characterID *int32, limit 
 		}
 		if ipAddressVal.Valid {
 			ban.IPAddress = &ipAddressVal.String
+		}
+		if hwidVal.Valid {
+			ban.HWID = &hwidVal.String
 		}
 		if issuedByVal.Valid {
 			ban.IssuedBy = issuedByVal.String

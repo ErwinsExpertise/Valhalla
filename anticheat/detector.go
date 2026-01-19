@@ -343,7 +343,7 @@ func (vd *ViolationDetector) takeAction(event ViolationEvent, counter *Violation
 	}
 
 	// Issue the ban
-	err := vd.banService.IssueBan(&event.AccountID, &event.CharacterID, ipAddress,
+	err := vd.banService.IssueBan(&event.AccountID, &event.CharacterID, ipAddress, nil,
 		banType, BanTargetAccount, reason, "ANTICHEAT", false)
 	if err != nil {
 		return fmt.Errorf("failed to issue ban: %w", err)
