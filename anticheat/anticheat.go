@@ -202,14 +202,53 @@ return history, nil
 
 // Internal: track temp ban count for escalation
 func (ac *AntiCheat) incrementTempBans(accountID int32) (int, error) {
-_, err := ac.db.Exec(`
-INSERT INTO ban_escalation (accountID, count) VALUES (?, 1)
-ON DUPLICATE KEY UPDATE count = count + 1`, accountID)
-if err != nil {
-return 0, err
+	_, err := ac.db.Exec(`
+		INSERT INTO ban_escalation (accountID, count) VALUES (?, 1)
+		ON DUPLICATE KEY UPDATE count = count + 1`, accountID)
+	if err != nil {
+		return 0, err
+	}
+
+	var count int
+	err = ac.db.QueryRow(`SELECT count FROM ban_escalation WHERE accountID = ?`, accountID).Scan(&count)
+	return count, err
 }
 
-var count int
-err = ac.db.QueryRow(`SELECT count FROM ban_escalation WHERE accountID = ?`, accountID).Scan(&count)
-return count, err
+// Detection helpers - minimal implementation
+func (ac *AntiCheat) CheckDamage(accountID int32, damage, maxDamage int32) {
+	if damage > maxDamage*2 {
+		if ac.Track(accountID, "damage", 5, 5*time.Minute) {
+			ac.IssueBan(accountID, 168, fmt.Sprintf("Excessive damage: %d > %d", damage, maxDamage), "", "")
+		}
+	}
+}
+
+func (ac *AntiCheat) CheckAttackSpeed(accountID int32) bool {
+	return ac.Track(accountID, "attack_speed", 20, 1*time.Minute)
+}
+
+func (ac *AntiCheat) CheckMovement(accountID int32, distance int16) {
+	if distance > 1000 {
+		if ac.Track(accountID, "teleport", 3, 5*time.Minute) {
+			ac.IssueBan(accountID, 168, fmt.Sprintf("Teleport hack: %d pixels", distance), "", "")
+		}
+	}
+}
+
+func (ac *AntiCheat) CheckInvalidItem(accountID int32) {
+	if ac.Track(accountID, "invalid_item", 5, 5*time.Minute) {
+		ac.IssueBan(accountID, 168, "Using items not in inventory", "", "")
+	}
+}
+
+func (ac *AntiCheat) CheckInvalidTrade(accountID int32, reason string) {
+	if ac.Track(accountID, "invalid_trade", 5, 5*time.Minute) {
+		ac.IssueBan(accountID, 168, "Invalid trade: "+reason, "", "")
+	}
+}
+
+func (ac *AntiCheat) CheckSkillAbuse(accountID int32, skillID int32) {
+	if ac.Track(accountID, "skill_abuse", 5, 5*time.Minute) {
+		ac.IssueBan(accountID, 168, fmt.Sprintf("Skill abuse: ID %d", skillID), "", "")
+	}
 }
