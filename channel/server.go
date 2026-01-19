@@ -2,8 +2,6 @@ package channel
 
 import (
 	"context"
-	"database/sql"
-	"fmt"
 	"log"
 	"strconv"
 	"time"
@@ -29,29 +27,27 @@ type rates struct {
 
 // Server state
 type Server struct {
-	id                 byte
-	worldName          string
-	dispatch           chan func()
-	world              mnet.Server
-	ip                 []byte
-	port               int16
-	maxPop             int16
-	migrating          []mnet.Client
-	players            Players
-	channels           [20]internal.Channel
-	cashShop           internal.CashShop
-	fields             map[int32]*field
-	header             string
-	npcChat            map[mnet.Client]*npcChatController
-	npcScriptStore     *scriptStore
-	eventScriptStore   *scriptStore
-	parties            map[int32]*party
-	guilds             map[int32]*guild
-	events             map[int32]*event
-	rates              rates
-	antiCheatConfig    anticheat.Config
-	banService         *anticheat.BanService
-	violationDetector  *anticheat.ViolationDetector
+	id               byte
+	worldName        string
+	dispatch         chan func()
+	world            mnet.Server
+	ip               []byte
+	port             int16
+	maxPop           int16
+	migrating        []mnet.Client
+	players          Players
+	channels         [20]internal.Channel
+	cashShop         internal.CashShop
+	fields           map[int32]*field
+	header           string
+	npcChat          map[mnet.Client]*npcChatController
+	npcScriptStore   *scriptStore
+	eventScriptStore *scriptStore
+	parties          map[int32]*party
+	guilds           map[int32]*guild
+	events           map[int32]*event
+	rates            rates
+	ac               *anticheat.AntiCheat
 }
 
 // Initialise the server
@@ -165,14 +161,9 @@ func (server *Server) Initialise(work chan func(), dbuser, dbpassword, dbaddress
 	server.guilds = make(map[int32]*guild)
 	server.events = make(map[int32]*event)
 
-	// Initialize anti-cheat system
-	server.antiCheatConfig = anticheat.DefaultConfig()
-	server.banService = anticheat.NewBanService(server.antiCheatConfig)
-	server.violationDetector = anticheat.NewViolationDetector(server.antiCheatConfig, server.banService)
-	log.Println("Anti-cheat system initialized")
-
-	// Start background tasks
-	go server.banMaintenanceLoop()
+	// Initialize anti-cheat
+	server.ac = anticheat.New(common.DB)
+	log.Println("Anti-cheat initialized")
 
 	go scheduleBoats(server)
 }
@@ -208,100 +199,6 @@ func (server *Server) SendCountdownToPlayers(t int32) {
 // SendLostWorldConnectionMessage - Send message to players alerting them of whatever they do it won't be saved
 func (server *Server) SendLostWorldConnectionMessage() {
 	server.players.broadcast(packetMessageNotice("Cannot connect to world server, any action from the point until the countdown disappears won't be processed"))
-}
-
-// banMaintenanceLoop performs periodic ban maintenance tasks
-func (server *Server) banMaintenanceLoop() {
-	ticker := time.NewTicker(5 * time.Minute)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		if server.banService != nil {
-			err := server.banService.ExpireOldBans()
-			if err != nil {
-				log.Printf("Error expiring old bans: %v", err)
-			}
-		}
-	}
-}
-
-// CheckPlayerBan checks if a player is banned before allowing them to connect
-func (server *Server) CheckPlayerBan(accountID int32, characterID int32, ipAddress string) (bool, string) {
-	if server.banService == nil {
-		return false, ""
-	}
-
-	// Quick check using accounts.isBanned field
-	var isBanned bool
-	var hwid sql.NullString
-	err := common.DB.QueryRow(`SELECT isBanned, hwid FROM accounts WHERE accountID = ?`, accountID).Scan(&isBanned, &hwid)
-	if err == nil && isBanned {
-		// Account is flagged as banned, get details from bans table
-		banned, ban, err := server.banService.IsAccountBanned(accountID)
-		if err != nil {
-			log.Printf("Error checking account ban: %v", err)
-			return false, ""
-		}
-		if banned {
-			reason := fmt.Sprintf("Account banned: %s", ban.Reason)
-			if ban.BanType == anticheat.BanTypePermanent {
-				reason += " (Permanent)"
-			} else if ban.BanEndTime != nil {
-				reason += fmt.Sprintf(" (Until: %s)", ban.BanEndTime.Format("2006-01-02 15:04"))
-			}
-			return true, reason
-		}
-	}
-
-	// Check HWID ban if HWID is available
-	if err == nil && hwid.Valid && hwid.String != "" {
-		banned, ban, err := server.banService.IsHWIDBanned(hwid.String)
-		if err != nil {
-			log.Printf("Error checking HWID ban: %v", err)
-		} else if banned {
-			reason := fmt.Sprintf("Hardware ID banned: %s", ban.Reason)
-			if ban.BanType == anticheat.BanTypePermanent {
-				reason += " (Permanent)"
-			} else if ban.BanEndTime != nil {
-				reason += fmt.Sprintf(" (Until: %s)", ban.BanEndTime.Format("2006-01-02 15:04"))
-			}
-			return true, reason
-		}
-	}
-
-	// Check character ban
-	banned, ban, err := server.banService.IsCharacterBanned(characterID)
-	if err != nil {
-		log.Printf("Error checking character ban: %v", err)
-		return false, ""
-	}
-	if banned {
-		reason := fmt.Sprintf("Character banned: %s", ban.Reason)
-		if ban.BanType == anticheat.BanTypePermanent {
-			reason += " (Permanent)"
-		} else if ban.BanEndTime != nil {
-			reason += fmt.Sprintf(" (Until: %s)", ban.BanEndTime.Format("2006-01-02 15:04"))
-		}
-		return true, reason
-	}
-
-	// Check IP ban
-	banned, ban, err = server.banService.IsIPBanned(ipAddress)
-	if err != nil {
-		log.Printf("Error checking IP ban: %v", err)
-		return false, ""
-	}
-	if banned {
-		reason := fmt.Sprintf("IP address banned: %s", ban.Reason)
-		if ban.BanType == anticheat.BanTypePermanent {
-			reason += " (Permanent)"
-		} else if ban.BanEndTime != nil {
-			reason += fmt.Sprintf(" (Until: %s)", ban.BanEndTime.Format("2006-01-02 15:04"))
-		}
-		return true, reason
-	}
-
-	return false, ""
 }
 
 // RegisterWithWorld server

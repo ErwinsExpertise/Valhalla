@@ -1,7 +1,6 @@
 package channel
 
 import (
-	"database/sql"
 	"encoding/hex"
 	"fmt"
 	"log"
@@ -10,8 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Hucaru/Valhalla/anticheat"
-	"github.com/Hucaru/Valhalla/common"
 	"github.com/Hucaru/Valhalla/constant"
 	"github.com/Hucaru/Valhalla/internal"
 
@@ -1724,242 +1721,68 @@ func (server *Server) gmCommand(conn mnet.Client, msg string) {
 		conn.Send(packetMessageRedText(fmt.Sprintf("portal %s has been set to %v", port.name, port.enabled)))
 
 	case "ban":
-		if server.banService == nil {
-			conn.Send(packetMessageRedText("Ban system not initialized"))
-			return
-		}
-
-		// Usage: /ban <player> [duration_hours] [reason...]
-		// If duration is 0 or "perm", it's a permanent ban
 		if len(command) < 2 {
-			conn.Send(packetMessageRedText("Usage: /ban <player> [duration_hours|perm] [reason...]"))
+			conn.Send(packetMessageRedText("/ban <player> [hours|perm] [reason]"))
 			return
 		}
-
 		targetName := command[1]
-		targetPlayer, err := server.players.GetFromName(targetName)
+		target, err := server.players.GetFromName(targetName)
 		if err != nil {
-			conn.Send(packetMessageRedText(fmt.Sprintf("Player %s not found", targetName)))
+			conn.Send(packetMessageRedText("Player not found"))
 			return
 		}
-
-		var banType anticheat.BanType = anticheat.BanTypeTemporary
-		var reason string
-		reasonStart := 2
-
-		// Check if duration specified
+		
+		hours := 168 // default 7 days
+		reason := "Banned by GM"
 		if len(command) >= 3 {
-			durationStr := command[2]
-			if durationStr == "perm" || durationStr == "permanent" {
-				banType = anticheat.BanTypePermanent
-				reasonStart = 3
-			} else {
-				// Try to parse as duration
-				duration, err := strconv.Atoi(durationStr)
-				if err == nil && duration == 0 {
-					banType = anticheat.BanTypePermanent
-					reasonStart = 3
-				} else if err == nil {
-					// Valid temporary ban duration in hours
-					reasonStart = 3
-				} else {
-					// Not a valid duration, treat as part of reason
-					reasonStart = 2
-				}
+			if command[2] == "perm" {
+				hours = 0
+			} else if h, err := strconv.Atoi(command[2]); err == nil {
+				hours = h
 			}
 		}
-
-		if len(command) > reasonStart {
-			reason = strings.Join(command[reasonStart:], " ")
-		} else {
-			reason = "No reason provided"
-		}
-
-		gmPlayer, _ := server.players.GetFromConn(conn)
-		gmName := "Unknown GM"
-		if gmPlayer != nil {
-			gmName = gmPlayer.Name
-		}
-
-		// Get target player's HWID from database
-		var hwid sql.NullString
-		err = common.DB.QueryRow(`SELECT hwid FROM accounts WHERE accountID = ?`, targetPlayer.accountID).Scan(&hwid)
-		
-		var hwidPtr *string
-		if err == nil && hwid.Valid && hwid.String != "" {
-			hwidPtr = &hwid.String
-		}
-
-		// Issue the ban
-		err = server.banService.IssueBan(&targetPlayer.accountID, &targetPlayer.ID, nil, hwidPtr,
-			banType, anticheat.BanTargetAccount, reason, gmName, true)
-		if err != nil {
-			conn.Send(packetMessageRedText(fmt.Sprintf("Failed to ban player: %v", err)))
-			return
+		if len(command) >= 4 {
+			reason = strings.Join(command[3:], " ")
 		}
 		
-		// For permanent bans, also issue HWID ban
-		if banType == anticheat.BanTypePermanent && hwidPtr != nil {
-			err = server.banService.IssueBan(&targetPlayer.accountID, nil, nil, hwidPtr,
-				anticheat.BanTypePermanent, anticheat.BanTargetHWID,
-				fmt.Sprintf("HWID ban - %s", reason), gmName, true)
-			if err != nil {
-				log.Printf("Failed to issue HWID ban: %v", err)
-			} else {
-				conn.Send(packetMessageNotice("HWID ban also issued"))
-			}
+		if server.ac != nil {
+			server.ac.IssueBan(target.Conn.GetAccountID(), hours, reason, "", "")
+			conn.Send(packetMessageRedText(fmt.Sprintf("Banned %s for %d hours", targetName, hours)))
 		}
-
-		conn.Send(packetMessageNotice(fmt.Sprintf("Banned %s (%s): %s", targetName, banType, reason)))
 		
-		// Disconnect the banned player
-		if targetPlayer.Conn != nil {
-			targetPlayer.Conn.Cleanup()
-		}
-
 	case "unban":
-		if server.banService == nil {
-			conn.Send(packetMessageRedText("Ban system not initialized"))
-			return
-		}
-
-		// Usage: /unban <player>
 		if len(command) < 2 {
-			conn.Send(packetMessageRedText("Usage: /unban <player>"))
+			conn.Send(packetMessageRedText("/unban <accountID>"))
 			return
 		}
-
-		targetName := command[1]
+		accountID, err := strconv.Atoi(command[1])
+		if err != nil {
+			conn.Send(packetMessageRedText("Invalid account ID"))
+			return
+		}
+		if server.ac != nil {
+			server.ac.Unban(int32(accountID))
+			conn.Send(packetMessageRedText(fmt.Sprintf("Unbanned account %d", accountID)))
+		}
 		
-		// Get account ID from character name
-		var accountID int32
-		err := common.DB.QueryRow(`SELECT accountID FROM characters WHERE name = ?`, targetName).Scan(&accountID)
-		if err != nil {
-			conn.Send(packetMessageRedText(fmt.Sprintf("Player %s not found in database", targetName)))
-			return
-		}
-
-		// Find active bans for this account
-		bans, err := server.banService.GetBanHistory(&accountID, nil, 10)
-		if err != nil {
-			conn.Send(packetMessageRedText(fmt.Sprintf("Error retrieving bans: %v", err)))
-			return
-		}
-
-		unbanned := false
-		for _, ban := range bans {
-			if ban.IsActive {
-				gmPlayer, _ := server.players.GetFromConn(conn)
-				gmName := "Unknown GM"
-				if gmPlayer != nil {
-					gmName = gmPlayer.Name
-				}
-
-				err = server.banService.Unban(ban.ID, gmName)
-				if err != nil {
-					conn.Send(packetMessageRedText(fmt.Sprintf("Error unbanning: %v", err)))
-					return
-				}
-				unbanned = true
-			}
-		}
-
-		if unbanned {
-			conn.Send(packetMessageNotice(fmt.Sprintf("Unbanned %s", targetName)))
-		} else {
-			conn.Send(packetMessageRedText(fmt.Sprintf("%s has no active bans", targetName)))
-		}
-
 	case "banhistory":
-		if server.banService == nil {
-			conn.Send(packetMessageRedText("Ban system not initialized"))
-			return
-		}
-
-		// Usage: /banhistory <player>
 		if len(command) < 2 {
-			conn.Send(packetMessageRedText("Usage: /banhistory <player>"))
+			conn.Send(packetMessageRedText("/banhistory <accountID>"))
 			return
 		}
-
-		targetName := command[1]
-		
-		// Get account ID from character name
-		var accountID int32
-		err := common.DB.QueryRow(`SELECT accountID FROM characters WHERE name = ?`, targetName).Scan(&accountID)
+		accountID, err := strconv.Atoi(command[1])
 		if err != nil {
-			conn.Send(packetMessageRedText(fmt.Sprintf("Player %s not found in database", targetName)))
+			conn.Send(packetMessageRedText("Invalid account ID"))
 			return
 		}
-
-		bans, err := server.banService.GetBanHistory(&accountID, nil, 10)
-		if err != nil {
-			conn.Send(packetMessageRedText(fmt.Sprintf("Error retrieving ban history: %v", err)))
-			return
-		}
-
-		if len(bans) == 0 {
-			conn.Send(packetMessageNotice(fmt.Sprintf("%s has no ban history", targetName)))
-			return
-		}
-
-		conn.Send(packetMessageNotice(fmt.Sprintf("Ban history for %s:", targetName)))
-		for i, ban := range bans {
-			status := "Expired"
-			if ban.IsActive {
-				status = "Active"
-			}
-			endTime := "Never"
-			if ban.BanEndTime != nil {
-				endTime = ban.BanEndTime.Format("2006-01-02 15:04")
-			}
-			conn.Send(packetMessageNotice(fmt.Sprintf("%d. %s - Type: %s, Status: %s, End: %s, Reason: %s",
-				i+1, ban.BanStartTime.Format("2006-01-02 15:04"), ban.BanType, status, endTime, ban.Reason)))
-		}
-
-	case "violations":
-		if server.violationDetector == nil {
-			conn.Send(packetMessageRedText("Violation detector not initialized"))
-			return
-		}
-
-		// Usage: /violations <player> [limit]
-		if len(command) < 2 {
-			conn.Send(packetMessageRedText("Usage: /violations <player> [limit]"))
-			return
-		}
-
-		targetName := command[1]
-		targetPlayer, err := server.players.GetFromName(targetName)
-		if err != nil {
-			conn.Send(packetMessageRedText(fmt.Sprintf("Player %s not found", targetName)))
-			return
-		}
-
-		limit := 10
-		if len(command) >= 3 {
-			if l, err := strconv.Atoi(command[2]); err == nil && l > 0 {
-				limit = l
-			}
-		}
-
-		violations, err := server.violationDetector.GetViolationHistory(targetPlayer.ID, limit)
-		if err != nil {
-			conn.Send(packetMessageRedText(fmt.Sprintf("Error retrieving violations: %v", err)))
-			return
-		}
-
-		if len(violations) == 0 {
-			conn.Send(packetMessageNotice(fmt.Sprintf("%s has no violation history", targetName)))
-			return
-		}
-
-		conn.Send(packetMessageNotice(fmt.Sprintf("Recent violations for %s:", targetName)))
-		for i, v := range violations {
-			conn.Send(packetMessageNotice(fmt.Sprintf("%d. [%s] %s - %s (%s)",
-				i+1, v.Timestamp.Format("15:04:05"), v.ViolationType, v.Category, v.Severity)))
-			if v.DetectionDetails != "" {
-				conn.Send(packetMessageNotice(fmt.Sprintf("   Details: %s", v.DetectionDetails)))
+		if server.ac != nil {
+			history, _ := server.ac.GetBanHistory(int32(accountID), 10)
+			if len(history) == 0 {
+				conn.Send(packetMessageRedText("No ban history"))
+			} else {
+				for _, entry := range history {
+					conn.Send(packetMessageRedText(entry))
+				}
 			}
 		}
 

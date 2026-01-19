@@ -2,28 +2,21 @@ package login
 
 import (
 	"log"
-	"sync"
-	"time"
 
+	"github.com/Hucaru/Valhalla/anticheat"
 	"github.com/Hucaru/Valhalla/common"
 	"github.com/Hucaru/Valhalla/internal"
 	"github.com/Hucaru/Valhalla/mnet"
 )
 
-// failedAttempt tracks a failed login attempt with timestamp
-type failedAttempt struct {
-	timestamp time.Time
-	attempts  int
-}
-
 // Server state
 type Server struct {
-	migrating         map[mnet.Client]bool
-	worlds            []internal.World
-	withPin           bool
-	autoRegister      bool
-	failedAttempts    map[string]*failedAttempt // key: username, IP, or HWID
-	failedAttemptsMux sync.RWMutex
+	migrating    map[mnet.Client]bool
+	// db        *sql.DB
+	worlds       []internal.World
+	withPin      bool
+	autoRegister bool
+	ac           *anticheat.AntiCheat
 }
 
 // Initialise the server
@@ -31,7 +24,6 @@ func (server *Server) Initialise(dbuser, dbpassword, dbaddress, dbport, dbdataba
 	server.migrating = make(map[mnet.Client]bool)
 	server.withPin = withpin
 	server.autoRegister = autoRegister
-	server.failedAttempts = make(map[string]*failedAttempt)
 
 	err := common.ConnectToDB(dbuser, dbpassword, dbaddress, dbport, dbdatabase)
 
@@ -44,26 +36,10 @@ func (server *Server) Initialise(dbuser, dbpassword, dbaddress, dbport, dbdataba
 	server.CleanupDB()
 
 	log.Println("Cleaned up the database")
-	
-	// Start cleanup goroutine for failed attempts
-	go server.cleanupFailedAttempts()
-}
 
-// cleanupFailedAttempts periodically removes old failed attempt records
-func (server *Server) cleanupFailedAttempts() {
-	ticker := time.NewTicker(5 * time.Minute)
-	defer ticker.Stop()
-	
-	for range ticker.C {
-		server.failedAttemptsMux.Lock()
-		now := time.Now()
-		for key, attempt := range server.failedAttempts {
-			if now.Sub(attempt.timestamp) > 30*time.Minute {
-				delete(server.failedAttempts, key)
-			}
-		}
-		server.failedAttemptsMux.Unlock()
-	}
+	// Initialize anti-cheat
+	server.ac = anticheat.New(common.DB)
+	log.Println("Anti-cheat initialized")
 }
 
 // CleanupDB sets all accounts isLogedIn to 0

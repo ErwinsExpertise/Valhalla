@@ -402,7 +402,7 @@ func (server Server) playerMovement(conn mnet.Client, reader mpacket.Reader) {
 		log.Println("unknown playerMovement data")
 	}
 
-	if !moveData.validateChar(plr, &server) {
+	if !moveData.validateChar(plr) {
 		return
 	}
 
@@ -1364,11 +1364,6 @@ func (server Server) playerUseInventoryItem(conn mnet.Client, reader mpacket.Rea
 	item, err := plr.takeItem(itemid, slot, 1, 2)
 	if err != nil {
 		log.Println(err)
-		// Report invalid item use to anti-cheat
-		if server.violationDetector != nil {
-			server.violationDetector.DetectInvalidItemUse(plr, itemid, fmt.Sprintf("Failed to use item from slot %d: %v", slot, err))
-		}
-		return
 	}
 	item.use(plr)
 
@@ -2468,16 +2463,13 @@ func (server Server) playerMeleeSkill(conn mnet.Client, reader mpacket.Reader) {
 
 	err = plr.useSkill(data.skillID, data.skillLevel, data.projectileID)
 	if err != nil {
-		// Skill validation failed - potential cheat detection
-		if server.violationDetector != nil {
-			server.violationDetector.DetectInvalidSkillUse(plr, data.skillID, err.Error())
-		}
+		// Send packet to stop?
 		return
 	}
 
 	calc := NewDamageCalculator(plr, &data, attackMelee)
 	results := calc.ValidateAttack()
-	validateAndApplyCriticals(plr, &data, results, &server)
+	validateAndApplyCriticals(plr, &data, results)
 
 	inst.sendExcept(packetSkillMelee(*plr, data), conn)
 
@@ -2490,7 +2482,7 @@ func (server Server) playerMeleeSkill(conn mnet.Client, reader mpacket.Reader) {
 	}
 }
 
-func validateAndApplyCriticals(plr *Player, data *attackData, results [][]CalcHitResult, server *Server) {
+func validateAndApplyCriticals(plr *Player, data *attackData, results [][]CalcHitResult) {
 	for targetIdx, targetResults := range results {
 		if targetIdx >= len(data.attackInfo) {
 			continue
@@ -2508,10 +2500,11 @@ func validateAndApplyCriticals(plr *Player, data *attackData, results [][]CalcHi
 				log.Printf("Capped excessive damage from player %s (ID: %d): client=%d -> capped=%d, max=%.0f, skill=%d",
 					plr.Name, plr.ID, result.ClientDamage, maxAllowed, result.MaxDamage, data.skillID)
 				
-				// Report excessive damage violation to anti-cheat system
-				if server.violationDetector != nil {
-					server.violationDetector.DetectExcessiveDamage(plr, result.ClientDamage, int32(result.MaxDamage))
-				}
+				// TODO: Track violation - needs server and conn refs
+				// if server.ac != nil && server.ac.Track(conn.GetAccountID(), "damage", 5, 5*time.Minute) {
+				// 	server.ac.IssueBan(conn.GetAccountID(), 168, "Excessive damage hack detected", "", "")
+				// 	conn.Close()
+				// }
 			}
 		}
 	}
@@ -2546,16 +2539,13 @@ func (server Server) playerRangedSkill(conn mnet.Client, reader mpacket.Reader) 
 
 	err = plr.useSkill(data.skillID, data.skillLevel, data.projectileID)
 	if err != nil {
-		// Skill validation failed - potential cheat detection
-		if server.violationDetector != nil {
-			server.violationDetector.DetectInvalidSkillUse(plr, data.skillID, err.Error())
-		}
+		// Send packet to stop?
 		return
 	}
 
 	calc := NewDamageCalculator(plr, &data, attackRanged)
 	results := calc.ValidateAttack()
-	validateAndApplyCriticals(plr, &data, results, &server)
+	validateAndApplyCriticals(plr, &data, results)
 
 	// if Player in party extract
 
@@ -2595,10 +2585,6 @@ func (server Server) playerMagicSkill(conn mnet.Client, reader mpacket.Reader) {
 
 	err = plr.useSkill(data.skillID, data.skillLevel, data.projectileID)
 	if err != nil {
-		// Skill validation failed - potential cheat detection
-		if server.violationDetector != nil {
-			server.violationDetector.DetectInvalidSkillUse(plr, data.skillID, err.Error())
-		}
 		return
 	}
 
@@ -2613,7 +2599,7 @@ func (server Server) playerMagicSkill(conn mnet.Client, reader mpacket.Reader) {
 	
 	calc := NewDamageCalculator(plr, &data, attackMagic)
 	results := calc.ValidateAttack()
-	validateAndApplyCriticals(plr, &data, results, &server)
+	validateAndApplyCriticals(plr, &data, results)
 
 	inst.sendExcept(packetSkillMagic(*plr, data), conn)
 
@@ -3103,10 +3089,6 @@ func (server *Server) npcShop(conn mnet.Client, reader mpacket.Reader) {
 		totalCost := int64(price) * int64(amount)
 		if totalCost < 0 || int64(plr.mesos) < totalCost {
 			plr.Send(packetNpcShopResult(shopBuyNoMoney))
-			// Detect overflow attempt
-			if totalCost < 0 && server.violationDetector != nil {
-				server.violationDetector.DetectOverflow(plr, fmt.Sprintf("Negative total cost in buy: item=%d, price=%d, amount=%d", itemID, price, amount))
-			}
 			return
 		}
 
@@ -3129,10 +3111,6 @@ func (server *Server) npcShop(conn mnet.Client, reader mpacket.Reader) {
 		amount := reader.ReadInt16()
 		if amount < 1 {
 			plr.Send(packetNpcShopResult(shopSellIncorrectRequest))
-			// Detect negative or invalid quantity
-			if server.violationDetector != nil {
-				server.violationDetector.DetectInvalidTrade(plr, fmt.Sprintf("Attempted to sell item %d with invalid amount: %d", itemID, amount))
-			}
 			return
 		}
 
@@ -3155,10 +3133,6 @@ func (server *Server) npcShop(conn mnet.Client, reader mpacket.Reader) {
 
 		if _, remErr := plr.takeItem(itemID, slotPos, sellAmount, invID); remErr != nil {
 			plr.Send(packetNpcShopResult(shopSellIncorrectRequest))
-			// Detect selling item player doesn't have
-			if server.violationDetector != nil {
-				server.violationDetector.DetectInvalidTrade(plr, fmt.Sprintf("Attempted to sell item %d not in inventory: %v", itemID, remErr))
-			}
 			return
 		}
 
@@ -3170,10 +3144,6 @@ func (server *Server) npcShop(conn mnet.Client, reader mpacket.Reader) {
 		}
 		if payout < 0 {
 			plr.Send(packetNpcShopResult(shopSellIncorrectRequest))
-			// Detect overflow attempt
-			if server.violationDetector != nil {
-				server.violationDetector.DetectOverflow(plr, fmt.Sprintf("Negative payout detected: item=%d, amount=%d, price=%d", itemID, sellAmount, meta.Price))
-			}
 			return
 		}
 
