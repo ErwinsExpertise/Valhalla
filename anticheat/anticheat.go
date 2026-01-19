@@ -3,16 +3,34 @@ package anticheat
 import (
 "database/sql"
 "fmt"
-"sync"
 "time"
 )
+
+// Message types for channel-based processing
+type trackMsg struct {
+key       string
+threshold int
+window    time.Duration
+result    chan bool
+}
+
+type authMsg struct {
+identifier string
+result     chan bool
+}
+
+type clearMsg struct {
+identifiers []string
+}
 
 // Simple in-memory violation tracking with rolling windows
 type AntiCheat struct {
 violations map[string][]time.Time // "accountID:type" -> timestamps
 failedAuth map[string][]time.Time // "user:X" or "ip:X" or "hwid:X" -> timestamps
-mu         sync.RWMutex
 db         *sql.DB
+trackChan  chan trackMsg
+authChan   chan authMsg
+clearChan  chan clearMsg
 }
 
 func New(db *sql.DB) *AntiCheat {
@@ -20,65 +38,52 @@ ac := &AntiCheat{
 violations: make(map[string][]time.Time),
 failedAuth: make(map[string][]time.Time),
 db:         db,
+trackChan:  make(chan trackMsg, 100),
+authChan:   make(chan authMsg, 100),
+clearChan:  make(chan clearMsg, 10),
 }
-go ac.cleanup()
+go ac.processor()
 return ac
 }
 
-// Track a violation - returns true if threshold exceeded and player should be banned
-func (ac *AntiCheat) Track(accountID int32, violationType string, threshold int, window time.Duration) bool {
-ac.mu.Lock()
-defer ac.mu.Unlock()
-
-key := fmt.Sprintf("%d:%s", accountID, violationType)
+// Single goroutine processes all tracking requests
+func (ac *AntiCheat) processor() {
+ticker := time.NewTicker(5 * time.Minute)
+for {
+select {
+case msg := <-ac.trackChan:
 now := time.Now()
-cutoff := now.Add(-window)
+cutoff := now.Add(-msg.window)
 
 // Filter out old violations and add new one
 timestamps := []time.Time{now}
-for _, t := range ac.violations[key] {
+for _, t := range ac.violations[msg.key] {
 if t.After(cutoff) {
 timestamps = append(timestamps, t)
 }
 }
-ac.violations[key] = timestamps
+ac.violations[msg.key] = timestamps
+msg.result <- len(timestamps) >= msg.threshold
 
-return len(timestamps) >= threshold
-}
-
-// Track failed auth attempt - returns true if should ban
-func (ac *AntiCheat) TrackFailedAuth(identifier string) bool {
-ac.mu.Lock()
-defer ac.mu.Unlock()
-
+case msg := <-ac.authChan:
 now := time.Now()
 cutoff := now.Add(-30 * time.Minute)
 
 timestamps := []time.Time{now}
-for _, t := range ac.failedAuth[identifier] {
+for _, t := range ac.failedAuth[msg.identifier] {
 if t.After(cutoff) {
 timestamps = append(timestamps, t)
 }
 }
-ac.failedAuth[identifier] = timestamps
+ac.failedAuth[msg.identifier] = timestamps
+msg.result <- len(timestamps) >= 10
 
-return len(timestamps) >= 10 // 10 attempts in 30min
-}
-
-// Clear auth attempts on successful login
-func (ac *AntiCheat) ClearAuth(identifiers ...string) {
-ac.mu.Lock()
-defer ac.mu.Unlock()
-for _, id := range identifiers {
+case msg := <-ac.clearChan:
+for _, id := range msg.identifiers {
 delete(ac.failedAuth, id)
 }
-}
 
-// Background cleanup every 5 minutes
-func (ac *AntiCheat) cleanup() {
-ticker := time.NewTicker(5 * time.Minute)
-for range ticker.C {
-ac.mu.Lock()
+case <-ticker.C:
 cutoff := time.Now().Add(-1 * time.Hour)
 
 for k, timestamps := range ac.violations {
@@ -108,8 +113,28 @@ ac.failedAuth[k] = keep
 delete(ac.failedAuth, k)
 }
 }
-ac.mu.Unlock()
 }
+}
+}
+
+// Track a violation - returns true if threshold exceeded and player should be banned
+func (ac *AntiCheat) Track(accountID int32, violationType string, threshold int, window time.Duration) bool {
+key := fmt.Sprintf("%d:%s", accountID, violationType)
+result := make(chan bool, 1)
+ac.trackChan <- trackMsg{key: key, threshold: threshold, window: window, result: result}
+return <-result
+}
+
+// Track failed auth attempt - returns true if should ban
+func (ac *AntiCheat) TrackFailedAuth(identifier string) bool {
+result := make(chan bool, 1)
+ac.authChan <- authMsg{identifier: identifier, result: result}
+return <-result
+}
+
+// Clear auth attempts on successful login
+func (ac *AntiCheat) ClearAuth(identifiers ...string) {
+ac.clearChan <- clearMsg{identifiers: identifiers}
 }
 
 // IssueBan creates a temporary ban (hours=0 means permanent)
