@@ -38,7 +38,8 @@ func (server *Server) Initialise(dbuser, dbpassword, dbaddress, dbport, dbdataba
 	log.Println("Cleaned up the database")
 
 	// Initialize anti-cheat
-	server.ac = anticheat.New(common.DB)
+	server.ac = anticheat.New(common.DB, nil) // login server doesn't have dispatch loop
+	server.ac.StartCleanup()
 	log.Println("Anti-cheat initialized")
 }
 

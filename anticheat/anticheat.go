@@ -6,84 +6,43 @@ import (
 "time"
 )
 
-// Message types for channel-based processing
-type trackMsg struct {
-key       string
-threshold int
-window    time.Duration
-result    chan bool
-}
-
-type authMsg struct {
-identifier string
-result     chan bool
-}
-
-type clearMsg struct {
-identifiers []string
-}
-
 // Simple in-memory violation tracking with rolling windows
 type AntiCheat struct {
 violations map[string][]time.Time // "accountID:type" -> timestamps
 failedAuth map[string][]time.Time // "user:X" or "ip:X" or "hwid:X" -> timestamps
 db         *sql.DB
-trackChan  chan trackMsg
-authChan   chan authMsg
-clearChan  chan clearMsg
+dispatch   chan func()
 }
 
-func New(db *sql.DB) *AntiCheat {
-ac := &AntiCheat{
+func New(db *sql.DB, dispatch chan func()) *AntiCheat {
+return &AntiCheat{
 violations: make(map[string][]time.Time),
 failedAuth: make(map[string][]time.Time),
 db:         db,
-trackChan:  make(chan trackMsg, 100),
-authChan:   make(chan authMsg, 100),
-clearChan:  make(chan clearMsg, 10),
+dispatch:   dispatch,
 }
-go ac.processor()
-return ac
 }
 
-// Single goroutine processes all tracking requests
-func (ac *AntiCheat) processor() {
-ticker := time.NewTicker(5 * time.Minute)
-for {
+// post dispatches function to server's main loop (non-blocking, same as CharacterBuffs.post)
+func (ac *AntiCheat) post(fn func()) {
+if ac.dispatch != nil {
 select {
-case msg := <-ac.trackChan:
-now := time.Now()
-cutoff := now.Add(-msg.window)
-
-// Filter out old violations and add new one
-timestamps := []time.Time{now}
-for _, t := range ac.violations[msg.key] {
-if t.After(cutoff) {
-timestamps = append(timestamps, t)
+case ac.dispatch <- fn:
+return
+default:
+fn()
+return
 }
 }
-ac.violations[msg.key] = timestamps
-msg.result <- len(timestamps) >= msg.threshold
-
-case msg := <-ac.authChan:
-now := time.Now()
-cutoff := now.Add(-30 * time.Minute)
-
-timestamps := []time.Time{now}
-for _, t := range ac.failedAuth[msg.identifier] {
-if t.After(cutoff) {
-timestamps = append(timestamps, t)
-}
-}
-ac.failedAuth[msg.identifier] = timestamps
-msg.result <- len(timestamps) >= 10
-
-case msg := <-ac.clearChan:
-for _, id := range msg.identifiers {
-delete(ac.failedAuth, id)
+fn()
 }
 
-case <-ticker.C:
+// StartCleanup starts periodic cleanup of old violations/auth entries
+func (ac *AntiCheat) StartCleanup() {
+ticker := time.NewTicker(5 * time.Minute)
+go func() {
+for range ticker.C {
+ac.post(func() {
 cutoff := time.Now().Add(-1 * time.Hour)
 
 for k, timestamps := range ac.violations {
@@ -113,28 +72,62 @@ ac.failedAuth[k] = keep
 delete(ac.failedAuth, k)
 }
 }
+})
 }
-}
+}()
 }
 
 // Track a violation - returns true if threshold exceeded and player should be banned
 func (ac *AntiCheat) Track(accountID int32, violationType string, threshold int, window time.Duration) bool {
 key := fmt.Sprintf("%d:%s", accountID, violationType)
-result := make(chan bool, 1)
-ac.trackChan <- trackMsg{key: key, threshold: threshold, window: window, result: result}
-return <-result
+exceeded := false
+
+ac.post(func() {
+now := time.Now()
+cutoff := now.Add(-window)
+
+// Filter out old violations and add new one
+timestamps := []time.Time{now}
+for _, t := range ac.violations[key] {
+if t.After(cutoff) {
+timestamps = append(timestamps, t)
+}
+}
+ac.violations[key] = timestamps
+exceeded = len(timestamps) >= threshold
+})
+
+return exceeded
 }
 
 // Track failed auth attempt - returns true if should ban
 func (ac *AntiCheat) TrackFailedAuth(identifier string) bool {
-result := make(chan bool, 1)
-ac.authChan <- authMsg{identifier: identifier, result: result}
-return <-result
+shouldBan := false
+
+ac.post(func() {
+now := time.Now()
+cutoff := now.Add(-30 * time.Minute)
+
+timestamps := []time.Time{now}
+for _, t := range ac.failedAuth[identifier] {
+if t.After(cutoff) {
+timestamps = append(timestamps, t)
+}
+}
+ac.failedAuth[identifier] = timestamps
+shouldBan = len(timestamps) >= 10
+})
+
+return shouldBan
 }
 
 // Clear auth attempts on successful login
 func (ac *AntiCheat) ClearAuth(identifiers ...string) {
-ac.clearChan <- clearMsg{identifiers: identifiers}
+ac.post(func() {
+for _, id := range identifiers {
+delete(ac.failedAuth, id)
+}
+})
 }
 
 // IssueBan creates a temporary ban (hours=0 means permanent)

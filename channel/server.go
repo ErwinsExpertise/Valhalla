@@ -162,7 +162,8 @@ func (server *Server) Initialise(work chan func(), dbuser, dbpassword, dbaddress
 	server.events = make(map[int32]*event)
 
 	// Initialize anti-cheat
-	server.ac = anticheat.New(common.DB)
+	server.ac = anticheat.New(common.DB, server.dispatch)
+	server.ac.StartCleanup()
 	log.Println("Anti-cheat initialized")
 
 	go scheduleBoats(server)
