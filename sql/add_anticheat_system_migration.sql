@@ -24,6 +24,6 @@ CREATE TABLE IF NOT EXISTS `ban_escalation` (
   CONSTRAINT `ban_escalation_fk_account` FOREIGN KEY (`accountID`) REFERENCES `accounts` (`accountID`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
--- Add HWID to accounts table
-ALTER TABLE `accounts` ADD COLUMN IF NOT EXISTS `hwid` VARCHAR(20) DEFAULT NULL AFTER `lastIP`;
+-- Add HWID to accounts table (after maplepoints)
+ALTER TABLE `accounts` ADD COLUMN IF NOT EXISTS `hwid` VARCHAR(20) DEFAULT NULL AFTER `maplepoints`;
 ALTER TABLE `accounts` ADD INDEX IF NOT EXISTS `idx_hwid` (`hwid`);
