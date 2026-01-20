@@ -12,7 +12,6 @@ The Valhalla anti-cheat system is a lightweight, server-side cheat detection and
 - 🔐 **Login Protection** - Brute-force attack prevention (10 failed attempts → 1hr ban)
 - 👮 **GM Management** - Full ban management via in-game commands
 - ⚡ **High Performance** - In-memory tracking, minimal database overhead
-- 🏗️ **Clean Architecture** - Single-threaded via dispatch loop (no mutex locks)
 
 ## Table of Contents
 
@@ -35,10 +34,9 @@ The Valhalla anti-cheat system is a lightweight, server-side cheat detection and
 The anti-cheat system follows these core principles:
 
 1. **Server-Authoritative** - Client input is never trusted; all validation happens server-side
-2. **Minimal Code Footprint** - ~479 total lines (267 core + 212 integration)
-3. **In-Memory First** - Only ban records stored in database; all tracking in memory
-4. **Single-Threaded** - Uses server's dispatch loop pattern (same as buffs system)
-5. **Rolling Windows** - Multiple violations required within time window to prevent false positives
+2. **In-Memory First** - Only ban records stored in database; all tracking in memory
+3. **Single-Threaded** - Uses server's dispatch loop pattern for thread safety
+4. **Rolling Windows** - Multiple violations required within time window to prevent false positives
 
 ### Package Structure
 
@@ -63,7 +61,7 @@ login/
 
 ### Thread Safety
 
-The system uses the **dispatch loop pattern** (same as `CharacterBuffs.post()`):
+The system uses the **dispatch loop pattern** for thread safety:
 
 ```go
 func (ac *AntiCheat) post(fn func()) {
@@ -102,8 +100,8 @@ server.ac.CheckDamage(accountID, clientDamage, calculatedMaxDamage)
 ```
 
 **Attack Speed Hacking**
-- **What**: Detects >20 attacks per minute
-- **Threshold**: 20 attacks within 1 minute
+- **What**: Detects >120 attacks per minute (faster than 500ms per attack)
+- **Threshold**: 120 attacks within 1 minute
 - **Ban**: 24 hours (1 day)
 - **Integration**: All attack handlers (melee, ranged, magic)
 - **How**: Returns true when threshold exceeded, handler issues ban

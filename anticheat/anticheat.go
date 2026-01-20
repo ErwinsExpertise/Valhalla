@@ -243,8 +243,8 @@ func (ac *AntiCheat) CheckDamage(accountID int32, damage, maxDamage int32) {
 }
 
 func (ac *AntiCheat) CheckAttackSpeed(accountID int32) bool {
-	// Track attack and return true if exceeds rate limit (20/min)
-	return ac.Track(accountID, "attack_speed", 20, 1*time.Minute)
+	// Track attack and return true if exceeds rate limit (120/min = 500ms per attack)
+	return ac.Track(accountID, "attack_speed", 120, 1*time.Minute)
 }
 
 func (ac *AntiCheat) CheckMovement(accountID int32, distance int16) {
