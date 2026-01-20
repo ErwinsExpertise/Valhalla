@@ -333,6 +333,14 @@ func createBiasItemFromID(id int32, amount int16, bias int8, average bool) (Item
 
 	newItem.expireTime = neverExpire
 
+	// Initialize cash item IDs for cash items
+	if newItem.cash {
+		newItem.cashID = GenerateCashID()
+		if sn, ok := nx.GetCommoditySNByItemID(id); ok {
+			newItem.cashSN = sn
+		}
+	}
+
 	return newItem, nil
 }
 
