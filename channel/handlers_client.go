@@ -419,7 +419,7 @@ func (server Server) playerMovement(conn mnet.Client, reader mpacket.Reader) {
 			reason := fmt.Sprintf("Suspicious movement: %.0f pixels", distance)
 			log.Println("Teleport hack detected:", reason, "accountID:", plr.accountID)
 			if server.ac != nil {
-				server.ac.CheckMovement(plr.accountID, distance)
+				server.ac.CheckMovement(plr.accountID, int16(distance))
 			}
 		}
 	}
