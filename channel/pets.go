@@ -180,6 +180,7 @@ func packetPetMove(charID int32, move []byte) mpacket.Packet {
 func packetPetSpawn(charID int32, petData *pet) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelPetSpawn)
 	p.WriteInt32(charID)
+	p.WriteByte(0) // Pet slot index (0-2, only support 1 pet so always 0)
 	p.WriteBool(true)
 	p.WriteInt32(petData.itemID)
 	p.WriteString(petData.name)
@@ -194,6 +195,7 @@ func packetPetSpawn(charID int32, petData *pet) mpacket.Packet {
 func packetPetRemove(charID int32, reason byte) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelPetSpawn)
 	p.WriteInt32(charID)
+	p.WriteByte(0) // Pet slot index (0-2, only support 1 pet so always 0)
 	p.WriteBool(false)
 	p.WriteByte(reason)
 
