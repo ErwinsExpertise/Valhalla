@@ -5165,6 +5165,10 @@ func (server *Server) playerPetMove(conn mnet.Client, reader mpacket.Reader) {
 		return
 	}
 
+	if plr.pet == nil || !plr.pet.spawned {
+		return
+	}
+
 	moveData, finalData, valid := parseMovement(reader)
 
 	moveBytes := generateMovementBytes(moveData)

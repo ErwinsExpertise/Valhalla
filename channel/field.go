@@ -1109,6 +1109,8 @@ func packetMapPlayerEnter(plr *Player) mpacket.Packet {
 		p.WriteInt16(plr.pet.pos.y)
 		p.WriteByte(plr.pet.stance)
 		p.WriteInt16(plr.pet.pos.foothold)
+	} else {
+		p.WriteBool(false)
 	}
 	p.WriteInt32(0) // ?
 
