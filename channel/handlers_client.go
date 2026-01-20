@@ -403,26 +403,25 @@ func (server Server) playerMovement(conn mnet.Client, reader mpacket.Reader) {
 	}
 
 	if !moveData.validateChar(plr) {
-		// Track teleport hacks
-		if server.ac != nil && len(moveData.frags) > 0 {
-			lastFrag := moveData.frags[len(moveData.frags)-1]
-			if lastFrag.posSet {
-				dx := lastFrag.x - moveData.origX
-				dy := lastFrag.y - moveData.origY
-				if dx < 0 {
-					dx = -dx
-				}
-				if dy < 0 {
-					dy = -dy
-				}
-				distance := dx
-				if dy > distance {
-					distance = dy
-				}
+		return
+	}
+
+	// Anti-cheat: Check for teleport hacks
+	if server.ac != nil && len(moveData.frags) > 0 {
+		firstFrag := moveData.frags[0]
+		lastFrag := moveData.frags[len(moveData.frags)-1]
+		
+		dx := float64(lastFrag.x - firstFrag.x)
+		dy := float64(lastFrag.y - firstFrag.y)
+		distance := math.Sqrt(dx*dx + dy*dy)
+		
+		if distance > 1000 {
+			reason := fmt.Sprintf("Suspicious movement: %.0f pixels", distance)
+			log.Println("Teleport hack detected:", reason, "accountID:", plr.accountID)
+			if server.ac != nil {
 				server.ac.CheckMovement(plr.accountID, distance)
 			}
 		}
-		return
 	}
 
 	moveBytes := generateMovementBytes(moveData)
@@ -1382,12 +1381,11 @@ func (server Server) playerUseInventoryItem(conn mnet.Client, reader mpacket.Rea
 
 	item, err := plr.takeItem(itemid, slot, 1, 2)
 	if err != nil {
-		// Track invalid item use
+		log.Println(err)
+		// Anti-cheat: Track invalid item use (item not in inventory)
 		if server.ac != nil {
 			server.ac.CheckInvalidItem(plr.accountID)
 		}
-		log.Println(err)
-		return
 	}
 	item.use(plr)
 
@@ -2469,16 +2467,6 @@ func (server Server) playerMeleeSkill(conn mnet.Client, reader mpacket.Reader) {
 	data, valid := getAttackInfo(reader, *plr, attackMelee)
 
 	if !valid {
-		// Track invalid skill usage attempts
-		if server.ac != nil {
-			server.ac.CheckSkillAbuse(plr.accountID, data.skillID)
-		}
-		return
-	}
-
-	// Check attack speed hack
-	if server.ac != nil && server.ac.CheckAttackSpeed(plr.accountID) {
-		server.ac.IssueBan(plr.accountID, 24, "Attack speed hack detected", "", "")
 		return
 	}
 
@@ -2498,23 +2486,22 @@ func (server Server) playerMeleeSkill(conn mnet.Client, reader mpacket.Reader) {
 	err = plr.useSkill(data.skillID, data.skillLevel, data.projectileID)
 	if err != nil {
 		// Send packet to stop?
+		// Anti-cheat: Track skill abuse
+		if server.ac != nil {
+			server.ac.CheckSkillAbuse(plr.accountID, data.skillID)
+		}
+		return
+	}
+	
+	// Anti-cheat: Check attack speed
+	if server.ac != nil && server.ac.CheckAttackSpeed(plr.accountID) {
+		server.ac.IssueBan(plr.accountID, 24, "Attack speed hack detected", "", "")
 		return
 	}
 
 	calc := NewDamageCalculator(plr, &data, attackMelee)
 	results := calc.ValidateAttack()
 	server.validateAndApplyCriticals(conn, plr, &data, results)
-
-	// Check for excessive damage
-	if server.ac != nil {
-		for _, targetResults := range results {
-			for _, hitResult := range targetResults {
-				if !hitResult.IsValid {
-					server.ac.CheckDamage(plr.accountID, hitResult.ClientDamage, int32(hitResult.MaxDamage))
-				}
-			}
-		}
-	}
 
 	inst.sendExcept(packetSkillMelee(*plr, data), conn)
 
@@ -2527,7 +2514,7 @@ func (server Server) playerMeleeSkill(conn mnet.Client, reader mpacket.Reader) {
 	}
 }
 
-func (server Server) validateAndApplyCriticals(conn mnet.Client, plr *Player, data *attackData, results [][]CalcHitResult) {
+func (server *Server) validateAndApplyCriticals(conn mnet.Client, plr *Player, data *attackData, results [][]CalcHitResult) {
 	for targetIdx, targetResults := range results {
 		if targetIdx >= len(data.attackInfo) {
 			continue
@@ -2545,7 +2532,7 @@ func (server Server) validateAndApplyCriticals(conn mnet.Client, plr *Player, da
 				log.Printf("Capped excessive damage from player %s (ID: %d): client=%d -> capped=%d, max=%.0f, skill=%d",
 					plr.Name, plr.ID, result.ClientDamage, maxAllowed, result.MaxDamage, data.skillID)
 				
-				// Track violation and ban if threshold exceeded
+				// Anti-cheat: Track excessive damage violations
 				if server.ac != nil {
 					server.ac.CheckDamage(plr.accountID, result.ClientDamage, int32(result.MaxDamage))
 				}
@@ -2565,16 +2552,6 @@ func (server Server) playerRangedSkill(conn mnet.Client, reader mpacket.Reader) 
 	data, valid := getAttackInfo(reader, *plr, attackRanged)
 
 	if !valid {
-		// Track invalid skill usage attempts
-		if server.ac != nil {
-			server.ac.CheckSkillAbuse(plr.accountID, data.skillID)
-		}
-		return
-	}
-
-	// Check attack speed hack
-	if server.ac != nil && server.ac.CheckAttackSpeed(plr.accountID) {
-		server.ac.IssueBan(plr.accountID, 24, "Attack speed hack detected", "", "")
 		return
 	}
 
@@ -2594,23 +2571,22 @@ func (server Server) playerRangedSkill(conn mnet.Client, reader mpacket.Reader) 
 	err = plr.useSkill(data.skillID, data.skillLevel, data.projectileID)
 	if err != nil {
 		// Send packet to stop?
+		// Anti-cheat: Track skill abuse
+		if server.ac != nil {
+			server.ac.CheckSkillAbuse(plr.accountID, data.skillID)
+		}
+		return
+	}
+	
+	// Anti-cheat: Check attack speed
+	if server.ac != nil && server.ac.CheckAttackSpeed(plr.accountID) {
+		server.ac.IssueBan(plr.accountID, 24, "Attack speed hack detected", "", "")
 		return
 	}
 
 	calc := NewDamageCalculator(plr, &data, attackRanged)
 	results := calc.ValidateAttack()
 	server.validateAndApplyCriticals(conn, plr, &data, results)
-
-	// Check for excessive damage
-	if server.ac != nil {
-		for _, targetResults := range results {
-			for _, hitResult := range targetResults {
-				if !hitResult.IsValid {
-					server.ac.CheckDamage(plr.accountID, hitResult.ClientDamage, int32(hitResult.MaxDamage))
-				}
-			}
-		}
-	}
 
 	// if Player in party extract
 
@@ -2632,16 +2608,6 @@ func (server Server) playerMagicSkill(conn mnet.Client, reader mpacket.Reader) {
 	data, valid := getAttackInfo(reader, *plr, attackMagic)
 
 	if !valid {
-		// Track invalid skill usage attempts
-		if server.ac != nil {
-			server.ac.CheckSkillAbuse(plr.accountID, data.skillID)
-		}
-		return
-	}
-
-	// Check attack speed hack
-	if server.ac != nil && server.ac.CheckAttackSpeed(plr.accountID) {
-		server.ac.IssueBan(plr.accountID, 24, "Attack speed hack detected", "", "")
 		return
 	}
 
@@ -2660,6 +2626,10 @@ func (server Server) playerMagicSkill(conn mnet.Client, reader mpacket.Reader) {
 
 	err = plr.useSkill(data.skillID, data.skillLevel, data.projectileID)
 	if err != nil {
+		// Anti-cheat: Track skill abuse
+		if server.ac != nil {
+			server.ac.CheckSkillAbuse(plr.accountID, data.skillID)
+		}
 		return
 	}
 
@@ -2675,17 +2645,6 @@ func (server Server) playerMagicSkill(conn mnet.Client, reader mpacket.Reader) {
 	calc := NewDamageCalculator(plr, &data, attackMagic)
 	results := calc.ValidateAttack()
 	server.validateAndApplyCriticals(conn, plr, &data, results)
-
-	// Check for excessive damage
-	if server.ac != nil {
-		for _, targetResults := range results {
-			for _, hitResult := range targetResults {
-				if !hitResult.IsValid {
-					server.ac.CheckDamage(plr.accountID, hitResult.ClientDamage, int32(hitResult.MaxDamage))
-				}
-			}
-		}
-	}
 
 	inst.sendExcept(packetSkillMagic(*plr, data), conn)
 
@@ -3174,11 +3133,11 @@ func (server *Server) npcShop(conn mnet.Client, reader mpacket.Reader) {
 
 		totalCost := int64(price) * int64(amount)
 		if totalCost < 0 || int64(plr.mesos) < totalCost {
-			// Track overflow attempts
-			if totalCost < 0 && server.ac != nil {
-				server.ac.CheckInvalidTrade(plr.accountID, "negative total cost overflow")
-			}
 			plr.Send(packetNpcShopResult(shopBuyNoMoney))
+			// Anti-cheat: Track overflow attempts
+			if totalCost < 0 && server.ac != nil {
+				server.ac.CheckInvalidTrade(plr.accountID, fmt.Sprintf("Buy overflow: price=%d, amount=%d, total=%d", price, amount, totalCost))
+			}
 			return
 		}
 
@@ -3200,11 +3159,11 @@ func (server *Server) npcShop(conn mnet.Client, reader mpacket.Reader) {
 		itemID := reader.ReadInt32()
 		amount := reader.ReadInt16()
 		if amount < 1 {
-			// Track invalid trade attempts
-			if server.ac != nil {
-				server.ac.CheckInvalidTrade(plr.accountID, "negative sell amount")
-			}
 			plr.Send(packetNpcShopResult(shopSellIncorrectRequest))
+			// Anti-cheat: Track invalid sell quantity
+			if server.ac != nil {
+				server.ac.CheckInvalidTrade(plr.accountID, fmt.Sprintf("Invalid sell amount: %d", amount))
+			}
 			return
 		}
 
@@ -3219,10 +3178,6 @@ func (server *Server) npcShop(conn mnet.Client, reader mpacket.Reader) {
 		if isRechargeable(itemID) {
 			useItem := plr.findUseItemBySlot(slotPos)
 			if useItem == nil || useItem.ID != itemID || useItem.amount <= 0 {
-				// Track invalid trade attempts
-				if server.ac != nil {
-					server.ac.CheckInvalidTrade(plr.accountID, "selling item not in inventory")
-				}
 				plr.Send(packetNpcShopResult(shopSellIncorrectRequest))
 				return
 			}
@@ -3230,11 +3185,11 @@ func (server *Server) npcShop(conn mnet.Client, reader mpacket.Reader) {
 		}
 
 		if _, remErr := plr.takeItem(itemID, slotPos, sellAmount, invID); remErr != nil {
-			// Track invalid trade attempts
-			if server.ac != nil {
-				server.ac.CheckInvalidTrade(plr.accountID, "selling non-existent item")
-			}
 			plr.Send(packetNpcShopResult(shopSellIncorrectRequest))
+			// Anti-cheat: Track selling items not in inventory
+			if server.ac != nil {
+				server.ac.CheckInvalidTrade(plr.accountID, fmt.Sprintf("Selling item not owned: ID=%d", itemID))
+			}
 			return
 		}
 
@@ -3245,11 +3200,11 @@ func (server *Server) npcShop(conn mnet.Client, reader mpacket.Reader) {
 			payout = int64(meta.Price) * int64(sellAmount)
 		}
 		if payout < 0 {
-			// Track overflow attempts
-			if server.ac != nil {
-				server.ac.CheckInvalidTrade(plr.accountID, "negative payout overflow")
-			}
 			plr.Send(packetNpcShopResult(shopSellIncorrectRequest))
+			// Anti-cheat: Track overflow attempts
+			if server.ac != nil {
+				server.ac.CheckInvalidTrade(plr.accountID, fmt.Sprintf("Sell overflow: price=%d, amount=%d, total=%d", meta.Price, sellAmount, payout))
+			}
 			return
 		}
 
