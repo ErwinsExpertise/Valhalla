@@ -178,13 +178,23 @@ func loadInventoryFromDb(charID int32) ([]Item, []Item, []Item, []Item, []Item) 
 		if nxInfo, err := nx.GetItem(item.ID); err == nil {
 			item.cash = nxInfo.Cash
 
+			needsSave := false
 			if item.cash && item.cashID == 0 {
 				item.cashID = GenerateCashID()
+				needsSave = true
 			}
 
 			if item.cash && item.cashSN == 0 {
 				if sn, ok := nx.GetCommoditySNByItemID(item.ID); ok {
 					item.cashSN = sn
+					needsSave = true
+				}
+			}
+
+			// Save the item if we generated cash IDs so they persist
+			if needsSave && item.dbID != 0 {
+				if _, saveErr := item.save(charID); saveErr != nil {
+					log.Println("Failed to save cash item with generated IDs:", saveErr)
 				}
 			}
 
