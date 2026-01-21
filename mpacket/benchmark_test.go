@@ -1,6 +1,7 @@
 package mpacket
 
 import (
+	"sync/atomic"
 	"testing"
 )
 
@@ -537,14 +538,15 @@ func BenchmarkThroughputSmallPackets(b *testing.B) {
 			r.Skip(5)
 			r.ReadBytes(len(testData))
 		}
-		totalBytes += localBytes
+		atomic.AddInt64(&totalBytes, localBytes)
 	})
 	
 	elapsed := b.Elapsed().Seconds()
 	if elapsed > 0 {
-		mbits := float64(totalBytes*8) / (1000000 * elapsed)
+		total := atomic.LoadInt64(&totalBytes)
+		mbits := float64(total*8) / (1000000 * elapsed)
 		b.ReportMetric(mbits, "mbit/s")
-		b.ReportMetric(float64(totalBytes)/elapsed, "bytes/s")
+		b.ReportMetric(float64(total)/elapsed, "bytes/s")
 	}
 }
 
@@ -570,14 +572,15 @@ func BenchmarkThroughputMediumPackets(b *testing.B) {
 			r.Skip(5)
 			r.ReadBytes(len(testData))
 		}
-		totalBytes += localBytes
+		atomic.AddInt64(&totalBytes, localBytes)
 	})
 	
 	elapsed := b.Elapsed().Seconds()
 	if elapsed > 0 {
-		mbits := float64(totalBytes*8) / (1000000 * elapsed)
+		total := atomic.LoadInt64(&totalBytes)
+		mbits := float64(total*8) / (1000000 * elapsed)
 		b.ReportMetric(mbits, "mbit/s")
-		b.ReportMetric(float64(totalBytes)/elapsed, "bytes/s")
+		b.ReportMetric(float64(total)/elapsed, "bytes/s")
 	}
 }
 
@@ -603,14 +606,15 @@ func BenchmarkThroughputLargePackets(b *testing.B) {
 			r.Skip(5)
 			r.ReadBytes(len(testData))
 		}
-		totalBytes += localBytes
+		atomic.AddInt64(&totalBytes, localBytes)
 	})
 	
 	elapsed := b.Elapsed().Seconds()
 	if elapsed > 0 {
-		mbits := float64(totalBytes*8) / (1000000 * elapsed)
+		total := atomic.LoadInt64(&totalBytes)
+		mbits := float64(total*8) / (1000000 * elapsed)
 		b.ReportMetric(mbits, "mbit/s")
-		b.ReportMetric(float64(totalBytes)/elapsed, "bytes/s")
+		b.ReportMetric(float64(total)/elapsed, "bytes/s")
 	}
 }
 
@@ -636,14 +640,15 @@ func BenchmarkThroughputMassivePackets(b *testing.B) {
 			r.Skip(5)
 			r.ReadBytes(len(testData))
 		}
-		totalBytes += localBytes
+		atomic.AddInt64(&totalBytes, localBytes)
 	})
 	
 	elapsed := b.Elapsed().Seconds()
 	if elapsed > 0 {
-		mbits := float64(totalBytes*8) / (1000000 * elapsed)
+		total := atomic.LoadInt64(&totalBytes)
+		mbits := float64(total*8) / (1000000 * elapsed)
 		b.ReportMetric(mbits, "mbit/s")
-		b.ReportMetric(float64(totalBytes)/elapsed, "bytes/s")
+		b.ReportMetric(float64(total)/elapsed, "bytes/s")
 	}
 }
 
@@ -675,14 +680,15 @@ func BenchmarkThroughputRealisticMix(b *testing.B) {
 			r.GetRestAsBytes()
 			count++
 		}
-		totalBytes += localBytes
+		atomic.AddInt64(&totalBytes, localBytes)
 	})
 	
 	elapsed := b.Elapsed().Seconds()
 	if elapsed > 0 {
-		mbits := float64(totalBytes*8) / (1000000 * elapsed)
+		total := atomic.LoadInt64(&totalBytes)
+		mbits := float64(total*8) / (1000000 * elapsed)
 		b.ReportMetric(mbits, "mbit/s")
-		b.ReportMetric(float64(totalBytes)/elapsed, "bytes/s")
+		b.ReportMetric(float64(total)/elapsed, "bytes/s")
 		b.ReportMetric(float64(b.N)/elapsed, "packets/s")
 	}
 }
@@ -707,14 +713,15 @@ func BenchmarkThroughputEncodeOnly(b *testing.B) {
 			p.WriteBytes(testData)
 			localBytes += int64(len(p))
 		}
-		totalBytes += localBytes
+		atomic.AddInt64(&totalBytes, localBytes)
 	})
 	
 	elapsed := b.Elapsed().Seconds()
 	if elapsed > 0 {
-		mbits := float64(totalBytes*8) / (1000000 * elapsed)
+		total := atomic.LoadInt64(&totalBytes)
+		mbits := float64(total*8) / (1000000 * elapsed)
 		b.ReportMetric(mbits, "mbit/s")
-		b.ReportMetric(float64(totalBytes)/elapsed, "bytes/s")
+		b.ReportMetric(float64(total)/elapsed, "bytes/s")
 	}
 }
 
@@ -746,14 +753,15 @@ func BenchmarkThroughputDecodeOnly(b *testing.B) {
 			r.ReadBytes(1024)
 			localBytes += packetSize
 		}
-		totalBytes += localBytes
+		atomic.AddInt64(&totalBytes, localBytes)
 	})
 	
 	elapsed := b.Elapsed().Seconds()
 	if elapsed > 0 {
-		mbits := float64(totalBytes*8) / (1000000 * elapsed)
+		total := atomic.LoadInt64(&totalBytes)
+		mbits := float64(total*8) / (1000000 * elapsed)
 		b.ReportMetric(mbits, "mbit/s")
-		b.ReportMetric(float64(totalBytes)/elapsed, "bytes/s")
+		b.ReportMetric(float64(total)/elapsed, "bytes/s")
 	}
 }
 
@@ -790,14 +798,15 @@ func BenchmarkThroughputMaxLoad(b *testing.B) {
 			r.ReadBytes(256)
 			count++
 		}
-		totalBytes += localBytes
+		atomic.AddInt64(&totalBytes, localBytes)
 	})
 	
 	elapsed := b.Elapsed().Seconds()
 	if elapsed > 0 {
-		mbits := float64(totalBytes*8) / (1000000 * elapsed)
+		total := atomic.LoadInt64(&totalBytes)
+		mbits := float64(total*8) / (1000000 * elapsed)
 		b.ReportMetric(mbits, "mbit/s")
-		b.ReportMetric(float64(totalBytes)/elapsed, "bytes/s")
+		b.ReportMetric(float64(total)/elapsed, "bytes/s")
 		b.ReportMetric(float64(b.N)/elapsed, "packets/s")
 	}
 }
