@@ -51,9 +51,11 @@ type Server struct {
 	ac               *anticheat.AntiCheat
 	
 	// Bot support
-	enableBots bool
-	bots       []*Player
-	nextBotID  int32
+	enableBots       bool
+	bots             []*Player
+	nextBotID        int32
+	botMovementTimer *time.Ticker
+	stopBotMovement  chan bool
 }
 
 // Initialise the server
@@ -447,6 +449,33 @@ func (server *Server) SetEnableBots(enable bool) {
 	server.enableBots = enable
 	server.nextBotID = -1 // Bot IDs start at -1 and go negative
 	server.bots = []*Player{}
+
+	if enable {
+		// Start bot movement ticker (100ms = 10 updates/second)
+		server.botMovementTimer = time.NewTicker(100 * time.Millisecond)
+		server.stopBotMovement = make(chan bool)
+
+		go server.runBotMovementLoop()
+		log.Println("Bot movement system started")
+	}
+}
+
+// runBotMovementLoop handles periodic bot AI updates
+func (server *Server) runBotMovementLoop() {
+	for {
+		select {
+		case <-server.botMovementTimer.C:
+			// Update all bots
+			for _, bot := range server.bots {
+				if bot.botAI != nil {
+					bot.botAI.Update()
+					bot.botAI.PerformMovement()
+				}
+			}
+		case <-server.stopBotMovement:
+			return
+		}
+	}
 }
 
 // SpawnBot creates and spawns a bot player into a specific map.
@@ -485,6 +514,11 @@ func (server *Server) SpawnBot(name string, mapID int32, portalID byte) error {
 		return fmt.Errorf("failed to add bot to field: %w", err)
 	}
 
+	// Enable bot movement (Phase 2) with map boundaries
+	if bot.botAI != nil {
+		bot.botAI.EnableMovement(int16(field.vrLimit.Left), int16(field.vrLimit.Right), int16(field.vrLimit.Top), int16(field.vrLimit.Bottom))
+	}
+
 	// Track bot for cleanup
 	server.bots = append(server.bots, bot)
 
@@ -501,6 +535,13 @@ func (server *Server) RemoveAllBots() {
 	}
 
 	log.Printf("Removing %d bot(s) from channel", len(server.bots))
+
+	// Stop movement loop
+	if server.botMovementTimer != nil {
+		server.botMovementTimer.Stop()
+		close(server.stopBotMovement)
+		log.Println("Bot movement system stopped")
+	}
 
 	for _, bot := range server.bots {
 		if bot.inst != nil {

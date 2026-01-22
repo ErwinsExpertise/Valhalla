@@ -301,6 +301,9 @@ type Player struct {
 
 	// Bot flag - identifies server-controlled bot players
 	isBot bool
+
+	// Bot AI controller (only set for bots)
+	botAI *botAI
 }
 
 // Helper: mark dirty and schedule debounced save.
@@ -2357,6 +2360,9 @@ func newBotPlayer(botID int32, name string, mapID int32, spawnPortalID byte, cha
 
 	// Initialize buff manager for bot (even though bots won't use buffs in phase 1)
 	NewCharacterBuffs(bot)
+
+	// Initialize bot AI for movement (Phase 2)
+	bot.botAI = newBotAI(bot)
 
 	return bot, nil
 }
