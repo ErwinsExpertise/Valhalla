@@ -180,10 +180,44 @@ func (ai *botAI) PerformMovement() {
 		ai.velocityX = 0
 	}
 
+	// Clamp Y to map boundaries (prevent falling off map)
+	if newY < float64(ai.mapMinY) {
+		newY = float64(ai.mapMinY)
+		ai.velocityY = 0
+	} else if newY > float64(ai.mapMaxY) {
+		newY = float64(ai.mapMaxY)
+		ai.velocityY = 0
+		ai.onGround = false
+	}
+
 	// Ground collision detection
 	// Check if there's a foothold at or below the new position
 	testGroundPos := newPos(int16(newX), int16(newY), 0)
 	groundPos := ai.bot.inst.fhHist.getFinalPosition(testGroundPos)
+
+	// Check if the returned foothold position is valid (within map bounds)
+	if groundPos.y < ai.mapMinY || groundPos.y > ai.mapMaxY {
+		// Invalid foothold position - bot is off the map
+		// Try to find a safe position at current X
+		safeTestPos := newPos(int16(newX), oldPos.y, 0)
+		safeGroundPos := ai.bot.inst.fhHist.getFinalPosition(safeTestPos)
+		
+		if safeGroundPos.y >= ai.mapMinY && safeGroundPos.y <= ai.mapMaxY {
+			// Found a safe position, snap to it
+			groundPos = safeGroundPos
+			newY = float64(groundPos.y)
+			ai.onGround = true
+			ai.velocityY = 0
+		} else {
+			// Can't find safe ground, reverse direction and stay at current position
+			ai.moveDirection = -ai.moveDirection
+			newX = float64(oldPos.x)
+			newY = float64(oldPos.y)
+			ai.velocityY = 0
+			ai.onGround = true
+			return
+		}
+	}
 
 	// Check if we're on or very close to a foothold
 	distanceToGround := float64(groundPos.y) - newY
