@@ -126,9 +126,6 @@ func (ai *botAI) PerformMovement() {
 	}
 	ai.lastMoveTime = now
 
-	log.Printf("[BOT %s] Starting movement cycle at pos (%d, %d) facing %s", 
-		ai.bot.Name, ai.bot.pos.x, ai.bot.pos.y, directionStr(ai.moveDirection))
-
 	// Calculate movement
 	distance := int16(float64(ai.moveSpeed) * float64(deltaTime) / 1000.0)
 	newX := ai.bot.pos.x + (distance * int16(ai.moveDirection))
@@ -211,12 +208,7 @@ func (ai *botAI) PerformMovement() {
 	if doJump {
 		ai.jumpCooldown = now.Add(time.Second * 2) // Jump cooldown
 		ai.shouldJump = false // Reset jump flag after executing
-		log.Printf("[BOT %s] Jumping at pos (%d, %d)", ai.bot.Name, ai.bot.pos.x, ai.bot.pos.y)
 	}
-
-	// Log final position
-	log.Printf("[BOT %s] Final pos (%d, %d) stance=%d foothold=%d", 
-		ai.bot.Name, ai.bot.pos.x, ai.bot.pos.y, stance, ai.bot.pos.foothold)
 
 	// Build movement packet
 	moveData := ai.buildMovementPacket(oldPos, ai.bot.pos, stance, doJump, int16(deltaTime))

@@ -1816,8 +1816,9 @@ func (server *Server) gmCommand(conn mnet.Client, msg string) {
 		}
 		server.nextBotID-- // Decrement for next bot
 
-		// Set bot position to GM's position
-		bot.pos = plr.pos
+		// Set bot position to GM's position, but recalculate foothold
+		gmPos := newPos(plr.pos.x, plr.pos.y, 0)
+		bot.pos = plr.inst.fhHist.getFinalPosition(gmPos)
 		bot.rates = &server.rates
 
 		// Add bot to players collection
