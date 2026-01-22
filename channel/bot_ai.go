@@ -162,6 +162,7 @@ func (ai *botAI) PerformMovement() {
 		
 		if yDiff > 150 {
 			// We're walking off a platform edge!
+			// Don't update position - stay at edge
 			// Try to jump to reach a new platform
 			if !ai.shouldJump && now.After(ai.jumpCooldown) {
 				// Force a jump to try to reach the next platform
@@ -170,16 +171,20 @@ func (ai *botAI) PerformMovement() {
 			} else {
 				// Can't jump (on cooldown or already jumping), reverse direction
 				ai.moveDirection = -ai.moveDirection
-				return // Don't move this frame
 			}
+			// Don't move this frame - stay at current position
+			return
 		} else if yDiff < -100 {
 			// Moving to higher platform - need to jump
 			if !ai.shouldJump && now.After(ai.jumpCooldown) {
 				ai.shouldJump = true
 				ai.jumpCooldown = now.Add(time.Second * 2)
 			}
+			// Don't move forward, let jump carry us up
+			return
 		}
 		
+		// Safe to update position
 		ai.bot.pos = newPosition
 	} else {
 		ai.bot.pos = tempPos
