@@ -207,17 +207,23 @@ func (ai *botAI) applyPhysics() {
 	ai.vacc = 0.0
 	ai.hacc = 0.0
 
+	// Reset acceleration
+	ai.hacc = 0.0
+	ai.vacc = 0.0
+
 	if ai.onground {
 		// On ground physics
-		ai.vacc += ai.vforce
-		ai.hacc += ai.hforce
-
+		
 		// Apply walking force
 		if ai.moveDirection != 0 {
 			ai.hforce = WALKFORCE * float64(ai.moveDirection) * float64(ai.moveSpeed) / 100.0
 		} else {
 			ai.hforce = 0
 		}
+
+		// Add forces to acceleration
+		ai.hacc += ai.hforce
+		ai.vacc += ai.vforce
 
 		// Apply friction and slope
 		if ai.hacc == 0.0 && ai.hspeed < 0.1 && ai.hspeed > -0.1 {
@@ -240,13 +246,13 @@ func (ai *botAI) applyPhysics() {
 		ai.vacc += GRAVFORCE
 	}
 
-	// Reset forces
-	ai.hforce = 0.0
-	ai.vforce = 0.0
-
-	// Update speeds
+	// Update speeds from acceleration
 	ai.hspeed += ai.hacc
 	ai.vspeed += ai.vacc
+	
+	// Reset forces for next frame
+	ai.hforce = 0.0
+	ai.vforce = 0.0
 }
 
 // updateFoothold updates the bot's foothold and checks if on ground
