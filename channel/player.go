@@ -2239,7 +2239,7 @@ func (d *Player) removeAllCooldowns() {
 // newBotPlayer creates a minimal bot player without database or network connection.
 // Bots are server-controlled entities that appear as normal players to clients.
 // botID should be negative to avoid collision with real character IDs.
-func newBotPlayer(botID int32, name string, mapID int32, spawnPortalID byte, channelID byte) (*Player, error) {
+func newBotPlayer(botID int32, name string, mapID int32, spawnPortalID byte, channelID byte, fhHist *fhHistogram) (*Player, error) {
 	// Validate map exists
 	nxMap, err := nx.GetMap(mapID)
 	if err != nil {
@@ -2249,6 +2249,16 @@ func newBotPlayer(botID int32, name string, mapID int32, spawnPortalID byte, cha
 	// Validate spawn portal
 	if int(spawnPortalID) >= len(nxMap.Portals) {
 		spawnPortalID = 0
+	}
+
+	// Get portal position
+	portalX := nxMap.Portals[spawnPortalID].X
+	portalY := nxMap.Portals[spawnPortalID].Y
+
+	// Calculate proper foothold position (so bot doesn't float in air)
+	spawnPos := newPos(portalX, portalY, 0)
+	if fhHist != nil {
+		spawnPos = fhHist.getFinalPosition(spawnPos)
 	}
 
 	// Create bot with minimal data
@@ -2292,8 +2302,8 @@ func newBotPlayer(botID int32, name string, mapID int32, spawnPortalID byte, cha
 		totalMatk:     0,
 		totalAccuracy: 0,
 
-		// Position
-		pos: newPos(nxMap.Portals[spawnPortalID].X, nxMap.Portals[spawnPortalID].Y, 0),
+		// Position - use calculated foothold position
+		pos:    spawnPos,
 		stance: 0,
 
 		// Empty inventories

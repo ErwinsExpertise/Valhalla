@@ -456,8 +456,14 @@ func (server *Server) SpawnBot(name string, mapID int32, portalID byte) error {
 		return fmt.Errorf("bots are disabled in channel configuration")
 	}
 
-	// Create bot with next available negative ID
-	bot, err := newBotPlayer(server.nextBotID, name, mapID, portalID, server.id)
+	// Get field instance first to access foothold histogram
+	field, ok := server.fields[mapID]
+	if !ok {
+		return fmt.Errorf("map %d not found", mapID)
+	}
+
+	// Create bot with next available negative ID, passing foothold histogram
+	bot, err := newBotPlayer(server.nextBotID, name, mapID, portalID, server.id, &field.fhHist)
 	if err != nil {
 		return fmt.Errorf("failed to create bot: %w", err)
 	}
@@ -468,12 +474,6 @@ func (server *Server) SpawnBot(name string, mapID int32, portalID byte) error {
 
 	// Add bot to players collection
 	server.players.Add(bot)
-
-	// Get field instance
-	field, ok := server.fields[mapID]
-	if !ok {
-		return fmt.Errorf("map %d not found", mapID)
-	}
 
 	inst, err := field.getInstance(0)
 	if err != nil {
@@ -488,7 +488,8 @@ func (server *Server) SpawnBot(name string, mapID int32, portalID byte) error {
 	// Track bot for cleanup
 	server.bots = append(server.bots, bot)
 
-	log.Printf("Bot '%s' (ID:%d) spawned in map %d", name, bot.ID, mapID)
+	log.Printf("Bot '%s' (ID:%d) spawned in map %d at position (%d, %d) foothold %d",
+		name, bot.ID, mapID, bot.pos.x, bot.pos.y, bot.pos.foothold)
 	return nil
 }
 
