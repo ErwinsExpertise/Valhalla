@@ -18,10 +18,16 @@ type botAI struct {
 	lastMoveTime    time.Time
 	nextActionTime  time.Time
 
-	// Physics state
-	velocityX float64 // Horizontal velocity
-	velocityY float64 // Vertical velocity (for gravity/jumping)
-	onGround  bool    // Is bot currently on a foothold?
+	// Physics state (based on MapleStory client physics)
+	hspeed float64 // Horizontal speed
+	vspeed float64 // Vertical speed
+	hforce float64 // Horizontal force
+	vforce float64 // Vertical force
+	hacc   float64 // Horizontal acceleration
+	vacc   float64 // Vertical acceleration
+	
+	fhslope  float64 // Current foothold slope
+	onground bool    // Is bot on ground
 
 	// Map boundaries (set when bot enters map)
 	mapMinX, mapMaxX int16
@@ -32,12 +38,6 @@ type botAI struct {
 	pauseDuration time.Duration
 	shouldJump    bool
 	jumpCooldown  time.Time
-
-	// Physics constants
-	gravity       float64 // Pixels per second squared
-	jumpVelocity  float64 // Initial upward velocity on jump
-	maxFallSpeed  float64 // Terminal velocity
-	groundCheckDistance float64 // How far below to check for ground
 }
 
 // newBotAI creates a new AI controller for a bot
@@ -51,15 +51,15 @@ func newBotAI(bot *Player) *botAI {
 		pauseDuration:   time.Second * 2,
 		nextActionTime:  time.Now().Add(time.Second * 2),
 		
-		// Physics constants (based on MapleStory physics)
-		gravity:       670.0,  // Pixels per second squared
-		jumpVelocity:  -350.0, // Initial upward velocity (negative = up)
-		maxFallSpeed:  670.0,  // Terminal velocity
-		groundCheckDistance: 10.0, // Check 10 pixels below for ground
-		
-		velocityX: 0,
-		velocityY: 0,
-		onGround:  true, // Assume spawned on ground
+		// Physics state
+		hspeed: 0,
+		vspeed: 0,
+		hforce: 0,
+		vforce: 0,
+		hacc:   0,
+		vacc:   0,
+		fhslope:  0,
+		onground: true, // Assume spawned on ground
 	}
 }
 
@@ -134,114 +134,54 @@ func (ai *botAI) stopWalking() {
 	ai.nextActionTime = time.Now().Add(ai.pauseDuration)
 }
 
-// PerformMovement executes physics-based movement and broadcasts to other players
+// Physics constants from MapleStory client
+const (
+	GRAVFORCE    = 0.14
+	FRICTION     = 0.5
+	SLOPEFACTOR  = 0.1
+	GROUNDSLIP   = 3.0
+	WALKFORCE    = 0.14 // Force applied when walking
+	JUMPFORCE    = -4.2 // Force applied when jumping (negative = up)
+)
+
+// PerformMovement executes physics-based movement matching MapleStory client behavior
 func (ai *botAI) PerformMovement() {
 	if !ai.movementEnabled || ai.bot.inst == nil {
 		return
 	}
 
 	now := time.Now()
-	deltaTime := now.Sub(ai.lastMoveTime).Seconds() // Use seconds for physics
-	if deltaTime <= 0 || deltaTime > 0.5 { // Cap delta time to prevent huge jumps
-		deltaTime = 0.1 // Default to 100ms
-	}
-	ai.lastMoveTime = now
-
 	oldPos := ai.bot.pos
 
-	// Apply gravity
-	if !ai.onGround {
-		ai.velocityY += ai.gravity * deltaTime
-		// Cap fall speed
-		if ai.velocityY > ai.maxFallSpeed {
-			ai.velocityY = ai.maxFallSpeed
-		}
+	// Update foothold information
+	ai.updateFoothold()
+
+	// Apply movement physics
+	ai.applyPhysics()
+
+	// Move the object
+	ai.bot.pos.x = int16(ai.bot.pos.x) + int16(ai.hspeed)
+	ai.bot.pos.y = int16(ai.bot.pos.y) + int16(ai.vspeed)
+
+	// Check boundaries
+	if ai.bot.pos.x < ai.mapMinX {
+		ai.bot.pos.x = ai.mapMinX
+		ai.hspeed = 0
+		ai.moveDirection = 1 // Turn right
+	} else if ai.bot.pos.x > ai.mapMaxX {
+		ai.bot.pos.x = ai.mapMaxX
+		ai.hspeed = 0
+		ai.moveDirection = -1 // Turn left
 	}
 
-	// Horizontal movement
-	if ai.moveDirection != 0 && ai.onGround {
-		ai.velocityX = float64(ai.moveSpeed) * float64(ai.moveDirection)
-	} else if ai.onGround {
-		ai.velocityX = 0
-	}
+	// Update foothold after movement
+	ai.updateFoothold()
 
-	// Calculate new position
-	newX := float64(oldPos.x) + (ai.velocityX * deltaTime)
-	newY := float64(oldPos.y) + (ai.velocityY * deltaTime)
-
-	// Clamp X to map boundaries
-	if newX < float64(ai.mapMinX) {
-		newX = float64(ai.mapMinX)
-		ai.moveDirection = 1 // Bounce off left wall
-		ai.velocityX = 0
-	} else if newX > float64(ai.mapMaxX) {
-		newX = float64(ai.mapMaxX)
-		ai.moveDirection = -1 // Bounce off right wall
-		ai.velocityX = 0
-	}
-
-	// Clamp Y to map boundaries (prevent falling off map)
-	if newY < float64(ai.mapMinY) {
-		newY = float64(ai.mapMinY)
-		ai.velocityY = 0
-	} else if newY > float64(ai.mapMaxY) {
-		newY = float64(ai.mapMaxY)
-		ai.velocityY = 0
-		ai.onGround = false
-	}
-
-	// Ground collision detection
-	// Check if there's a foothold at or below the new position
-	testGroundPos := newPos(int16(newX), int16(newY), 0)
-	groundPos := ai.bot.inst.fhHist.getFinalPosition(testGroundPos)
-
-	// Check if the returned foothold position is valid (within map bounds)
-	if groundPos.y < ai.mapMinY || groundPos.y > ai.mapMaxY {
-		// Invalid foothold position - bot is off the map
-		// Try to find a safe position at current X
-		safeTestPos := newPos(int16(newX), oldPos.y, 0)
-		safeGroundPos := ai.bot.inst.fhHist.getFinalPosition(safeTestPos)
-		
-		if safeGroundPos.y >= ai.mapMinY && safeGroundPos.y <= ai.mapMaxY {
-			// Found a safe position, snap to it
-			groundPos = safeGroundPos
-			newY = float64(groundPos.y)
-			ai.onGround = true
-			ai.velocityY = 0
-		} else {
-			// Can't find safe ground, reverse direction and stay at current position
-			ai.moveDirection = -ai.moveDirection
-			newX = float64(oldPos.x)
-			newY = float64(oldPos.y)
-			ai.velocityY = 0
-			ai.onGround = true
-			return
-		}
-	}
-
-	// Check if we're on or very close to a foothold
-	distanceToGround := float64(groundPos.y) - newY
-	
-	if distanceToGround >= 0 && distanceToGround <= ai.groundCheckDistance {
-		// We're on the ground or very close to it
-		ai.onGround = true
-		ai.velocityY = 0
-		newY = float64(groundPos.y) // Snap to foothold
-		
-		// Check if we should jump
-		doJump := ai.shouldJump && now.After(ai.jumpCooldown) && ai.onGround
-		if doJump {
-			ai.velocityY = ai.jumpVelocity // Apply upward velocity
-			ai.onGround = false
-			ai.jumpCooldown = now.Add(time.Second * 2)
-			ai.shouldJump = false
-		}
-	} else if distanceToGround < 0 {
-		// We're above where we should be, need to fall
-		ai.onGround = false
-	} else {
-		// We're too far above ground (falling)
-		ai.onGround = false
+	// Handle jumping
+	if ai.shouldJump && now.After(ai.jumpCooldown) && ai.onground {
+		ai.vforce = JUMPFORCE
+		ai.shouldJump = false
+		ai.jumpCooldown = now.Add(time.Second * 2)
 	}
 
 	// Update stance (facing direction)
@@ -251,19 +191,103 @@ func (ai *botAI) PerformMovement() {
 	} else {
 		stance = 0 // Facing right
 	}
-
-	// Create new position
-	newPosition := newPos(int16(newX), int16(newY), groundPos.foothold)
-	
-	// Update bot position
-	ai.bot.pos = newPosition
 	ai.bot.stance = stance
 
 	// Build movement packet
-	moveData := ai.buildMovementPacket(oldPos, ai.bot.pos, stance, !ai.onGround, int16(deltaTime*1000))
+	moveData := ai.buildMovementPacket(oldPos, ai.bot.pos, stance, !ai.onground, 100)
 
 	// Broadcast to other players
 	ai.bot.inst.movePlayer(ai.bot.ID, moveData, ai.bot)
+}
+
+// applyPhysics applies MapleStory-style physics calculations
+func (ai *botAI) applyPhysics() {
+	ai.vacc = 0.0
+	ai.hacc = 0.0
+
+	if ai.onground {
+		// On ground physics
+		ai.vacc += ai.vforce
+		ai.hacc += ai.hforce
+
+		// Apply walking force
+		if ai.moveDirection != 0 {
+			ai.hforce = WALKFORCE * float64(ai.moveDirection) * float64(ai.moveSpeed) / 100.0
+		} else {
+			ai.hforce = 0
+		}
+
+		// Apply friction and slope
+		if ai.hacc == 0.0 && ai.hspeed < 0.1 && ai.hspeed > -0.1 {
+			ai.hspeed = 0.0
+		} else {
+			inertia := ai.hspeed / GROUNDSLIP
+			slopef := ai.fhslope
+			
+			// Limit slope factor
+			if slopef > 0.5 {
+				slopef = 0.5
+			} else if slopef < -0.5 {
+				slopef = -0.5
+			}
+			
+			ai.hacc -= (FRICTION + SLOPEFACTOR*(1.0+slopef*-inertia)) * inertia
+		}
+	} else {
+		// In air physics - apply gravity
+		ai.vacc += GRAVFORCE
+	}
+
+	// Reset forces
+	ai.hforce = 0.0
+	ai.vforce = 0.0
+
+	// Update speeds
+	ai.hspeed += ai.hacc
+	ai.vspeed += ai.vacc
+}
+
+// updateFoothold updates the bot's foothold and checks if on ground
+func (ai *botAI) updateFoothold() {
+	if ai.bot.inst == nil {
+		return
+	}
+
+	// Get foothold at current position
+	testPos := newPos(ai.bot.pos.x, ai.bot.pos.y, 0)
+	groundPos := ai.bot.inst.fhHist.getFinalPosition(testPos)
+
+	// Check if valid foothold
+	if groundPos.foothold == 0 {
+		ai.onground = false
+		ai.fhslope = 0.0
+		return
+	}
+
+	// Update foothold
+	ai.bot.pos.foothold = groundPos.foothold
+	
+	// Calculate ground level for this foothold
+	// The foothold system returns the Y position where ground is
+	groundY := groundPos.y
+
+	// Check if we're on the ground
+	if ai.bot.pos.y >= groundY-1 && ai.bot.pos.y <= groundY+1 {
+		ai.onground = true
+		ai.bot.pos.y = groundY // Snap to ground
+		ai.vspeed = 0
+		
+		// Calculate slope (simplified - would need actual foothold data)
+		ai.fhslope = 0.0 // TODO: Get actual slope from foothold
+	} else if ai.bot.pos.y < groundY {
+		// Above ground - falling
+		ai.onground = false
+	} else {
+		// Below ground - snap up
+		ai.bot.pos.y = groundY
+		ai.onground = true
+		ai.vspeed = 0
+	}
 }
 
 // buildMovementPacket creates movement packet data for the bot
