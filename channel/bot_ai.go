@@ -144,39 +144,50 @@ const (
 	JUMPFORCE    = -4.2 // Force applied when jumping (negative = up)
 )
 
-// PerformMovement executes physics-based movement matching MapleStory client behavior
+// PerformMovement executes movement using simple X movement from 4eed6f0 + physics Y movement
 func (ai *botAI) PerformMovement() {
 	if !ai.movementEnabled || ai.bot.inst == nil {
 		return
 	}
 
 	now := time.Now()
+	deltaTime := now.Sub(ai.lastMoveTime).Milliseconds()
+	if deltaTime <= 0 {
+		deltaTime = 100 // Default to 100ms if first call
+	}
+	ai.lastMoveTime = now
+
 	oldPos := ai.bot.pos
 
+	// === X MOVEMENT: Simple distance-based (from 4eed6f0 - this worked!) ===
+	if ai.moveDirection != 0 {
+		distance := int16(float64(ai.moveSpeed) * float64(deltaTime) / 1000.0)
+		newX := ai.bot.pos.x + (distance * int16(ai.moveDirection))
+
+		// Clamp to map boundaries
+		if newX < ai.mapMinX {
+			newX = ai.mapMinX
+			ai.moveDirection = 1 // Bounce off left wall
+		} else if newX > ai.mapMaxX {
+			newX = ai.mapMaxX
+			ai.moveDirection = -1 // Bounce off right wall
+		}
+
+		ai.bot.pos.x = newX
+	}
+
+	// === Y MOVEMENT: Physics-based with gravity (current working logic) ===
 	// Update foothold information
 	ai.updateFoothold()
 
-	// Apply movement physics
+	// Apply physics for vertical movement
 	ai.applyPhysics()
 
-	// Move the object - apply speed to position
-	newX := float64(ai.bot.pos.x) + ai.hspeed
+	// Apply vertical speed to position
 	newY := float64(ai.bot.pos.y) + ai.vspeed
-	ai.bot.pos.x = int16(newX)
 	ai.bot.pos.y = int16(newY)
 
-	// Check boundaries
-	if ai.bot.pos.x < ai.mapMinX {
-		ai.bot.pos.x = ai.mapMinX
-		ai.hspeed = 0
-		ai.moveDirection = 1 // Turn right
-	} else if ai.bot.pos.x > ai.mapMaxX {
-		ai.bot.pos.x = ai.mapMaxX
-		ai.hspeed = 0
-		ai.moveDirection = -1 // Turn left
-	}
-
-	// Update foothold after movement
+	// Update foothold after movement (snap to ground if needed)
 	ai.updateFoothold()
 
 	// Handle jumping
@@ -196,56 +207,29 @@ func (ai *botAI) PerformMovement() {
 	ai.bot.stance = stance
 
 	// Build movement packet
-	moveData := ai.buildMovementPacket(oldPos, ai.bot.pos, stance, !ai.onground, 100)
+	moveData := ai.buildMovementPacket(oldPos, ai.bot.pos, stance, !ai.onground, int16(deltaTime))
 
 	// Broadcast to other players
 	ai.bot.inst.movePlayer(ai.bot.ID, moveData, ai.bot)
 }
 
-// applyPhysics applies MapleStory-style physics calculations
+// applyPhysics applies physics calculations for Y movement only (X uses simple distance)
 func (ai *botAI) applyPhysics() {
 	ai.vacc = 0.0
-	ai.hacc = 0.0
 
 	if ai.onground {
-		// On ground physics
+		// On ground - apply vertical forces (e.g., jump)
 		ai.vacc += ai.vforce
-		ai.hacc += ai.hforce
-
-		// Apply walking force
-		if ai.moveDirection != 0 {
-			ai.hforce = WALKFORCE * float64(ai.moveDirection) * float64(ai.moveSpeed) / 100.0
-		} else {
-			ai.hforce = 0
-		}
-
-		// Apply friction and slope
-		if ai.hacc == 0.0 && ai.hspeed < 0.1 && ai.hspeed > -0.1 {
-			ai.hspeed = 0.0
-		} else {
-			inertia := ai.hspeed / GROUNDSLIP
-			slopef := ai.fhslope
-			
-			// Limit slope factor
-			if slopef > 0.5 {
-				slopef = 0.5
-			} else if slopef < -0.5 {
-				slopef = -0.5
-			}
-			
-			ai.hacc -= (FRICTION + SLOPEFACTOR*(1.0+slopef*-inertia)) * inertia
-		}
 	} else {
-		// In air physics - apply gravity
+		// In air - apply gravity
 		ai.vacc += GRAVFORCE
+		ai.vacc += ai.vforce // Also apply any jump force that's active
 	}
 
-	// Reset forces
-	ai.hforce = 0.0
+	// Reset vertical force after using it
 	ai.vforce = 0.0
 
-	// Update speeds
-	ai.hspeed += ai.hacc
+	// Update vertical speed
 	ai.vspeed += ai.vacc
 }
 
