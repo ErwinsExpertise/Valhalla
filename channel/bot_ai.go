@@ -153,13 +153,6 @@ func (ai *botAI) PerformMovement() {
 	now := time.Now()
 	oldPos := ai.bot.pos
 
-	// Handle jumping BEFORE physics
-	if ai.shouldJump && now.After(ai.jumpCooldown) && ai.onground {
-		ai.vforce = JUMPFORCE
-		ai.shouldJump = false
-		ai.jumpCooldown = now.Add(time.Second * 2)
-	}
-
 	// Update foothold information
 	ai.updateFoothold()
 
@@ -169,24 +162,29 @@ func (ai *botAI) PerformMovement() {
 	// Move the object - apply speed to position
 	newX := float64(ai.bot.pos.x) + ai.hspeed
 	newY := float64(ai.bot.pos.y) + ai.vspeed
-	
-	// Check boundaries BEFORE updating position
-	if newX < float64(ai.mapMinX) {
-		newX = float64(ai.mapMinX)
-		ai.hspeed = 0
-		ai.moveDirection = 1 // Turn right
-	} else if newX > float64(ai.mapMaxX) {
-		newX = float64(ai.mapMaxX)
-		ai.hspeed = 0
-		ai.moveDirection = -1 // Turn left
-	}
-	
-	// Apply position changes
 	ai.bot.pos.x = int16(newX)
 	ai.bot.pos.y = int16(newY)
 
-	// Update foothold after movement (this might snap Y to ground)
+	// Check boundaries
+	if ai.bot.pos.x < ai.mapMinX {
+		ai.bot.pos.x = ai.mapMinX
+		ai.hspeed = 0
+		ai.moveDirection = 1 // Turn right
+	} else if ai.bot.pos.x > ai.mapMaxX {
+		ai.bot.pos.x = ai.mapMaxX
+		ai.hspeed = 0
+		ai.moveDirection = -1 // Turn left
+	}
+
+	// Update foothold after movement
 	ai.updateFoothold()
+
+	// Handle jumping
+	if ai.shouldJump && now.After(ai.jumpCooldown) && ai.onground {
+		ai.vforce = JUMPFORCE
+		ai.shouldJump = false
+		ai.jumpCooldown = now.Add(time.Second * 2)
+	}
 
 	// Update stance (facing direction)
 	var stance byte
@@ -206,23 +204,20 @@ func (ai *botAI) PerformMovement() {
 
 // applyPhysics applies MapleStory-style physics calculations
 func (ai *botAI) applyPhysics() {
-	// Reset acceleration
-	ai.hacc = 0.0
 	ai.vacc = 0.0
+	ai.hacc = 0.0
 
 	if ai.onground {
 		// On ground physics
-		
+		ai.vacc += ai.vforce
+		ai.hacc += ai.hforce
+
 		// Apply walking force
 		if ai.moveDirection != 0 {
 			ai.hforce = WALKFORCE * float64(ai.moveDirection) * float64(ai.moveSpeed) / 100.0
 		} else {
 			ai.hforce = 0
 		}
-
-		// Add forces to acceleration
-		ai.hacc += ai.hforce
-		ai.vacc += ai.vforce
 
 		// Apply friction and slope
 		if ai.hacc == 0.0 && ai.hspeed < 0.1 && ai.hspeed > -0.1 {
@@ -240,22 +235,16 @@ func (ai *botAI) applyPhysics() {
 			
 			ai.hacc -= (FRICTION + SLOPEFACTOR*(1.0+slopef*-inertia)) * inertia
 		}
-		
-		// Reset forces after applying (they were used this frame)
-		ai.hforce = 0.0
-		ai.vforce = 0.0
 	} else {
 		// In air physics - apply gravity
 		ai.vacc += GRAVFORCE
-		
-		// Also add any jump/air forces
-		ai.vacc += ai.vforce
-		
-		// Reset vertical force after applying
-		ai.vforce = 0.0
 	}
 
-	// Update speeds from acceleration
+	// Reset forces
+	ai.hforce = 0.0
+	ai.vforce = 0.0
+
+	// Update speeds
 	ai.hspeed += ai.hacc
 	ai.vspeed += ai.vacc
 }
