@@ -150,20 +150,35 @@ func (ai *botAI) PerformMovement() {
 
 	oldPos := ai.bot.pos
 
-	// Check foothold at new X position
-	// Start from current position, let getFinalPosition find the correct foothold
-	testPosition := newPos(newX, oldPos.y, 0)
-	newPosition := ai.bot.inst.fhHist.getFinalPosition(testPosition)
-
-	// If Y change is small (< 10 pixels), stay at current Y (walking on same platform)
-	// If Y change is large, bot walked off edge and should fall to new platform
-	yDiff := newPosition.y - oldPos.y
-	if yDiff < 10 && yDiff > -10 {
-		// Still on same platform, keep current Y and foothold
-		newPosition.y = oldPos.y
-		newPosition.foothold = oldPos.foothold
+	// Look ahead to check for platform edges BEFORE moving
+	// Check a bit ahead in movement direction to see if platform continues
+	lookAheadDistance := int16(50) // Look 50 pixels ahead
+	lookAheadX := newX + (lookAheadDistance * int16(ai.moveDirection))
+	
+	// Check what's ahead at the look-ahead position
+	testAhead := newPos(lookAheadX, oldPos.y, oldPos.foothold)
+	positionAhead := ai.bot.inst.fhHist.getFinalPosition(testAhead)
+	
+	// Calculate Y difference at look-ahead position
+	yDiffAhead := positionAhead.y - oldPos.y
+	
+	// If there's a significant drop ahead (>100px), we're approaching an edge
+	if yDiffAhead > 100 {
+		// Edge detected! Reverse direction instead of walking off
+		ai.moveDirection = -ai.moveDirection
+		return
 	}
-	// Otherwise use the calculated position (falling/landing on new platform)
+	
+	// If there's a significant climb ahead (>80px), reverse direction
+	// (bots aren't smart enough to jump up to higher platforms yet)
+	if yDiffAhead < -80 {
+		ai.moveDirection = -ai.moveDirection
+		return
+	}
+	
+	// Path ahead is clear, move horizontally maintaining current Y and foothold
+	// This mimics real player movement where client sends foothold without recalculation
+	newPosition := newPos(newX, oldPos.y, oldPos.foothold)
 
 	// Update position
 	ai.bot.pos = newPosition
