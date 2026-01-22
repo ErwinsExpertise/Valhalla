@@ -585,7 +585,7 @@ func (d *Player) rollCritical(attackType int) bool {
 
 // Send the Data a packet
 func (d *Player) Send(packet mpacket.Packet) {
-	if d == nil {
+	if d == nil || d.Conn == nil {
 		return
 	}
 	d.Conn.Send(packet)
