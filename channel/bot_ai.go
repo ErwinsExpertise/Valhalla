@@ -150,9 +150,20 @@ func (ai *botAI) PerformMovement() {
 
 	oldPos := ai.bot.pos
 
-	// Simple horizontal movement - keep Y and foothold the same
-	// Don't recalculate foothold during movement, just like real players
-	newPosition := newPos(newX, oldPos.y, oldPos.foothold)
+	// Check foothold at new X position
+	// Start from current position, let getFinalPosition find the correct foothold
+	testPosition := newPos(newX, oldPos.y, 0)
+	newPosition := ai.bot.inst.fhHist.getFinalPosition(testPosition)
+
+	// If Y change is small (< 10 pixels), stay at current Y (walking on same platform)
+	// If Y change is large, bot walked off edge and should fall to new platform
+	yDiff := newPosition.y - oldPos.y
+	if yDiff < 10 && yDiff > -10 {
+		// Still on same platform, keep current Y and foothold
+		newPosition.y = oldPos.y
+		newPosition.foothold = oldPos.foothold
+	}
+	// Otherwise use the calculated position (falling/landing on new platform)
 
 	// Update position
 	ai.bot.pos = newPosition
