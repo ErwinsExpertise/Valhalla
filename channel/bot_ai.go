@@ -150,26 +150,11 @@ func (ai *botAI) PerformMovement() {
 
 	oldPos := ai.bot.pos
 
-	// Calculate proper foothold position at the new X coordinate
-	// Use current Y position to find the actual platform we're standing on
+	// Simple horizontal movement - keep Y and foothold the same
+	// Don't recalculate foothold during movement, just like real players
 	newPosition := newPos(newX, oldPos.y, oldPos.foothold)
-	newPosition = ai.bot.inst.fhHist.getFinalPosition(newPosition)
 
-	// Check if the new position is safe by looking at Y difference
-	yDiff := newPosition.y - oldPos.y
-
-	// If the new position would drop us significantly, we're at a platform edge
-	if yDiff > 100 {
-		// Platform edge detected - reverse direction instead of falling
-		ai.moveDirection = -ai.moveDirection
-		return
-	} else if yDiff < -50 {
-		// Need to climb - reverse direction (can't climb without explicit jump)
-		ai.moveDirection = -ai.moveDirection
-		return
-	}
-
-	// Safe to move - update position
+	// Update position
 	ai.bot.pos = newPosition
 
 	ai.bot.stance = stance
