@@ -136,12 +136,12 @@ func (ai *botAI) stopWalking() {
 
 // Physics constants from MapleStory client
 const (
-	GRAVFORCE    = 0.14
+	GRAVFORCE    = 2.0  // Increased for more immediate gravity
 	FRICTION     = 0.5
 	SLOPEFACTOR  = 0.1
 	GROUNDSLIP   = 3.0
 	WALKFORCE    = 0.14 // Force applied when walking
-	JUMPFORCE    = -4.2 // Force applied when jumping (negative = up)
+	JUMPFORCE    = -15.0 // Increased jump force to compensate for stronger gravity
 )
 
 // PerformMovement executes movement using simple X movement from 4eed6f0 + physics Y movement
@@ -257,8 +257,11 @@ func (ai *botAI) updateFoothold() {
 	// The foothold system returns the Y position where ground is
 	groundY := groundPos.y
 
-	// Check if we're on the ground
-	if ai.bot.pos.y >= groundY-1 && ai.bot.pos.y <= groundY+1 {
+	// Check if we're on or near the ground (larger tolerance to catch fast falling)
+	distanceToGround := ai.bot.pos.y - groundY
+	
+	if distanceToGround >= -10 && distanceToGround <= 10 {
+		// On ground or very close - snap to ground
 		ai.onground = true
 		ai.bot.pos.y = groundY // Snap to ground
 		ai.vspeed = 0
@@ -269,7 +272,7 @@ func (ai *botAI) updateFoothold() {
 		// Above ground - falling
 		ai.onground = false
 	} else {
-		// Below ground - snap up
+		// Below ground (fell past foothold) - snap up to ground
 		ai.bot.pos.y = groundY
 		ai.onground = true
 		ai.vspeed = 0
