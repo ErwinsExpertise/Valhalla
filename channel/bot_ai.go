@@ -152,7 +152,7 @@ func (ai *botAI) PerformMovement() {
 
 	// Look ahead to check for platform edges BEFORE moving
 	// Check a bit ahead in movement direction to see if platform continues
-	lookAheadDistance := int16(50) // Look 50 pixels ahead
+	lookAheadDistance := int16(5) // Look 5 pixels ahead
 	lookAheadX := newX + (lookAheadDistance * int16(ai.moveDirection))
 	
 	// Check what's ahead at the look-ahead position
