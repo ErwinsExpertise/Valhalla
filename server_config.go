@@ -52,6 +52,7 @@ type channelConfig struct {
 	MaxPop                  int16	`mapstructure:"maxPop"`
 	Latency                 int		`mapstructure:"latency"`
 	Jitter                  int		`mapstructure:"jitter"`
+	EnableBots              bool	`mapstructure:"enableBots"`
 }
 
 type cashShopConfig struct {

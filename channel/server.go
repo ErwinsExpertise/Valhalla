@@ -2,6 +2,7 @@ package channel
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"strconv"
 	"time"
@@ -48,6 +49,11 @@ type Server struct {
 	events           map[int32]*event
 	rates            rates
 	ac               *anticheat.AntiCheat
+	
+	// Bot support
+	enableBots bool
+	bots       []*Player
+	nextBotID  int32
 }
 
 // Initialise the server
@@ -433,3 +439,94 @@ func (server *Server) updateNPCInteractionMetric(delta int) {
 		"world":   server.worldName,
 	}).Add(float64(delta))
 }
+
+// Bot management functions
+
+// SetEnableBots sets the bot configuration flag
+func (server *Server) SetEnableBots(enable bool) {
+	server.enableBots = enable
+	server.nextBotID = -1 // Bot IDs start at -1 and go negative
+	server.bots = []*Player{}
+}
+
+// SpawnBot creates and spawns a bot player into a specific map.
+// Returns error if bots are disabled or bot creation fails.
+func (server *Server) SpawnBot(name string, mapID int32, portalID byte) error {
+	if !server.enableBots {
+		return fmt.Errorf("bots are disabled in channel configuration")
+	}
+
+	// Create bot with next available negative ID
+	bot, err := newBotPlayer(server.nextBotID, name, mapID, portalID, server.id)
+	if err != nil {
+		return fmt.Errorf("failed to create bot: %w", err)
+	}
+	server.nextBotID-- // Decrement for next bot
+
+	// Set bot rates
+	bot.rates = &server.rates
+
+	// Add bot to players collection
+	server.players.Add(bot)
+
+	// Get field instance
+	field, ok := server.fields[mapID]
+	if !ok {
+		return fmt.Errorf("map %d not found", mapID)
+	}
+
+	inst, err := field.getInstance(0)
+	if err != nil {
+		return fmt.Errorf("failed to get field instance: %w", err)
+	}
+
+	// Add bot to field instance (this makes it visible to other players)
+	if err := inst.addPlayer(bot); err != nil {
+		return fmt.Errorf("failed to add bot to field: %w", err)
+	}
+
+	// Track bot for cleanup
+	server.bots = append(server.bots, bot)
+
+	log.Printf("Bot '%s' (ID:%d) spawned in map %d", name, bot.ID, mapID)
+	return nil
+}
+
+// RemoveAllBots removes all active bots from the server.
+// Called during channel shutdown.
+func (server *Server) RemoveAllBots() {
+	if !server.enableBots || len(server.bots) == 0 {
+		return
+	}
+
+	log.Printf("Removing %d bot(s) from channel", len(server.bots))
+
+	for _, bot := range server.bots {
+		if bot.inst != nil {
+			bot.inst.removePlayer(bot, false)
+		}
+		server.players.RemoveFromConn(bot.Conn)
+	}
+
+	server.bots = []*Player{}
+	log.Println("All bots removed")
+}
+
+// InitializeBots spawns initial bots if enabled.
+// Called after server initialization is complete.
+func (server *Server) InitializeBots() {
+	if !server.enableBots {
+		log.Println("Bots are disabled")
+		return
+	}
+
+	log.Println("Bots are enabled - spawning initial bots")
+
+	// Spawn a single test bot in Henesys for Phase 1
+	// Map 100000000 is Henesys
+	const henesysMapID = 100000000
+	if err := server.SpawnBot("TestBot", henesysMapID, 0); err != nil {
+		log.Printf("Failed to spawn test bot: %v", err)
+	}
+}
+

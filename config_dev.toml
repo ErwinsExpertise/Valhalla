@@ -42,6 +42,7 @@ packetQueueSize = 512
 maxPop = 250
 latency = 0
 jitter = 0
+enableBots = false
 
 [cashshop]
 worldAddress = "127.0.0.1"

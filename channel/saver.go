@@ -199,7 +199,7 @@ func StopSaver() {
 }
 
 func scheduleSave(p *Player, delay time.Duration) {
-	if saverInst == nil || p == nil || p.ID == 0 {
+	if saverInst == nil || p == nil || p.ID == 0 || p.isBot {
 		return
 	}
 	req := scheduleReq{
@@ -216,7 +216,7 @@ func scheduleSave(p *Player, delay time.Duration) {
 }
 
 func flushNow(p *Player) {
-	if saverInst == nil || p == nil || p.ID == 0 {
+	if saverInst == nil || p == nil || p.ID == 0 || p.isBot {
 		return
 	}
 	done := make(chan struct{})

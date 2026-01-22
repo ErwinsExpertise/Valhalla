@@ -96,11 +96,20 @@ func (cs *channelServer) run() {
 	cs.establishWorldConnection()
 	cs.gameState.StartAutosave(cs.ctx)
 
+	// Initialize bots if enabled in configuration
+	cs.wRecv <- func() {
+		cs.gameState.SetEnableBots(cs.config.EnableBots)
+		cs.gameState.InitializeBots()
+	}
+
 	cs.wg.Wait()
 	log.Println("Channel Server stopped")
 }
 
 func (cs *channelServer) shutdown() {
+	log.Println("Removing bots")
+	cs.gameState.RemoveAllBots()
+
 	log.Println("Flushing players")
 	cs.gameState.CheckpointAll(cs.ctx)
 

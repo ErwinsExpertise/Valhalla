@@ -298,6 +298,9 @@ type Player struct {
 	hasSafetyCharm bool
 
 	event *event
+
+	// Bot flag - identifies server-controlled bot players
+	isBot bool
 }
 
 // Helper: mark dirty and schedule debounced save.
@@ -582,11 +585,12 @@ func (d *Player) rollCritical(attackType int) bool {
 
 // Send the Data a packet
 func (d *Player) Send(packet mpacket.Packet) {
-	if d == nil || d.Conn == nil {
+	if d == nil {
 		return
 	}
 	d.Conn.Send(packet)
 }
+
 
 func (d *Player) setJob(id int16) {
 	d.job = id
@@ -2230,6 +2234,121 @@ func (d *Player) removeAllCooldowns() {
 		ps.TimeLastUsed = 0
 		d.updateSkill(ps)
 	}
+}
+
+// newBotPlayer creates a minimal bot player without database or network connection.
+// Bots are server-controlled entities that appear as normal players to clients.
+// botID should be negative to avoid collision with real character IDs.
+func newBotPlayer(botID int32, name string, mapID int32, spawnPortalID byte, channelID byte) (*Player, error) {
+	// Validate map exists
+	nxMap, err := nx.GetMap(mapID)
+	if err != nil {
+		return nil, fmt.Errorf("newBotPlayer: invalid mapID %d: %w", mapID, err)
+	}
+
+	// Validate spawn portal
+	if int(spawnPortalID) >= len(nxMap.Portals) {
+		spawnPortalID = 0
+	}
+
+	// Create bot with minimal data
+	bot := &Player{
+		Conn:      newBotConn(channelID), // Bots use stub connection
+		isBot:     true,
+		ID:        botID,
+		Name:      name,
+		mapID:     mapID,
+		mapPos:    spawnPortalID,
+		ChannelID: channelID,
+
+		// Basic appearance (level 1 beginner)
+		level:  1,
+		job:    constant.BeginnerJobID,
+		gender: 0, // Male
+		skin:   0,
+		face:   20000, // Default male face
+		hair:   30000, // Default male hair
+
+		// Stats for level 1 beginner
+		str:   4,
+		dex:   4,
+		intt:  4,
+		luk:   4,
+		hp:    50,
+		maxHP: 50,
+		mp:    5,
+		maxMP: 5,
+		ap:    0,
+		sp:    0,
+		exp:   0,
+		fame:  0,
+
+		// Total stats (no equipment bonuses)
+		totalStr:      4,
+		totalDex:      4,
+		totalInt:      4,
+		totalLuk:      4,
+		totalWatk:     0,
+		totalMatk:     0,
+		totalAccuracy: 0,
+
+		// Position
+		pos: newPos(nxMap.Portals[spawnPortalID].X, nxMap.Portals[spawnPortalID].Y, 0),
+		stance: 0,
+
+		// Empty inventories
+		equipSlotSize: 24,
+		useSlotSize:   24,
+		setupSlotSize: 24,
+		etcSlotSize:   24,
+		cashSlotSize:  24,
+		equip:         []Item{},
+		use:           []Item{},
+		setUp:         []Item{},
+		etc:           []Item{},
+		cash:          []Item{},
+
+		// No currency
+		mesos:       0,
+		nx:          0,
+		maplepoints: 0,
+
+		// No skills
+		skills: make(map[int32]playerSkill),
+
+		// No buddies, party, guild
+		buddyListSize: 20,
+		buddyList:     []buddy{},
+		party:         nil,
+		guild:         nil,
+
+		// Initialize RNG for bot (deterministic based on bot ID)
+		rng: mathrand.New(mathrand.NewSource(int64(botID))),
+
+		// No teleport rocks
+		regTeleportRocks: make([]int32, constant.TeleportRockRegSlots),
+		vipTeleportRocks: make([]int32, constant.TeleportRockVIPSlots),
+
+		// Initialize empty quests
+		quests: quests{
+			completed:  make(map[int16]quest),
+			inProgress: make(map[int16]quest),
+			mobKills:   make(map[int16]map[int32]int32),
+		},
+	}
+
+	// Initialize invalid map values for teleport rocks
+	for i := range bot.regTeleportRocks {
+		bot.regTeleportRocks[i] = constant.InvalidMap
+	}
+	for i := range bot.vipTeleportRocks {
+		bot.vipTeleportRocks[i] = constant.InvalidMap
+	}
+
+	// Initialize buff manager for bot (even though bots won't use buffs in phase 1)
+	NewCharacterBuffs(bot)
+
+	return bot, nil
 }
 
 func (d *Player) saveBuffSnapshot() {
