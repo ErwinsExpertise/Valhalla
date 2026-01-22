@@ -150,56 +150,27 @@ func (ai *botAI) PerformMovement() {
 
 	oldPos := ai.bot.pos
 
-	// Try to find foothold at new position
-	// We need to check a range slightly below the current Y to detect if we're walking off
-	testPos := newPos(newX, oldPos.y+50, oldPos.foothold) // Look 50 pixels down
-	candidatePos := ai.bot.inst.fhHist.getFinalPosition(testPos)
+	// Calculate proper foothold position at the new X coordinate
+	// Use current Y position to find the actual platform we're standing on
+	newPosition := newPos(newX, oldPos.y, oldPos.foothold)
+	newPosition = ai.bot.inst.fhHist.getFinalPosition(newPosition)
 
-	// Calculate Y difference from current position
-	yDiff := candidatePos.y - oldPos.y
+	// Check if the new position is safe by looking at Y difference
+	yDiff := newPosition.y - oldPos.y
 
-	// Check if this is a safe move
+	// If the new position would drop us significantly, we're at a platform edge
 	if yDiff > 100 {
-		// Large drop detected - we're at a platform edge
-		// Check if there's a platform below within jumping reach
-		testLower := newPos(newX, oldPos.y+300, oldPos.foothold) // Look further down
-		lowerPos := ai.bot.inst.fhHist.getFinalPosition(testLower)
-		lowerDiff := lowerPos.y - oldPos.y
-
-		if lowerDiff > 100 && lowerDiff < 350 {
-			// There's a platform below within jump range
-			if !ai.shouldJump && now.After(ai.jumpCooldown) {
-				// Jump down to lower platform
-				ai.shouldJump = true
-				ai.jumpCooldown = now.Add(time.Second * 2)
-				// Allow movement to carry through with jump
-				ai.bot.pos = candidatePos
-			} else {
-				// Can't jump, reverse direction
-				ai.moveDirection = -ai.moveDirection
-				return
-			}
-		} else {
-			// No safe platform, reverse direction
-			ai.moveDirection = -ai.moveDirection
-			return
-		}
-	} else if yDiff < -50 {
-		// Moving upward - need to jump
-		if !ai.shouldJump && now.After(ai.jumpCooldown) {
-			ai.shouldJump = true
-			ai.jumpCooldown = now.Add(time.Second * 2)
-		}
-		// Stay at current position until jump executes
+		// Platform edge detected - reverse direction instead of falling
+		ai.moveDirection = -ai.moveDirection
 		return
-	} else if yDiff >= -50 && yDiff <= 100 {
-		// Safe movement - small height change is OK
-		ai.bot.pos = candidatePos
-	} else {
-		// Unsafe, don't move
+	} else if yDiff < -50 {
+		// Need to climb - reverse direction (can't climb without explicit jump)
 		ai.moveDirection = -ai.moveDirection
 		return
 	}
+
+	// Safe to move - update position
+	ai.bot.pos = newPosition
 
 	ai.bot.stance = stance
 
