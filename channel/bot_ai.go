@@ -139,55 +139,65 @@ func (ai *botAI) PerformMovement() {
 		ai.moveDirection = -1 // Bounce off right wall
 	}
 
-	// Update stance (facing direction)
+	// Update stance (facing direction) - fix for left walking animation
 	var stance byte
 	if ai.moveDirection < 0 {
-		stance = 5 // Walking left
+		stance = 4 // Walking left (not 5)
 	} else {
 		stance = 2 // Walking right
 	}
 
-	// Calculate new position with foothold
 	oldPos := ai.bot.pos
-	tempPos := newPos(newX, oldPos.y, oldPos.foothold)
 
-	// Get correct foothold for new position
-	var newPosition pos
-	if ai.bot.inst != nil {
-		newPosition = ai.bot.inst.fhHist.getFinalPosition(tempPos)
-		
-		// Check if the foothold change is reasonable (not a huge drop)
-		// If Y difference is more than 150 pixels down, we're about to fall off a platform
-		yDiff := newPosition.y - oldPos.y
-		
-		if yDiff > 150 {
-			// We're walking off a platform edge!
-			// Don't update position - stay at edge
-			// Try to jump to reach a new platform
+	// Try to find foothold at new position
+	// We need to check a range slightly below the current Y to detect if we're walking off
+	testPos := newPos(newX, oldPos.y+50, oldPos.foothold) // Look 50 pixels down
+	candidatePos := ai.bot.inst.fhHist.getFinalPosition(testPos)
+
+	// Calculate Y difference from current position
+	yDiff := candidatePos.y - oldPos.y
+
+	// Check if this is a safe move
+	if yDiff > 100 {
+		// Large drop detected - we're at a platform edge
+		// Check if there's a platform below within jumping reach
+		testLower := newPos(newX, oldPos.y+300, oldPos.foothold) // Look further down
+		lowerPos := ai.bot.inst.fhHist.getFinalPosition(testLower)
+		lowerDiff := lowerPos.y - oldPos.y
+
+		if lowerDiff > 100 && lowerDiff < 350 {
+			// There's a platform below within jump range
 			if !ai.shouldJump && now.After(ai.jumpCooldown) {
-				// Force a jump to try to reach the next platform
+				// Jump down to lower platform
 				ai.shouldJump = true
 				ai.jumpCooldown = now.Add(time.Second * 2)
+				// Allow movement to carry through with jump
+				ai.bot.pos = candidatePos
 			} else {
-				// Can't jump (on cooldown or already jumping), reverse direction
+				// Can't jump, reverse direction
 				ai.moveDirection = -ai.moveDirection
+				return
 			}
-			// Don't move this frame - stay at current position
-			return
-		} else if yDiff < -100 {
-			// Moving to higher platform - need to jump
-			if !ai.shouldJump && now.After(ai.jumpCooldown) {
-				ai.shouldJump = true
-				ai.jumpCooldown = now.Add(time.Second * 2)
-			}
-			// Don't move forward, let jump carry us up
+		} else {
+			// No safe platform, reverse direction
+			ai.moveDirection = -ai.moveDirection
 			return
 		}
-		
-		// Safe to update position
-		ai.bot.pos = newPosition
+	} else if yDiff < -50 {
+		// Moving upward - need to jump
+		if !ai.shouldJump && now.After(ai.jumpCooldown) {
+			ai.shouldJump = true
+			ai.jumpCooldown = now.Add(time.Second * 2)
+		}
+		// Stay at current position until jump executes
+		return
+	} else if yDiff >= -50 && yDiff <= 100 {
+		// Safe movement - small height change is OK
+		ai.bot.pos = candidatePos
 	} else {
-		ai.bot.pos = tempPos
+		// Unsafe, don't move
+		ai.moveDirection = -ai.moveDirection
+		return
 	}
 
 	ai.bot.stance = stance
