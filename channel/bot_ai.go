@@ -153,6 +153,13 @@ func (ai *botAI) PerformMovement() {
 	now := time.Now()
 	oldPos := ai.bot.pos
 
+	// Handle jumping BEFORE physics
+	if ai.shouldJump && now.After(ai.jumpCooldown) && ai.onground {
+		ai.vforce = JUMPFORCE
+		ai.shouldJump = false
+		ai.jumpCooldown = now.Add(time.Second * 2)
+	}
+
 	// Update foothold information
 	ai.updateFoothold()
 
@@ -162,29 +169,24 @@ func (ai *botAI) PerformMovement() {
 	// Move the object - apply speed to position
 	newX := float64(ai.bot.pos.x) + ai.hspeed
 	newY := float64(ai.bot.pos.y) + ai.vspeed
-	ai.bot.pos.x = int16(newX)
-	ai.bot.pos.y = int16(newY)
-
-	// Check boundaries
-	if ai.bot.pos.x < ai.mapMinX {
-		ai.bot.pos.x = ai.mapMinX
+	
+	// Check boundaries BEFORE updating position
+	if newX < float64(ai.mapMinX) {
+		newX = float64(ai.mapMinX)
 		ai.hspeed = 0
 		ai.moveDirection = 1 // Turn right
-	} else if ai.bot.pos.x > ai.mapMaxX {
-		ai.bot.pos.x = ai.mapMaxX
+	} else if newX > float64(ai.mapMaxX) {
+		newX = float64(ai.mapMaxX)
 		ai.hspeed = 0
 		ai.moveDirection = -1 // Turn left
 	}
+	
+	// Apply position changes
+	ai.bot.pos.x = int16(newX)
+	ai.bot.pos.y = int16(newY)
 
-	// Update foothold after movement
+	// Update foothold after movement (this might snap Y to ground)
 	ai.updateFoothold()
-
-	// Handle jumping
-	if ai.shouldJump && now.After(ai.jumpCooldown) && ai.onground {
-		ai.vforce = JUMPFORCE
-		ai.shouldJump = false
-		ai.jumpCooldown = now.Add(time.Second * 2)
-	}
 
 	// Update stance (facing direction)
 	var stance byte
