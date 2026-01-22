@@ -104,9 +104,6 @@ func (ai *botAI) startWalking() {
 
 	ai.nextActionTime = time.Now().Add(ai.walkDuration)
 	ai.lastMoveTime = time.Now()
-
-	log.Printf("Bot %s starts walking %s at position (%d, %d)",
-		ai.bot.Name, directionStr(ai.moveDirection), ai.bot.pos.x, ai.bot.pos.y)
 }
 
 // stopWalking makes the bot stop moving
@@ -114,9 +111,6 @@ func (ai *botAI) stopWalking() {
 	ai.moveDirection = 0
 	ai.shouldJump = false
 	ai.nextActionTime = time.Now().Add(ai.pauseDuration)
-
-	log.Printf("Bot %s stops walking at position (%d, %d)",
-		ai.bot.Name, ai.bot.pos.x, ai.bot.pos.y)
 }
 
 // PerformMovement executes movement and broadcasts to other players
@@ -153,25 +147,52 @@ func (ai *botAI) PerformMovement() {
 		stance = 2 // Walking right
 	}
 
-	// Check if we should jump
-	doJump := ai.shouldJump && now.After(ai.jumpCooldown)
-	if doJump {
-		ai.jumpCooldown = now.Add(time.Second * 2) // Jump cooldown
-	}
-
 	// Calculate new position with foothold
 	oldPos := ai.bot.pos
 	tempPos := newPos(newX, oldPos.y, oldPos.foothold)
 
 	// Get correct foothold for new position
+	var newPosition pos
 	if ai.bot.inst != nil {
-		newPos := ai.bot.inst.fhHist.getFinalPosition(tempPos)
-		ai.bot.pos = newPos
+		newPosition = ai.bot.inst.fhHist.getFinalPosition(tempPos)
+		
+		// Check if the foothold change is reasonable (not a huge drop)
+		// If Y difference is more than 150 pixels down, we're about to fall off a platform
+		yDiff := newPosition.y - oldPos.y
+		
+		if yDiff > 150 {
+			// We're walking off a platform edge!
+			// Try to jump to reach a new platform
+			if !ai.shouldJump && now.After(ai.jumpCooldown) {
+				// Force a jump to try to reach the next platform
+				ai.shouldJump = true
+				ai.jumpCooldown = now.Add(time.Second * 2)
+			} else {
+				// Can't jump (on cooldown or already jumping), reverse direction
+				ai.moveDirection = -ai.moveDirection
+				return // Don't move this frame
+			}
+		} else if yDiff < -100 {
+			// Moving to higher platform - need to jump
+			if !ai.shouldJump && now.After(ai.jumpCooldown) {
+				ai.shouldJump = true
+				ai.jumpCooldown = now.Add(time.Second * 2)
+			}
+		}
+		
+		ai.bot.pos = newPosition
 	} else {
 		ai.bot.pos = tempPos
 	}
 
 	ai.bot.stance = stance
+
+	// Check if we should jump (either forced above or random)
+	doJump := ai.shouldJump && now.After(ai.jumpCooldown)
+	if doJump {
+		ai.jumpCooldown = now.Add(time.Second * 2) // Jump cooldown
+		ai.shouldJump = false // Reset jump flag after executing
+	}
 
 	// Build movement packet
 	moveData := ai.buildMovementPacket(oldPos, ai.bot.pos, stance, doJump, int16(deltaTime))
