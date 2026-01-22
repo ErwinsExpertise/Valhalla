@@ -139,10 +139,12 @@ func (ai *botAI) PerformMovement() {
 		ai.moveDirection = -1 // Bounce off right wall
 	}
 
-	// Update stance (facing direction) - fix for left walking animation
+	// Update stance (facing direction)
+	// Even stances = facing right, Odd stances = facing left
+	// 0/1 = standing, 2/3 = walking
 	var stance byte
 	if ai.moveDirection < 0 {
-		stance = 4 // Walking left (not 5)
+		stance = 3 // Walking left
 	} else {
 		stance = 2 // Walking right
 	}
