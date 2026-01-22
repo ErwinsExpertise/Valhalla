@@ -204,9 +204,6 @@ func (ai *botAI) PerformMovement() {
 
 // applyPhysics applies MapleStory-style physics calculations
 func (ai *botAI) applyPhysics() {
-	ai.vacc = 0.0
-	ai.hacc = 0.0
-
 	// Reset acceleration
 	ai.hacc = 0.0
 	ai.vacc = 0.0
@@ -241,18 +238,24 @@ func (ai *botAI) applyPhysics() {
 			
 			ai.hacc -= (FRICTION + SLOPEFACTOR*(1.0+slopef*-inertia)) * inertia
 		}
+		
+		// Reset forces after applying (they were used this frame)
+		ai.hforce = 0.0
+		ai.vforce = 0.0
 	} else {
 		// In air physics - apply gravity
 		ai.vacc += GRAVFORCE
+		
+		// Also add any jump/air forces
+		ai.vacc += ai.vforce
+		
+		// Reset vertical force after applying
+		ai.vforce = 0.0
 	}
 
 	// Update speeds from acceleration
 	ai.hspeed += ai.hacc
 	ai.vspeed += ai.vacc
-	
-	// Reset forces for next frame
-	ai.hforce = 0.0
-	ai.vforce = 0.0
 }
 
 // updateFoothold updates the bot's foothold and checks if on ground
