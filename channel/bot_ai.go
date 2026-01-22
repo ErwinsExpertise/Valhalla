@@ -159,9 +159,11 @@ func (ai *botAI) PerformMovement() {
 	// Apply movement physics
 	ai.applyPhysics()
 
-	// Move the object
-	ai.bot.pos.x = int16(ai.bot.pos.x) + int16(ai.hspeed)
-	ai.bot.pos.y = int16(ai.bot.pos.y) + int16(ai.vspeed)
+	// Move the object - apply speed to position
+	newX := float64(ai.bot.pos.x) + ai.hspeed
+	newY := float64(ai.bot.pos.y) + ai.vspeed
+	ai.bot.pos.x = int16(newX)
+	ai.bot.pos.y = int16(newY)
 
 	// Check boundaries
 	if ai.bot.pos.x < ai.mapMinX {
