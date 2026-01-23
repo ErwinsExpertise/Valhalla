@@ -368,10 +368,16 @@ func (ai *botAI) move(dt float64) {
 			if isEdge && ai.onground && ai.canjump {
 				heightDiff := platformHeight - crntY
 				
-				// If platform is above us (climbing up), ALWAYS try to jump
-				// Increased limit to 500px to handle tall multi-level platforms
-				// Use abs() to handle negative values: -461 means 461px above
-				if heightDiff < 0 && abs(heightDiff) <= 500 { // Platform is up to 500 pixels higher
+				// Check if this is a small drop we can walk off safely
+				if heightDiff > 0 && heightDiff < 150 { // Platform is below (drop down)
+					// DON'T treat this as a collision - allow bot to walk off
+					// Just log once when we first detect it, then ignore collision
+					if abs(ai.x - wallOrEdge) > 5 { // Only log if we're not already right at edge
+						log.Printf("Bot %s approaching edge to drop down (heightDiff: %.1f)", ai.bot.Name, heightDiff)
+					}
+					// Don't stop, don't reverse - just continue walking off the edge
+					// Fall through to continue normal movement
+				} else if heightDiff < 0 && abs(heightDiff) <= 500 { // Platform is up to 500 pixels higher
 					// Stop at edge and jump
 					nextX = wallOrEdge
 					ai.hspeed = 0
@@ -383,12 +389,6 @@ func (ai *botAI) move(dt float64) {
 					log.Printf("Bot %s jumping up to platform (heightDiff: %.1f)", ai.bot.Name, heightDiff)
 					// Don't reverse direction - we're jumping forward
 					return // Exit early so we don't reverse direction
-				} else if heightDiff > 0 && heightDiff < 150 { // Platform is below (drop down)
-					// DON'T stop at edge - let bot walk off and fall naturally
-					// Don't set nextX or hspeed to 0, continue forward movement
-					log.Printf("Bot %s walking off edge to drop down (heightDiff: %.1f)", ai.bot.Name, heightDiff)
-					// Don't reverse direction, let gravity handle it
-					// Don't return - continue with movement to actually walk off
 				} else {
 					// Can't reach platform or too far down, stop and reverse direction
 					nextX = wallOrEdge
