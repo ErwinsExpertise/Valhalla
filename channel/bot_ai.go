@@ -300,29 +300,80 @@ func (ai *botAI) applyPhysics(dt float64) {
 }
 
 // move applies velocities to position (from PhysicsObject.move())
+// Implements wall and edge collision detection from FootholdTree.cpp
 func (ai *botAI) move(dt float64) {
-	// Update position based on velocities
-	ai.x += ai.hspeed
-	ai.y += ai.vspeed
+	// Store current position before movement
+	crntX := ai.x
+	crntY := ai.y
 	
-	// Clamp to map boundaries
-	if ai.x < float64(ai.mapMinX) {
-		ai.x = float64(ai.mapMinX)
-		ai.hspeed = 0
-		ai.facingLeft = false // Bounce - face right
-	} else if ai.x > float64(ai.mapMaxX) {
-		ai.x = float64(ai.mapMaxX)
-		ai.hspeed = 0
-		ai.facingLeft = true // Bounce - face left
+	// Calculate next position
+	nextX := ai.x + ai.hspeed
+	nextY := ai.y + ai.vspeed
+	
+	// === HORIZONTAL COLLISION DETECTION (from FootholdTree.cpp limit_movement) ===
+	if ai.hspeed != 0 {
+		// Check for walls and edges
+		movingLeft := ai.hspeed < 0
+		
+		// Get wall or edge position in movement direction
+		wallOrEdge := ai.getWallOrEdge(movingLeft, nextY)
+		
+		// Check if we'll collide with wall/edge
+		collision := false
+		if movingLeft {
+			collision = crntX >= wallOrEdge && nextX <= wallOrEdge
+		} else {
+			collision = crntX <= wallOrEdge && nextX >= wallOrEdge
+		}
+		
+		if collision {
+			// Stop at wall/edge
+			nextX = wallOrEdge
+			ai.hspeed = 0
+			// Reverse direction on collision
+			ai.facingLeft = !ai.facingLeft
+		}
 	}
 	
-	if ai.y < float64(ai.mapMinY) {
-		ai.y = float64(ai.mapMinY)
+	// === VERTICAL COLLISION DETECTION (from FootholdTree.cpp limit_movement) ===
+	if ai.vspeed != 0 && ai.vspeed > 0 { // Only check when falling (vspeed > 0)
+		// Check ground collision at current and next X positions
+		// This handles landing on sloped platforms correctly
+		groundAtCrnt := ai.getGroundBelow(crntX)
+		groundAtNext := ai.getGroundBelow(nextX)
+		
+		// Check if we're crossing through the ground
+		collision := crntY <= groundAtCrnt && nextY >= groundAtNext
+		
+		if collision {
+			// Land on ground
+			nextY = groundAtNext
+			ai.vspeed = 0
+		}
+	}
+	
+	// Clamp to absolute map boundaries as final safety
+	if nextX < float64(ai.mapMinX) {
+		nextX = float64(ai.mapMinX)
+		ai.hspeed = 0
+		ai.facingLeft = false
+	} else if nextX > float64(ai.mapMaxX) {
+		nextX = float64(ai.mapMaxX)
+		ai.hspeed = 0
+		ai.facingLeft = true
+	}
+	
+	if nextY < float64(ai.mapMinY) {
+		nextY = float64(ai.mapMinY)
 		ai.vspeed = 0
-	} else if ai.y > float64(ai.mapMaxY) {
-		ai.y = float64(ai.mapMaxY)
+	} else if nextY > float64(ai.mapMaxY) {
+		nextY = float64(ai.mapMaxY)
 		ai.vspeed = 0
 	}
+	
+	// Apply movement
+	ai.x = nextX
+	ai.y = nextY
 }
 
 func abs(x float64) float64 {
@@ -330,6 +381,71 @@ func abs(x float64) float64 {
 		return -x
 	}
 	return x
+}
+
+// getWallOrEdge returns the wall or edge position in the given direction
+// Implements FootholdTree.cpp get_wall() and get_edge() logic
+func (ai *botAI) getWallOrEdge(left bool, nextY float64) float64 {
+	if ai.bot.inst == nil || ai.fhid == 0 {
+		// No foothold data, use map boundaries
+		if left {
+			return float64(ai.mapMinX)
+		}
+		return float64(ai.mapMaxX)
+	}
+	
+	// Try to detect walls by checking adjacent footholds
+	// In the real client, this checks if adjacent footholds are walls (vertical)
+	// For now, we'll do edge detection by trying to get ground at a test position
+	
+	if left {
+		// Check left - try to move left and see if we can find ground
+		testX := ai.x - 50 // Test 50 pixels to the left
+		testPos := newPos(int16(testX), int16(nextY), 0)
+		groundPos := ai.bot.inst.fhHist.getFinalPosition(testPos)
+		
+		// If no ground found or ground is way below, treat as edge
+		if groundPos.foothold == 0 || abs(float64(groundPos.y)-nextY) > 100 {
+			// Edge detected - return current foothold left boundary
+			return ai.x // Stop at current position
+		}
+		
+		// Otherwise return map boundary
+		return float64(ai.mapMinX)
+	} else {
+		// Check right - try to move right and see if we can find ground
+		testX := ai.x + 50 // Test 50 pixels to the right
+		testPos := newPos(int16(testX), int16(nextY), 0)
+		groundPos := ai.bot.inst.fhHist.getFinalPosition(testPos)
+		
+		// If no ground found or ground is way below, treat as edge
+		if groundPos.foothold == 0 || abs(float64(groundPos.y)-nextY) > 100 {
+			// Edge detected - return current position
+			return ai.x // Stop at current position
+		}
+		
+		// Otherwise return map boundary
+		return float64(ai.mapMaxX)
+	}
+}
+
+// getGroundBelow returns the Y coordinate of the ground below the given X position
+// Implements FootholdTree.cpp get_fhid_below() and Foothold.cpp ground_below() logic
+func (ai *botAI) getGroundBelow(x float64) float64 {
+	if ai.bot.inst == nil {
+		return float64(ai.mapMaxY)
+	}
+	
+	// Use the foothold system to find ground
+	testPos := newPos(int16(x), int16(ai.y), 0)
+	groundPos := ai.bot.inst.fhHist.getFinalPosition(testPos)
+	
+	if groundPos.foothold == 0 {
+		// No foothold found - return map bottom
+		return float64(ai.mapMaxY)
+	}
+	
+	return float64(groundPos.y)
 }
 
 // updateFoothold updates the bot's foothold and ground state (from FootholdTree.cpp update_fh)
