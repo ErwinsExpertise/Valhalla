@@ -181,12 +181,12 @@ func (ai *botAI) tryJump() {
 // Physics constants from MapleStory client (from Physics.cpp)
 // Note: Speeds are tuned for 10 FPS server update rate
 const (
-	GRAVFORCE      = 0.35  // Gravity acceleration per frame
+	GRAVFORCE      = 1.2   // Gravity acceleration per frame (increased for more immediate falls)
 	FRICTION       = 0.3   // Ground friction
 	WALKFORCE      = 1.5   // Walking acceleration (increased for more responsive movement)
 	WALKSPEED      = 10.0  // Maximum walk speed (increased for visible movement at 10 FPS)
-	JUMPFORCE      = -5.5  // Initial jump force (negative = upward)
-	MAXVERTSPEED   = 8.0   // Terminal velocity (max fall speed)
+	JUMPFORCE      = -8.0  // Initial jump force (negative = upward, increased for higher jumps)
+	MAXVERTSPEED   = 12.0  // Terminal velocity (max fall speed, increased for stronger gravity)
 	GROUNDTHRESHOLD = 5.0  // Distance tolerance for ground detection (pixels)
 )
 
@@ -365,7 +365,8 @@ func (ai *botAI) move(dt float64) {
 				heightDiff := platformHeight - crntY
 				
 				// If platform is above us (climbing up), ALWAYS try to jump
-				if heightDiff < 0 && heightDiff > -80 { // Platform is up to 80 pixels higher
+				// Increased limit to 300px to handle most platform heights
+				if heightDiff < 0 && heightDiff > -300 { // Platform is up to 300 pixels higher
 					// Jump to try to reach the platform
 					ai.vspeed = JUMPFORCE
 					ai.canjump = false
@@ -373,7 +374,7 @@ func (ai *botAI) move(dt float64) {
 					log.Printf("Bot %s jumping up to platform (heightDiff: %.1f)", ai.bot.Name, heightDiff)
 					// Don't reverse direction - we're jumping forward
 					return // Exit early so we don't reverse direction
-				} else if heightDiff > 0 && heightDiff < 100 { // Platform is slightly below (drop down)
+				} else if heightDiff > 0 && heightDiff < 150 { // Platform is below (drop down)
 					// Just walk off and fall naturally
 					log.Printf("Bot %s walking off edge to drop down (heightDiff: %.1f)", ai.bot.Name, heightDiff)
 					// Don't reverse direction, let gravity handle it

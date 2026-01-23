@@ -1816,10 +1816,13 @@ func (server *Server) gmCommand(conn mnet.Client, msg string) {
 		}
 		server.nextBotID-- // Decrement for next bot
 
-		// Set bot position to GM's position, but recalculate foothold
-		gmPos := newPos(plr.pos.x, plr.pos.y, 0)
-		bot.pos = plr.inst.fhHist.getFinalPosition(gmPos)
+		// Set bot position to GM's exact position (including foothold)
+		// This ensures bot spawns exactly where the GM is standing
+		bot.pos = newPos(plr.pos.x, plr.pos.y, plr.pos.foothold)
 		bot.rates = &server.rates
+
+		log.Printf("Bot '%s' (ID:%d) spawned by GM %s at map %d position (%d, %d, foothold %d)", 
+			bot.Name, bot.ID, plr.Name, plr.mapID, bot.pos.x, bot.pos.y, bot.pos.foothold)
 
 		// Add bot to players collection
 		server.players.Add(bot)
@@ -1843,8 +1846,6 @@ func (server *Server) gmCommand(conn mnet.Client, msg string) {
 		server.bots = append(server.bots, bot)
 
 		conn.Send(packetMessageRedText(fmt.Sprintf("Spawned bot '%s' (ID:%d) at your position", botName, bot.ID)))
-		log.Printf("Bot '%s' (ID:%d) spawned by GM %s at map %d position (%d, %d)", 
-			botName, bot.ID, plr.Name, plr.mapID, bot.pos.x, bot.pos.y)
 
 	default:
 		conn.Send(packetMessageRedText("Unknown gm command " + command[0]))
