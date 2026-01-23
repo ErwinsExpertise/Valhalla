@@ -16,3 +16,4 @@ maxPop = 250
 # The following should be set to zero when not testing on a local network environment
 latency = 0
 jitter = 0
+enableBots = false

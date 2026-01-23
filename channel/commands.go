@@ -1786,6 +1786,76 @@ func (server *Server) gmCommand(conn mnet.Client, msg string) {
 			}
 		}
 
+	case "spawnbot":
+		// GM command to spawn a bot at the GM's position
+		if !server.enableBots {
+			conn.Send(packetMessageRedText("Bots are not enabled in this channel. Set enableBots = true in config."))
+			return
+		}
+
+		plr, err := server.players.GetFromConn(conn)
+		if err != nil {
+			conn.Send(packetMessageRedText("Could not find your player"))
+			return
+		}
+
+		// Get bot name from command or use default
+		botName := "Bot"
+		if len(command) > 1 {
+			botName = command[1]
+		}
+
+		// Spawn bot at GM's current position
+		log.Printf("GM %s spawning bot '%s' at map %d", plr.Name, botName, plr.mapID)
+		
+		// Create bot with next available negative ID
+		bot, err := newBotPlayer(server.nextBotID, botName, plr.mapID, 0, server.id, &plr.inst.fhHist)
+		if err != nil {
+			conn.Send(packetMessageRedText(fmt.Sprintf("Failed to create bot: %v", err)))
+			return
+		}
+		server.nextBotID-- // Decrement for next bot
+
+		// Set bot position to GM's exact position (including foothold)
+		// This ensures bot spawns exactly where the GM is standing
+		bot.pos = newPos(plr.pos.x, plr.pos.y, plr.pos.foothold)
+		
+		// CRITICAL: Also update botAI's internal position to match
+		// Otherwise botAI still has the old portal position from initialization
+		if bot.botAI != nil {
+			bot.botAI.x = float64(plr.pos.x)
+			bot.botAI.y = float64(plr.pos.y)
+			bot.botAI.fhid = plr.pos.foothold
+		}
+		
+		bot.rates = &server.rates
+
+		log.Printf("Bot '%s' (ID:%d) spawned by GM %s at map %d position (%d, %d, foothold %d)", 
+			bot.Name, bot.ID, plr.Name, plr.mapID, bot.pos.x, bot.pos.y, bot.pos.foothold)
+
+		// Add bot to players collection
+		server.players.Add(bot)
+
+		// Add bot to field instance
+		if err := plr.inst.addPlayer(bot); err != nil {
+			conn.Send(packetMessageRedText(fmt.Sprintf("Failed to add bot to field: %v", err)))
+			return
+		}
+
+		// Enable bot movement with map boundaries
+		if bot.botAI != nil {
+			field, ok := server.fields[plr.mapID]
+			if ok {
+				bot.botAI.EnableMovement(int16(field.vrLimit.Left), int16(field.vrLimit.Right), 
+					int16(field.vrLimit.Top), int16(field.vrLimit.Bottom))
+			}
+		}
+
+		// Track bot for cleanup
+		server.bots = append(server.bots, bot)
+
+		conn.Send(packetMessageRedText(fmt.Sprintf("Spawned bot '%s' (ID:%d) at your position", botName, bot.ID)))
+
 	default:
 		conn.Send(packetMessageRedText("Unknown gm command " + command[0]))
 	}

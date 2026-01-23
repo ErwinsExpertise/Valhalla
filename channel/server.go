@@ -2,6 +2,7 @@ package channel
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"strconv"
 	"time"
@@ -48,6 +49,13 @@ type Server struct {
 	events           map[int32]*event
 	rates            rates
 	ac               *anticheat.AntiCheat
+	
+	// Bot support
+	enableBots       bool
+	bots             []*Player
+	nextBotID        int32
+	botMovementTimer *time.Ticker
+	stopBotMovement  chan bool
 }
 
 // Initialise the server
@@ -433,3 +441,134 @@ func (server *Server) updateNPCInteractionMetric(delta int) {
 		"world":   server.worldName,
 	}).Add(float64(delta))
 }
+
+// Bot management functions
+
+// SetEnableBots sets the bot configuration flag
+func (server *Server) SetEnableBots(enable bool) {
+	server.enableBots = enable
+	server.nextBotID = -1 // Bot IDs start at -1 and go negative
+	server.bots = []*Player{}
+
+	if enable {
+		// Start bot movement ticker (100ms = 10 updates/second)
+		server.botMovementTimer = time.NewTicker(100 * time.Millisecond)
+		server.stopBotMovement = make(chan bool)
+
+		go server.runBotMovementLoop()
+		log.Println("Bot movement system started")
+	}
+}
+
+// runBotMovementLoop handles periodic bot AI updates
+func (server *Server) runBotMovementLoop() {
+	for {
+		select {
+		case <-server.botMovementTimer.C:
+			// Update all bots
+			for _, bot := range server.bots {
+				if bot.botAI != nil {
+					bot.botAI.Update()
+					bot.botAI.PerformMovement()
+				}
+			}
+		case <-server.stopBotMovement:
+			return
+		}
+	}
+}
+
+// SpawnBot creates and spawns a bot player into a specific map.
+// Returns error if bots are disabled or bot creation fails.
+func (server *Server) SpawnBot(name string, mapID int32, portalID byte) error {
+	if !server.enableBots {
+		return fmt.Errorf("bots are disabled in channel configuration")
+	}
+
+	// Get field instance first to access foothold histogram
+	field, ok := server.fields[mapID]
+	if !ok {
+		return fmt.Errorf("map %d not found", mapID)
+	}
+
+	// Create bot with next available negative ID, passing foothold histogram
+	bot, err := newBotPlayer(server.nextBotID, name, mapID, portalID, server.id, &field.fhHist)
+	if err != nil {
+		return fmt.Errorf("failed to create bot: %w", err)
+	}
+	server.nextBotID-- // Decrement for next bot
+
+	// Set bot rates
+	bot.rates = &server.rates
+
+	// Add bot to players collection
+	server.players.Add(bot)
+
+	inst, err := field.getInstance(0)
+	if err != nil {
+		return fmt.Errorf("failed to get field instance: %w", err)
+	}
+
+	// Add bot to field instance (this makes it visible to other players)
+	if err := inst.addPlayer(bot); err != nil {
+		return fmt.Errorf("failed to add bot to field: %w", err)
+	}
+
+	// Enable bot movement (Phase 2) with map boundaries
+	if bot.botAI != nil {
+		bot.botAI.EnableMovement(int16(field.vrLimit.Left), int16(field.vrLimit.Right), int16(field.vrLimit.Top), int16(field.vrLimit.Bottom))
+	}
+
+	// Track bot for cleanup
+	server.bots = append(server.bots, bot)
+
+	log.Printf("Bot '%s' (ID:%d) spawned in map %d at position (%d, %d) foothold %d",
+		name, bot.ID, mapID, bot.pos.x, bot.pos.y, bot.pos.foothold)
+	return nil
+}
+
+// RemoveAllBots removes all active bots from the server.
+// Called during channel shutdown.
+func (server *Server) RemoveAllBots() {
+	if !server.enableBots || len(server.bots) == 0 {
+		return
+	}
+
+	log.Printf("Removing %d bot(s) from channel", len(server.bots))
+
+	// Stop movement loop
+	if server.botMovementTimer != nil {
+		server.botMovementTimer.Stop()
+		close(server.stopBotMovement)
+		log.Println("Bot movement system stopped")
+	}
+
+	for _, bot := range server.bots {
+		if bot.inst != nil {
+			bot.inst.removePlayer(bot, false)
+		}
+		server.players.RemoveFromConn(bot.Conn)
+	}
+
+	server.bots = []*Player{}
+	log.Println("All bots removed")
+}
+
+// InitializeBots spawns initial bots if enabled.
+// Called after server initialization is complete.
+func (server *Server) InitializeBots() {
+	if !server.enableBots {
+		log.Println("Bots are disabled")
+		return
+	}
+
+	log.Println("Bots are enabled - spawning initial bots")
+
+	// Spawn a single test bot in Henesys for Phase 1
+	// Map 100000000 is Henesys
+	const henesysMapID = 100000000
+	if err := server.SpawnBot("TestBot", henesysMapID, 0); err != nil {
+		log.Printf("Failed to spawn test bot: %v", err)
+	}
+}
+
