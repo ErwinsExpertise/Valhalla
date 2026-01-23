@@ -27,6 +27,7 @@ type botAI struct {
 	nextActionTime  time.Time
 	walkDuration    time.Duration
 	pauseDuration   time.Duration
+	randomSeed      int64 // Per-bot random seed for unique behavior
 
 	// Player state (from MapleStory client)
 	state         PlayerState
@@ -51,16 +52,24 @@ type botAI struct {
 
 // newBotAI creates a new AI controller for a bot
 func newBotAI(bot *Player) *botAI {
+	// Create a unique random seed for this bot based on spawn time and character ID
+	randomSeed := time.Now().UnixNano() + int64(bot.ID)
+	
+	// Use the bot's existing RNG to generate unique durations
+	walkDur := time.Second * time.Duration(2+bot.rng.Intn(4))  // 2-5 seconds
+	pauseDur := time.Second * time.Duration(1+bot.rng.Intn(3)) // 1-3 seconds
+	
 	return &botAI{
 		bot:             bot,
 		movementEnabled: false,
-		walkDuration:    time.Second * 3,
-		pauseDuration:   time.Second * 2,
-		nextActionTime:  time.Now().Add(time.Second * 2),
+		walkDuration:    walkDur,
+		pauseDuration:   pauseDur,
+		nextActionTime:  time.Now().Add(pauseDur),
+		randomSeed:      randomSeed,
 		
 		// Initialize physics state
 		state:    StateStanding,
-		facingLeft: false,
+		facingLeft: bot.rng.Intn(2) == 0, // Random initial facing
 		hspeed:   0,
 		vspeed:   0,
 		x:        float64(bot.pos.x),
@@ -122,25 +131,30 @@ func (ai *botAI) startWalking() {
 	} else if ai.bot.pos.x >= ai.mapMaxX-100 {
 		ai.facingLeft = true // Force left if near right edge
 	} else {
-		// Random direction
+		// Random direction (each bot has unique pattern due to different RNG states)
 		ai.facingLeft = ai.bot.rng.Intn(2) == 0
 	}
 
 	ai.state = StateWalking
 	
-	// Random chance to jump while walking
-	if ai.bot.rng.Intn(3) == 0 { // 33% chance
+	// Random chance to jump while walking (varied per bot)
+	jumpChance := ai.bot.rng.Intn(4) // 25% chance (0-3, jump if 0)
+	if jumpChance == 0 {
 		ai.tryJump()
 	}
 
-	ai.nextActionTime = time.Now().Add(ai.walkDuration)
+	// Vary the walk duration slightly for each walk
+	variation := time.Millisecond * time.Duration(ai.bot.rng.Intn(1000))
+	ai.nextActionTime = time.Now().Add(ai.walkDuration + variation)
 	ai.lastMoveTime = time.Now()
 }
 
 // stopWalking makes the bot stop moving
 func (ai *botAI) stopWalking() {
 	ai.state = StateStanding
-	ai.nextActionTime = time.Now().Add(ai.pauseDuration)
+	// Vary the pause duration slightly for each stop
+	variation := time.Millisecond * time.Duration(ai.bot.rng.Intn(1000))
+	ai.nextActionTime = time.Now().Add(ai.pauseDuration + variation)
 }
 
 // tryJump attempts to make the bot jump
@@ -153,11 +167,12 @@ func (ai *botAI) tryJump() {
 }
 
 // Physics constants from MapleStory client (from Physics.cpp)
+// Note: Speeds are tuned for 10 FPS server update rate
 const (
 	GRAVFORCE      = 0.35  // Gravity acceleration per frame
 	FRICTION       = 0.3   // Ground friction
-	WALKFORCE      = 0.7   // Walking acceleration
-	WALKSPEED      = 1.5   // Maximum walk speed
+	WALKFORCE      = 1.5   // Walking acceleration (increased for more responsive movement)
+	WALKSPEED      = 10.0  // Maximum walk speed (increased for visible movement at 10 FPS)
 	JUMPFORCE      = -5.5  // Initial jump force (negative = upward)
 	MAXVERTSPEED   = 8.0   // Terminal velocity (max fall speed)
 	GROUNDTHRESHOLD = 5.0  // Distance tolerance for ground detection (pixels)
