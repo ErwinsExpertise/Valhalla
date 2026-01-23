@@ -364,17 +364,18 @@ func (ai *botAI) move(dt float64) {
 		}
 		
 		if collision {
-			// Stop at wall/edge
-			nextX = wallOrEdge
-			ai.hspeed = 0
-			
 			// If it's an edge (not a wall), intelligently decide what to do
 			if isEdge && ai.onground && ai.canjump {
 				heightDiff := platformHeight - crntY
 				
 				// If platform is above us (climbing up), ALWAYS try to jump
 				// Increased limit to 500px to handle tall multi-level platforms
-				if heightDiff < 0 && heightDiff > -500 { // Platform is up to 500 pixels higher
+				// Use abs() to handle negative values: -461 means 461px above
+				if heightDiff < 0 && abs(heightDiff) <= 500 { // Platform is up to 500 pixels higher
+					// Stop at edge and jump
+					nextX = wallOrEdge
+					ai.hspeed = 0
+					
 					// Jump to try to reach the platform
 					ai.vspeed = JUMPFORCE
 					ai.canjump = false
@@ -383,12 +384,16 @@ func (ai *botAI) move(dt float64) {
 					// Don't reverse direction - we're jumping forward
 					return // Exit early so we don't reverse direction
 				} else if heightDiff > 0 && heightDiff < 150 { // Platform is below (drop down)
-					// Just walk off and fall naturally
+					// DON'T stop at edge - let bot walk off and fall naturally
+					// Don't set nextX or hspeed to 0, continue forward movement
 					log.Printf("Bot %s walking off edge to drop down (heightDiff: %.1f)", ai.bot.Name, heightDiff)
 					// Don't reverse direction, let gravity handle it
-					return // Exit early so we don't reverse direction
+					// Don't return - continue with movement to actually walk off
 				} else {
-					// Can't reach platform or too far down, reverse direction
+					// Can't reach platform or too far down, stop and reverse direction
+					nextX = wallOrEdge
+					ai.hspeed = 0
+					
 					log.Printf("Bot %s reversing at unreachable platform (heightDiff: %.1f)", ai.bot.Name, heightDiff)
 					ai.facingLeft = !ai.facingLeft
 					// Stop walking state to prevent walking in place
@@ -397,7 +402,10 @@ func (ai *botAI) move(dt float64) {
 					}
 				}
 			} else {
-				// It's a wall or can't jump, reverse direction
+				// It's a wall or can't jump, stop and reverse direction
+				nextX = wallOrEdge
+				ai.hspeed = 0
+				
 				log.Printf("Bot %s reversing at wall (isEdge: %v, onground: %v, canjump: %v)", 
 					ai.bot.Name, isEdge, ai.onground, ai.canjump)
 				ai.facingLeft = !ai.facingLeft
@@ -508,7 +516,8 @@ func (ai *botAI) getWallOrEdge(left bool, nextY float64) wallOrEdgeInfo {
 		
 		// For climbs (platform above), detect edges up to 500px to match jump height
 		// For drops (platform below), only detect small drops up to 200px
-		if heightDiff < 0 && heightDiff < -500 {
+		// Use abs() for consistent height comparison
+		if heightDiff < 0 && abs(heightDiff) > 500 {
 			// Platform is MORE than 500px above - too high to jump, treat as wall
 			return wallOrEdgeInfo{
 				position:       ai.x,
@@ -558,7 +567,8 @@ func (ai *botAI) getWallOrEdge(left bool, nextY float64) wallOrEdgeInfo {
 		
 		// For climbs (platform above), detect edges up to 500px to match jump height
 		// For drops (platform below), only detect small drops up to 200px
-		if heightDiff < 0 && heightDiff < -500 {
+		// Use abs() for consistent height comparison
+		if heightDiff < 0 && abs(heightDiff) > 500 {
 			// Platform is MORE than 500px above - too high to jump, treat as wall
 			return wallOrEdgeInfo{
 				position:       ai.x,
