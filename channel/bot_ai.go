@@ -124,16 +124,26 @@ func (ai *botAI) Update() {
 
 // startWalking makes the bot start walking in a random direction
 func (ai *botAI) startWalking() {
-	// Choose random direction based on position
+	// Choose TRULY RANDOM direction with UNIQUE per-bot bias
+	// This prevents all bots from walking the same way
+	// Each bot has a persistent direction preference based on their random seed
+	directionRoll := ai.bot.rng.Intn(100) // 0-99
+	
+	// Use bot's randomSeed to create unique preference (some bots prefer left, some right)
+	preferenceThreshold := int((ai.randomSeed % 60) + 20) // 20-79 unique per bot
+	
+	// Near edges, add small bias but don't force
 	if ai.bot.pos.x <= ai.mapMinX+100 {
-		ai.facingLeft = false // Force right if near left edge
+		preferenceThreshold -= 15 // Slightly prefer right
 	} else if ai.bot.pos.x >= ai.mapMaxX-100 {
-		ai.facingLeft = true // Force left if near right edge
+		preferenceThreshold += 15 // Slightly prefer left
+	}
+	
+	// Decide direction based on preference
+	if directionRoll < preferenceThreshold {
+		ai.facingLeft = true
 	} else {
-		// Random direction with VARIED probability per bot
-		// Some bots prefer one direction more than the other
-		dirBias := ai.bot.rng.Intn(10) // 0-9
-		ai.facingLeft = dirBias < 5 // Each bot gets different distribution
+		ai.facingLeft = false
 	}
 
 	ai.state = StateWalking
@@ -286,17 +296,11 @@ func (ai *botAI) applyPhysics(dt float64) {
 	} else {
 		// === IN AIR PHYSICS ===
 		
-		// Apply gravity
+		// Apply gravity - NO horizontal air resistance for straight drops
 		vacc += GRAVFORCE
 		
-		// Minimal air resistance on horizontal movement
-		if ai.hspeed != 0 {
-			if ai.hspeed > 0 {
-				hacc -= FRICTION * 0.1 // Less friction in air
-			} else {
-				hacc += FRICTION * 0.1
-			}
-		}
+		// No air resistance on horizontal movement - let it maintain momentum
+		// This prevents the "sliding down hill" appearance
 	}
 	
 	// Update velocities
@@ -356,22 +360,27 @@ func (ai *botAI) move(dt float64) {
 			nextX = wallOrEdge
 			ai.hspeed = 0
 			
-			// If it's an edge (not a wall), try to jump onto the platform
+			// If it's an edge (not a wall), intelligently decide what to do
 			if isEdge && ai.onground && ai.canjump {
 				heightDiff := platformHeight - crntY
 				
-				// If platform is above us (climbing up), try to jump - reduced from 150px to 80px
-				if heightDiff < 0 && heightDiff > -80 { // Platform is up to 80 pixels higher (more reasonable jump height)
+				// If platform is above us (climbing up), ALWAYS try to jump
+				if heightDiff < 0 && heightDiff > -80 { // Platform is up to 80 pixels higher
 					// Jump to try to reach the platform
 					ai.vspeed = JUMPFORCE
 					ai.canjump = false
 					ai.state = StateJumping
+					log.Printf("Bot %s jumping up to platform (heightDiff: %.1f)", ai.bot.Name, heightDiff)
 					// Don't reverse direction - we're jumping forward
+					return // Exit early so we don't reverse direction
 				} else if heightDiff > 0 && heightDiff < 100 { // Platform is slightly below (drop down)
 					// Just walk off and fall naturally
+					log.Printf("Bot %s walking off edge to drop down (heightDiff: %.1f)", ai.bot.Name, heightDiff)
 					// Don't reverse direction, let gravity handle it
+					return // Exit early so we don't reverse direction
 				} else {
 					// Can't reach platform or too far down, reverse direction
+					log.Printf("Bot %s reversing at unreachable platform (heightDiff: %.1f)", ai.bot.Name, heightDiff)
 					ai.facingLeft = !ai.facingLeft
 					// Stop walking state to prevent walking in place
 					if ai.state == StateWalking {
@@ -380,6 +389,8 @@ func (ai *botAI) move(dt float64) {
 				}
 			} else {
 				// It's a wall or can't jump, reverse direction
+				log.Printf("Bot %s reversing at wall (isEdge: %v, onground: %v, canjump: %v)", 
+					ai.bot.Name, isEdge, ai.onground, ai.canjump)
 				ai.facingLeft = !ai.facingLeft
 				// Stop walking state to prevent walking in place
 				if ai.state == StateWalking {
