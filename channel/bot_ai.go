@@ -55,9 +55,10 @@ func newBotAI(bot *Player) *botAI {
 	// Create a unique random seed for this bot based on spawn time and character ID
 	randomSeed := time.Now().UnixNano() + int64(bot.ID)
 	
-	// Use the bot's existing RNG to generate unique durations
-	walkDur := time.Second * time.Duration(2+bot.rng.Intn(4))  // 2-5 seconds
-	pauseDur := time.Second * time.Duration(1+bot.rng.Intn(3)) // 1-3 seconds
+	// Use the bot's existing RNG to generate HIGHLY VARIED durations per bot
+	// Wide range ensures each bot has distinctly different timing
+	walkDur := time.Second * time.Duration(1+bot.rng.Intn(8))   // 1-8 seconds (8x variance)
+	pauseDur := time.Second * time.Duration(1+bot.rng.Intn(6))  // 1-6 seconds (6x variance)
 	
 	return &botAI{
 		bot:             bot,
@@ -131,20 +132,23 @@ func (ai *botAI) startWalking() {
 	} else if ai.bot.pos.x >= ai.mapMaxX-100 {
 		ai.facingLeft = true // Force left if near right edge
 	} else {
-		// Random direction (each bot has unique pattern due to different RNG states)
-		ai.facingLeft = ai.bot.rng.Intn(2) == 0
+		// Random direction with VARIED probability per bot
+		// Some bots prefer one direction more than the other
+		dirBias := ai.bot.rng.Intn(10) // 0-9
+		ai.facingLeft = dirBias < 5 // Each bot gets different distribution
 	}
 
 	ai.state = StateWalking
 	
-	// Random chance to jump while walking (varied per bot)
-	jumpChance := ai.bot.rng.Intn(4) // 25% chance (0-3, jump if 0)
-	if jumpChance == 0 {
+	// HIGHLY VARIED jump chance per bot (10-50% range)
+	jumpChance := ai.bot.rng.Intn(10) // 0-9
+	jumpThreshold := 2 + ai.bot.rng.Intn(3) // Each bot has threshold of 2-4 (20-40% chance)
+	if jumpChance < jumpThreshold {
 		ai.tryJump()
 	}
 
-	// Vary the walk duration slightly for each walk
-	variation := time.Millisecond * time.Duration(ai.bot.rng.Intn(1000))
+	// LARGE variation in walk duration for each walk cycle
+	variation := time.Millisecond * time.Duration(ai.bot.rng.Intn(3000)) // +/- up to 3 seconds
 	ai.nextActionTime = time.Now().Add(ai.walkDuration + variation)
 	ai.lastMoveTime = time.Now()
 }
@@ -152,8 +156,8 @@ func (ai *botAI) startWalking() {
 // stopWalking makes the bot stop moving
 func (ai *botAI) stopWalking() {
 	ai.state = StateStanding
-	// Vary the pause duration slightly for each stop
-	variation := time.Millisecond * time.Duration(ai.bot.rng.Intn(1000))
+	// LARGE variation in pause duration for each stop
+	variation := time.Millisecond * time.Duration(ai.bot.rng.Intn(2000)) // +/- up to 2 seconds
 	ai.nextActionTime = time.Now().Add(ai.pauseDuration + variation)
 }
 
@@ -316,7 +320,10 @@ func (ai *botAI) move(dt float64) {
 		movingLeft := ai.hspeed < 0
 		
 		// Get wall or edge position in movement direction
-		wallOrEdge := ai.getWallOrEdge(movingLeft, nextY)
+		wallOrEdgeInfo := ai.getWallOrEdge(movingLeft, nextY)
+		wallOrEdge := wallOrEdgeInfo.position
+		isEdge := wallOrEdgeInfo.isEdge
+		platformHeight := wallOrEdgeInfo.platformHeight
 		
 		// Check if we'll collide with wall/edge
 		collision := false
@@ -330,8 +337,28 @@ func (ai *botAI) move(dt float64) {
 			// Stop at wall/edge
 			nextX = wallOrEdge
 			ai.hspeed = 0
-			// Reverse direction on collision
-			ai.facingLeft = !ai.facingLeft
+			
+			// If it's an edge (not a wall), try to jump onto the platform
+			if isEdge && ai.onground && ai.canjump {
+				heightDiff := platformHeight - crntY
+				
+				// If platform is above us (climbing up) or slightly below (small drop), try to jump
+				if heightDiff < 0 && heightDiff > -150 { // Platform is up to 150 pixels higher
+					// Jump to try to reach the platform
+					ai.vspeed = JUMPFORCE
+					ai.canjump = false
+					ai.state = StateJumping
+				} else if heightDiff > 0 && heightDiff < 100 { // Platform is slightly below (drop down)
+					// Just walk off and fall naturally
+					// Don't reverse direction
+				} else {
+					// Can't reach platform or too far down, reverse direction
+					ai.facingLeft = !ai.facingLeft
+				}
+			} else {
+				// It's a wall or can't jump, reverse direction
+				ai.facingLeft = !ai.facingLeft
+			}
 		}
 	}
 	
@@ -383,15 +410,30 @@ func abs(x float64) float64 {
 	return x
 }
 
+// wallOrEdgeInfo contains collision detection information
+type wallOrEdgeInfo struct {
+	position       float64 // X position of the wall/edge
+	isEdge         bool    // true if it's an edge (can jump), false if it's a wall
+	platformHeight float64 // Y position of the platform (if it's an edge)
+}
+
 // getWallOrEdge returns the wall or edge position in the given direction
 // Implements FootholdTree.cpp get_wall() and get_edge() logic
-func (ai *botAI) getWallOrEdge(left bool, nextY float64) float64 {
+func (ai *botAI) getWallOrEdge(left bool, nextY float64) wallOrEdgeInfo {
 	if ai.bot.inst == nil || ai.fhid == 0 {
-		// No foothold data, use map boundaries
+		// No foothold data, use map boundaries (treat as wall)
 		if left {
-			return float64(ai.mapMinX)
+			return wallOrEdgeInfo{
+				position: float64(ai.mapMinX),
+				isEdge:   false,
+				platformHeight: nextY,
+			}
 		}
-		return float64(ai.mapMaxX)
+		return wallOrEdgeInfo{
+			position: float64(ai.mapMaxX),
+			isEdge:   false,
+			platformHeight: nextY,
+		}
 	}
 	
 	// Try to detect walls by checking adjacent footholds
@@ -405,13 +447,31 @@ func (ai *botAI) getWallOrEdge(left bool, nextY float64) float64 {
 		groundPos := ai.bot.inst.fhHist.getFinalPosition(testPos)
 		
 		// If no ground found or ground is way below, treat as edge
-		if groundPos.foothold == 0 || abs(float64(groundPos.y)-nextY) > 100 {
-			// Edge detected - return current foothold left boundary
-			return ai.x // Stop at current position
+		if groundPos.foothold == 0 {
+			// No ground - it's an edge (or wall)
+			return wallOrEdgeInfo{
+				position:       ai.x,
+				isEdge:         true,
+				platformHeight: float64(ai.mapMaxY), // Unknown platform
+			}
 		}
 		
-		// Otherwise return map boundary
-		return float64(ai.mapMinX)
+		yDiff := abs(float64(groundPos.y) - nextY)
+		if yDiff > 100 {
+			// Ground is far away - treat as edge
+			return wallOrEdgeInfo{
+				position:       ai.x,
+				isEdge:         true,
+				platformHeight: float64(groundPos.y),
+			}
+		}
+		
+		// Ground is close - can continue walking
+		return wallOrEdgeInfo{
+			position:       float64(ai.mapMinX),
+			isEdge:         false,
+			platformHeight: float64(groundPos.y),
+		}
 	} else {
 		// Check right - try to move right and see if we can find ground
 		testX := ai.x + 50 // Test 50 pixels to the right
@@ -419,13 +479,31 @@ func (ai *botAI) getWallOrEdge(left bool, nextY float64) float64 {
 		groundPos := ai.bot.inst.fhHist.getFinalPosition(testPos)
 		
 		// If no ground found or ground is way below, treat as edge
-		if groundPos.foothold == 0 || abs(float64(groundPos.y)-nextY) > 100 {
-			// Edge detected - return current position
-			return ai.x // Stop at current position
+		if groundPos.foothold == 0 {
+			// No ground - it's an edge (or wall)
+			return wallOrEdgeInfo{
+				position:       ai.x,
+				isEdge:         true,
+				platformHeight: float64(ai.mapMaxY), // Unknown platform
+			}
 		}
 		
-		// Otherwise return map boundary
-		return float64(ai.mapMaxX)
+		yDiff := abs(float64(groundPos.y) - nextY)
+		if yDiff > 100 {
+			// Ground is far away - treat as edge
+			return wallOrEdgeInfo{
+				position:       ai.x,
+				isEdge:         true,
+				platformHeight: float64(groundPos.y),
+			}
+		}
+		
+		// Ground is close - can continue walking
+		return wallOrEdgeInfo{
+			position:       float64(ai.mapMaxX),
+			isEdge:         false,
+			platformHeight: float64(groundPos.y),
+		}
 	}
 }
 
