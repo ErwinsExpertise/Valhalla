@@ -402,16 +402,28 @@ func (ai *botAI) move(dt float64) {
 					}
 				}
 			} else {
-				// It's a wall or can't jump, stop and reverse direction
-				nextX = wallOrEdge
-				ai.hspeed = 0
+				// Can't jump (either in air or cooldown)
+				// Check if it's an edge with reachable platform - if so, continue forward
+				heightDiff := platformHeight - crntY
 				
-				log.Printf("Bot %s reversing at wall (isEdge: %v, onground: %v, canjump: %v)", 
-					ai.bot.Name, isEdge, ai.onground, ai.canjump)
-				ai.facingLeft = !ai.facingLeft
-				// Stop walking state to prevent walking in place
-				if ai.state == StateWalking {
-					ai.state = StateStanding
+				if isEdge && heightDiff < 0 && abs(heightDiff) <= 500 {
+					// It's a reachable platform but we can't jump right now
+					// Continue moving forward - we'll try to jump when we land
+					// Don't stop, don't reverse
+					log.Printf("Bot %s continuing toward climbable platform (can't jump yet, heightDiff: %.1f)", 
+						ai.bot.Name, heightDiff)
+				} else {
+					// It's a wall or unreachable edge, stop and reverse direction
+					nextX = wallOrEdge
+					ai.hspeed = 0
+					
+					log.Printf("Bot %s reversing at wall (isEdge: %v, onground: %v, canjump: %v)", 
+						ai.bot.Name, isEdge, ai.onground, ai.canjump)
+					ai.facingLeft = !ai.facingLeft
+					// Stop walking state to prevent walking in place
+					if ai.state == StateWalking {
+						ai.state = StateStanding
+					}
 				}
 			}
 		}
