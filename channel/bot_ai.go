@@ -7,37 +7,46 @@ import (
 	"github.com/Hucaru/Valhalla/mpacket"
 )
 
+// PlayerState represents the bot's current state (from MapleStory client PlayerStates)
+type PlayerState int
+
+const (
+	StateStanding PlayerState = iota
+	StateWalking
+	StateFalling
+	StateJumping
+)
+
 // botAI handles bot behavior and movement (Phase 2+)
+// Implements MapleStory client-style physics system
 type botAI struct {
 	bot *Player
 
-	// Movement state
+	// AI decision making
 	movementEnabled bool
-	moveDirection   int8 // -1 = left, 0 = stopped, 1 = right
-	moveSpeed       int16
-	lastMoveTime    time.Time
 	nextActionTime  time.Time
+	walkDuration    time.Duration
+	pauseDuration   time.Duration
 
-	// Physics state (based on MapleStory client physics)
-	hspeed float64 // Horizontal speed
-	vspeed float64 // Vertical speed
-	hforce float64 // Horizontal force
-	vforce float64 // Vertical force
-	hacc   float64 // Horizontal acceleration
-	vacc   float64 // Vertical acceleration
+	// Player state (from MapleStory client)
+	state         PlayerState
+	facingLeft    bool // true = left, false = right
+	lastMoveTime  time.Time
+
+	// Physics state (PhysicsObject from MapleStory client)
+	hspeed    float64 // Horizontal velocity
+	vspeed    float64 // Vertical velocity
+	x         float64 // Precise X position (float for sub-pixel accuracy)
+	y         float64 // Precise Y position
+	fhid      int16   // Current foothold ID
+	fhslope   float64 // Current foothold slope
+	fhlayer   int8    // Current foothold layer
+	onground  bool    // Is on ground
+	canjump   bool    // Can jump (prevents double jump)
 	
-	fhslope  float64 // Current foothold slope
-	onground bool    // Is bot on ground
-
 	// Map boundaries (set when bot enters map)
 	mapMinX, mapMaxX int16
 	mapMinY, mapMaxY int16
-
-	// Movement pattern
-	walkDuration  time.Duration
-	pauseDuration time.Duration
-	shouldJump    bool
-	jumpCooldown  time.Time
 }
 
 // newBotAI creates a new AI controller for a bot
@@ -45,21 +54,22 @@ func newBotAI(bot *Player) *botAI {
 	return &botAI{
 		bot:             bot,
 		movementEnabled: false,
-		moveDirection:   0,
-		moveSpeed:       100,             // Default walk speed (pixels/second)
 		walkDuration:    time.Second * 3,
 		pauseDuration:   time.Second * 2,
 		nextActionTime:  time.Now().Add(time.Second * 2),
 		
-		// Physics state
-		hspeed: 0,
-		vspeed: 0,
-		hforce: 0,
-		vforce: 0,
-		hacc:   0,
-		vacc:   0,
+		// Initialize physics state
+		state:    StateStanding,
+		facingLeft: false,
+		hspeed:   0,
+		vspeed:   0,
+		x:        float64(bot.pos.x),
+		y:        float64(bot.pos.y),
+		fhid:     bot.pos.foothold,
 		fhslope:  0,
-		onground: true, // Assume spawned on ground
+		fhlayer:  0,
+		onground: true,
+		canjump:  true,
 	}
 }
 
@@ -78,7 +88,7 @@ func (ai *botAI) EnableMovement(minX, maxX, minY, maxY int16) {
 // DisableMovement stops bot movement
 func (ai *botAI) DisableMovement() {
 	ai.movementEnabled = false
-	ai.moveDirection = 0
+	ai.state = StateStanding
 }
 
 // Update is called periodically to update bot AI (should be called from a ticker)
@@ -95,11 +105,11 @@ func (ai *botAI) Update() {
 	}
 
 	// Decide what to do next
-	if ai.moveDirection == 0 {
-		// Currently stopped, start moving
+	if ai.state == StateStanding {
+		// Currently stopped, start walking
 		ai.startWalking()
-	} else {
-		// Currently moving, stop
+	} else if ai.state == StateWalking {
+		// Currently walking, stop
 		ai.stopWalking()
 	}
 }
@@ -108,20 +118,20 @@ func (ai *botAI) Update() {
 func (ai *botAI) startWalking() {
 	// Choose random direction based on position
 	if ai.bot.pos.x <= ai.mapMinX+100 {
-		ai.moveDirection = 1 // Force right if near left edge
+		ai.facingLeft = false // Force right if near left edge
 	} else if ai.bot.pos.x >= ai.mapMaxX-100 {
-		ai.moveDirection = -1 // Force left if near right edge
+		ai.facingLeft = true // Force left if near right edge
 	} else {
 		// Random direction
-		if ai.bot.rng.Intn(2) == 0 {
-			ai.moveDirection = -1
-		} else {
-			ai.moveDirection = 1
-		}
+		ai.facingLeft = ai.bot.rng.Intn(2) == 0
 	}
 
+	ai.state = StateWalking
+	
 	// Random chance to jump while walking
-	ai.shouldJump = ai.bot.rng.Intn(3) == 0 // 33% chance
+	if ai.bot.rng.Intn(3) == 0 { // 33% chance
+		ai.tryJump()
+	}
 
 	ai.nextActionTime = time.Now().Add(ai.walkDuration)
 	ai.lastMoveTime = time.Now()
@@ -129,170 +139,299 @@ func (ai *botAI) startWalking() {
 
 // stopWalking makes the bot stop moving
 func (ai *botAI) stopWalking() {
-	ai.moveDirection = 0
-	ai.shouldJump = false
+	ai.state = StateStanding
 	ai.nextActionTime = time.Now().Add(ai.pauseDuration)
 }
 
-// Physics constants from MapleStory client
+// tryJump attempts to make the bot jump
+func (ai *botAI) tryJump() {
+	if ai.onground && ai.canjump && (ai.state == StateStanding || ai.state == StateWalking) {
+		ai.state = StateJumping
+		ai.vspeed = JUMPFORCE
+		ai.canjump = false
+	}
+}
+
+// Physics constants from MapleStory client (from Physics.cpp)
 const (
-	GRAVFORCE    = 2.0  // Increased for more immediate gravity
-	FRICTION     = 0.5
-	SLOPEFACTOR  = 0.1
-	GROUNDSLIP   = 3.0
-	WALKFORCE    = 0.14 // Force applied when walking
-	JUMPFORCE    = -15.0 // Increased jump force to compensate for stronger gravity
+	GRAVFORCE      = 0.35  // Gravity acceleration per frame
+	FRICTION       = 0.3   // Ground friction
+	WALKFORCE      = 0.7   // Walking acceleration
+	WALKSPEED      = 1.5   // Maximum walk speed
+	JUMPFORCE      = -5.5  // Initial jump force (negative = upward)
+	MAXVERTSPEED   = 8.0   // Terminal velocity (max fall speed)
+	GROUNDTHRESHOLD = 5.0  // Distance tolerance for ground detection (pixels)
 )
 
-// PerformMovement executes movement using simple X movement from 4eed6f0 + physics Y movement
+// PerformMovement executes one physics update cycle (from MapleStory client move_object)
+// Order: update_fh → apply_physics → move
 func (ai *botAI) PerformMovement() {
 	if !ai.movementEnabled || ai.bot.inst == nil {
 		return
 	}
 
 	now := time.Now()
-	deltaTime := now.Sub(ai.lastMoveTime).Milliseconds()
-	if deltaTime <= 0 {
-		deltaTime = 100 // Default to 100ms if first call
+	deltaTime := now.Sub(ai.lastMoveTime).Seconds()
+	if deltaTime <= 0 || deltaTime > 0.5 {
+		deltaTime = 0.1 // Default to 100ms if first call or too large
 	}
 	ai.lastMoveTime = now
 
 	oldPos := ai.bot.pos
 
-	// === X MOVEMENT: Simple distance-based (from 4eed6f0 - this worked!) ===
-	if ai.moveDirection != 0 {
-		distance := int16(float64(ai.moveSpeed) * float64(deltaTime) / 1000.0)
-		newX := ai.bot.pos.x + (distance * int16(ai.moveDirection))
-
-		// Clamp to map boundaries
-		if newX < ai.mapMinX {
-			newX = ai.mapMinX
-			ai.moveDirection = 1 // Bounce off left wall
-		} else if newX > ai.mapMaxX {
-			newX = ai.mapMaxX
-			ai.moveDirection = -1 // Bounce off right wall
-		}
-
-		ai.bot.pos.x = newX
-	}
-
-	// === Y MOVEMENT: Physics-based with gravity (current working logic) ===
-	// Update foothold information
+	// === STEP 1: Update foothold (from FootholdTree.cpp) ===
 	ai.updateFoothold()
 
-	// Apply physics for vertical movement
-	ai.applyPhysics()
+	// === STEP 2: Apply physics based on state (from Physics.cpp) ===
+	ai.applyPhysics(deltaTime)
 
-	// Apply vertical speed to position
-	newY := float64(ai.bot.pos.y) + ai.vspeed
-	ai.bot.pos.y = int16(newY)
+	// === STEP 3: Move (apply velocities to position) ===
+	ai.move(deltaTime)
 
-	// Update foothold after movement (snap to ground if needed)
+	// === STEP 4: Update foothold again after movement ===
 	ai.updateFoothold()
 
-	// Handle jumping
-	if ai.shouldJump && now.After(ai.jumpCooldown) && ai.onground {
-		ai.vforce = JUMPFORCE
-		ai.shouldJump = false
-		ai.jumpCooldown = now.Add(time.Second * 2)
-	}
+	// === STEP 5: Check state transitions ===
+	ai.updateState()
+
+	// === STEP 6: Sync bot position to player struct ===
+	ai.bot.pos.x = int16(ai.x)
+	ai.bot.pos.y = int16(ai.y)
+	ai.bot.pos.foothold = ai.fhid
 
 	// Update stance (facing direction)
 	var stance byte
-	if ai.moveDirection < 0 {
-		stance = 1 // Facing left
+	if ai.facingLeft {
+		stance = 1
 	} else {
-		stance = 0 // Facing right
+		stance = 0
 	}
 	ai.bot.stance = stance
 
 	// Build movement packet
-	moveData := ai.buildMovementPacket(oldPos, ai.bot.pos, stance, !ai.onground, int16(deltaTime))
+	moveData := ai.buildMovementPacket(oldPos, ai.bot.pos, stance, !ai.onground, int16(deltaTime*1000))
 
 	// Broadcast to other players
 	ai.bot.inst.movePlayer(ai.bot.ID, moveData, ai.bot)
 }
 
-// applyPhysics applies physics calculations for Y movement only (X uses simple distance)
-func (ai *botAI) applyPhysics() {
-	ai.vacc = 0.0
+// applyPhysics calculates forces and accelerations (from Physics.cpp move_normal)
+func (ai *botAI) applyPhysics(dt float64) {
+	// Reset accelerations
+	hacc := 0.0
+	vacc := 0.0
 
 	if ai.onground {
-		// On ground - apply vertical forces (e.g., jump)
-		ai.vacc += ai.vforce
+		// === ON GROUND PHYSICS ===
+		
+		// Apply horizontal walking force
+		if ai.state == StateWalking {
+			walkdir := 1.0
+			if ai.facingLeft {
+				walkdir = -1.0
+			}
+			hacc += WALKFORCE * walkdir
+		}
+		
+		// Apply friction
+		if ai.hspeed != 0 {
+			friction := FRICTION
+			if ai.hspeed > 0 {
+				hacc -= friction
+			} else {
+				hacc += friction
+			}
+		}
+		
+		// Apply slope force (simplified - assuming flat ground for now)
+		// TODO: Get actual slope from foothold and apply slope forces
+		
 	} else {
-		// In air - apply gravity
-		ai.vacc += GRAVFORCE
-		ai.vacc += ai.vforce // Also apply any jump force that's active
+		// === IN AIR PHYSICS ===
+		
+		// Apply gravity
+		vacc += GRAVFORCE
+		
+		// Minimal air resistance on horizontal movement
+		if ai.hspeed != 0 {
+			if ai.hspeed > 0 {
+				hacc -= FRICTION * 0.1 // Less friction in air
+			} else {
+				hacc += FRICTION * 0.1
+			}
+		}
 	}
-
-	// Reset vertical force after using it
-	ai.vforce = 0.0
-
-	// Update vertical speed
-	ai.vspeed += ai.vacc
+	
+	// Update velocities
+	ai.hspeed += hacc
+	ai.vspeed += vacc
+	
+	// Apply speed caps
+	if ai.hspeed > WALKSPEED {
+		ai.hspeed = WALKSPEED
+	} else if ai.hspeed < -WALKSPEED {
+		ai.hspeed = -WALKSPEED
+	}
+	
+	// Enforce terminal velocity
+	if ai.vspeed > MAXVERTSPEED {
+		ai.vspeed = MAXVERTSPEED
+	}
+	
+	// Stop if speed is very small (prevents jitter)
+	if abs(ai.hspeed) < 0.01 {
+		ai.hspeed = 0
+	}
 }
 
-// updateFoothold updates the bot's foothold and checks if on ground
+// move applies velocities to position (from PhysicsObject.move())
+func (ai *botAI) move(dt float64) {
+	// Update position based on velocities
+	ai.x += ai.hspeed
+	ai.y += ai.vspeed
+	
+	// Clamp to map boundaries
+	if ai.x < float64(ai.mapMinX) {
+		ai.x = float64(ai.mapMinX)
+		ai.hspeed = 0
+		ai.facingLeft = false // Bounce - face right
+	} else if ai.x > float64(ai.mapMaxX) {
+		ai.x = float64(ai.mapMaxX)
+		ai.hspeed = 0
+		ai.facingLeft = true // Bounce - face left
+	}
+	
+	if ai.y < float64(ai.mapMinY) {
+		ai.y = float64(ai.mapMinY)
+		ai.vspeed = 0
+	} else if ai.y > float64(ai.mapMaxY) {
+		ai.y = float64(ai.mapMaxY)
+		ai.vspeed = 0
+	}
+}
+
+func abs(x float64) float64 {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
+// updateFoothold updates the bot's foothold and ground state (from FootholdTree.cpp update_fh)
 func (ai *botAI) updateFoothold() {
 	if ai.bot.inst == nil {
 		return
 	}
 
 	// Get foothold at current position
-	testPos := newPos(ai.bot.pos.x, ai.bot.pos.y, 0)
+	testPos := newPos(int16(ai.x), int16(ai.y), 0)
 	groundPos := ai.bot.inst.fhHist.getFinalPosition(testPos)
 
-	// Check if valid foothold
+	// Check if valid foothold exists
 	if groundPos.foothold == 0 {
+		// No foothold - in air
 		ai.onground = false
+		ai.fhid = 0
 		ai.fhslope = 0.0
+		ai.canjump = false
 		return
 	}
 
-	// Update foothold
-	ai.bot.pos.foothold = groundPos.foothold
-	
-	// Calculate ground level for this foothold
-	// The foothold system returns the Y position where ground is
-	groundY := groundPos.y
+	// Calculate vertical distance to ground
+	distToGround := ai.y - float64(groundPos.y)
 
-	// Check if we're on or near the ground (larger tolerance to catch fast falling)
-	distanceToGround := ai.bot.pos.y - groundY
-	
-	if distanceToGround >= -10 && distanceToGround <= 10 {
-		// On ground or very close - snap to ground
+	if abs(distToGround) <= GROUNDTHRESHOLD {
+		// On or very close to ground - snap to it
 		ai.onground = true
-		ai.bot.pos.y = groundY // Snap to ground
+		ai.fhid = groundPos.foothold
+		ai.y = float64(groundPos.y) // Snap to ground
 		ai.vspeed = 0
+		ai.canjump = true
 		
-		// Calculate slope (simplified - would need actual foothold data)
-		ai.fhslope = 0.0 // TODO: Get actual slope from foothold
-	} else if ai.bot.pos.y < groundY {
-		// Above ground - falling
+		// TODO: Calculate actual slope from foothold data
+		ai.fhslope = 0.0
+		
+	} else if distToGround < 0 {
+		// Above ground - falling or jumping
 		ai.onground = false
+		ai.canjump = false
+		
 	} else {
-		// Below ground (fell past foothold) - snap up to ground
-		ai.bot.pos.y = groundY
+		// Below ground (clipped through) - emergency snap up
 		ai.onground = true
+		ai.fhid = groundPos.foothold
+		ai.y = float64(groundPos.y)
 		ai.vspeed = 0
+		ai.canjump = true
+	}
+}
+
+// updateState transitions between player states based on physics
+func (ai *botAI) updateState() {
+	switch ai.state {
+	case StateJumping:
+		// Transition from jumping to falling when moving downward
+		if ai.vspeed > 0 {
+			ai.state = StateFalling
+		}
+		// If landed, will transition in next cycle after updateFoothold
+		if ai.onground {
+			if ai.hspeed != 0 {
+				ai.state = StateWalking
+			} else {
+				ai.state = StateStanding
+			}
+		}
+		
+	case StateFalling:
+		// Transition to standing/walking when landed
+		if ai.onground {
+			if ai.hspeed != 0 {
+				ai.state = StateWalking
+			} else {
+				ai.state = StateStanding
+			}
+		}
+		
+	case StateWalking:
+		// Check if we walked off an edge
+		if !ai.onground {
+			ai.state = StateFalling
+		}
+		// Check if stopped moving
+		if ai.hspeed == 0 {
+			ai.state = StateStanding
+		}
+		
+	case StateStanding:
+		// Check if fell off edge while standing
+		if !ai.onground {
+			ai.state = StateFalling
+		}
+		// Check if started moving
+		if ai.hspeed != 0 {
+			ai.state = StateWalking
+		}
 	}
 }
 
 // buildMovementPacket creates movement packet data for the bot
-func (ai *botAI) buildMovementPacket(fromPos, toPos pos, stance byte, jump bool, duration int16) []byte {
+func (ai *botAI) buildMovementPacket(fromPos, toPos pos, stance byte, inAir bool, duration int16) []byte {
 	p := mpacket.NewPacket()
 
 	// Original position
 	p.WriteInt16(fromPos.x)
 	p.WriteInt16(fromPos.y)
 
-	// Movement type and fragment
+	// Movement type based on state
 	var mType byte
-	if jump {
-		mType = 1 // Jump movement type
-	} else {
-		mType = 0 // Normal movement type
+	switch ai.state {
+	case StateJumping, StateFalling:
+		mType = 1 // Jump/fall movement type
+	case StateWalking:
+		mType = 0 // Walking movement type
+	default:
+		mType = 0 // Standing
 	}
 
 	// Number of fragments (1 for simple movement)
@@ -303,12 +442,9 @@ func (ai *botAI) buildMovementPacket(fromPos, toPos pos, stance byte, jump bool,
 	p.WriteInt16(toPos.x)
 	p.WriteInt16(toPos.y)
 
-	// Velocity (simplified)
-	vx := int16(ai.moveSpeed * int16(ai.moveDirection))
-	vy := int16(0)
-	if jump {
-		vy = -150 // Jump velocity
-	}
+	// Velocity (use actual physics velocity)
+	vx := int16(ai.hspeed * 50) // Scale for packet
+	vy := int16(ai.vspeed * 50)
 
 	p.WriteInt16(vx)
 	p.WriteInt16(vy)
@@ -319,24 +455,24 @@ func (ai *botAI) buildMovementPacket(fromPos, toPos pos, stance byte, jump bool,
 	return p
 }
 
-func directionStr(dir int8) string {
-	switch dir {
-	case -1:
-		return "left"
-	case 1:
-		return "right"
-	default:
-		return "stopped"
-	}
-}
-
 // GetMovementState returns current movement state for debugging
 func (ai *botAI) GetMovementState() string {
 	if !ai.movementEnabled {
 		return "disabled"
 	}
-	if ai.moveDirection == 0 {
-		return "stopped"
+	switch ai.state {
+	case StateStanding:
+		return "standing"
+	case StateWalking:
+		if ai.facingLeft {
+			return "walking left"
+		}
+		return "walking right"
+	case StateJumping:
+		return "jumping"
+	case StateFalling:
+		return "falling"
+	default:
+		return "unknown"
 	}
-	return directionStr(ai.moveDirection)
 }
