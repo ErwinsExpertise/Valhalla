@@ -493,7 +493,7 @@ func (ai *botAI) getWallOrEdge(left bool, nextY float64) wallOrEdgeInfo {
 		testPos := newPos(int16(testX), int16(nextY), 0)
 		groundPos := ai.bot.inst.fhHist.getFinalPosition(testPos)
 		
-		// If no ground found or ground is way below, treat as edge
+		// If no ground found, treat as edge
 		if groundPos.foothold == 0 {
 			// No ground - it's an edge (or wall)
 			return wallOrEdgeInfo{
@@ -503,9 +503,27 @@ func (ai *botAI) getWallOrEdge(left bool, nextY float64) wallOrEdgeInfo {
 			}
 		}
 		
-		yDiff := abs(float64(groundPos.y) - nextY)
-		if yDiff > 100 {
-			// Ground is far away - treat as edge
+		// Calculate SIGNED height difference (negative = platform above, positive = platform below)
+		heightDiff := float64(groundPos.y) - nextY
+		
+		// For climbs (platform above), detect edges up to 500px to match jump height
+		// For drops (platform below), only detect small drops up to 200px
+		if heightDiff < 0 && heightDiff < -500 {
+			// Platform is MORE than 500px above - too high to jump, treat as wall
+			return wallOrEdgeInfo{
+				position:       ai.x,
+				isEdge:         false, // Wall, not climbable edge
+				platformHeight: float64(groundPos.y),
+			}
+		} else if heightDiff > 200 {
+			// Platform is MORE than 200px below - too dangerous to drop, treat as edge to reverse
+			return wallOrEdgeInfo{
+				position:       ai.x,
+				isEdge:         true,
+				platformHeight: float64(groundPos.y),
+			}
+		} else if abs(heightDiff) > 20 {
+			// Platform is 20-500px above OR 20-200px below - treat as climbable/droppable edge
 			return wallOrEdgeInfo{
 				position:       ai.x,
 				isEdge:         true,
@@ -513,7 +531,7 @@ func (ai *botAI) getWallOrEdge(left bool, nextY float64) wallOrEdgeInfo {
 			}
 		}
 		
-		// Ground is close - can continue walking
+		// Ground is very close (within 20px) - can continue walking
 		return wallOrEdgeInfo{
 			position:       float64(ai.mapMinX),
 			isEdge:         false,
@@ -525,7 +543,7 @@ func (ai *botAI) getWallOrEdge(left bool, nextY float64) wallOrEdgeInfo {
 		testPos := newPos(int16(testX), int16(nextY), 0)
 		groundPos := ai.bot.inst.fhHist.getFinalPosition(testPos)
 		
-		// If no ground found or ground is way below, treat as edge
+		// If no ground found, treat as edge
 		if groundPos.foothold == 0 {
 			// No ground - it's an edge (or wall)
 			return wallOrEdgeInfo{
@@ -535,9 +553,27 @@ func (ai *botAI) getWallOrEdge(left bool, nextY float64) wallOrEdgeInfo {
 			}
 		}
 		
-		yDiff := abs(float64(groundPos.y) - nextY)
-		if yDiff > 100 {
-			// Ground is far away - treat as edge
+		// Calculate SIGNED height difference (negative = platform above, positive = platform below)
+		heightDiff := float64(groundPos.y) - nextY
+		
+		// For climbs (platform above), detect edges up to 500px to match jump height
+		// For drops (platform below), only detect small drops up to 200px
+		if heightDiff < 0 && heightDiff < -500 {
+			// Platform is MORE than 500px above - too high to jump, treat as wall
+			return wallOrEdgeInfo{
+				position:       ai.x,
+				isEdge:         false, // Wall, not climbable edge
+				platformHeight: float64(groundPos.y),
+			}
+		} else if heightDiff > 200 {
+			// Platform is MORE than 200px below - too dangerous to drop, treat as edge to reverse
+			return wallOrEdgeInfo{
+				position:       ai.x,
+				isEdge:         true,
+				platformHeight: float64(groundPos.y),
+			}
+		} else if abs(heightDiff) > 20 {
+			// Platform is 20-500px above OR 20-200px below - treat as climbable/droppable edge
 			return wallOrEdgeInfo{
 				position:       ai.x,
 				isEdge:         true,
@@ -545,7 +581,7 @@ func (ai *botAI) getWallOrEdge(left bool, nextY float64) wallOrEdgeInfo {
 			}
 		}
 		
-		// Ground is close - can continue walking
+		// Ground is very close (within 20px) - can continue walking
 		return wallOrEdgeInfo{
 			position:       float64(ai.mapMaxX),
 			isEdge:         false,
