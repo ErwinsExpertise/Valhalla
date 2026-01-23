@@ -181,12 +181,12 @@ func (ai *botAI) tryJump() {
 // Physics constants from MapleStory client (from Physics.cpp)
 // Note: Speeds are tuned for 10 FPS server update rate
 const (
-	GRAVFORCE      = 1.2   // Gravity acceleration per frame (increased for more immediate falls)
+	GRAVFORCE      = 2.5   // Gravity acceleration per frame (MUCH stronger for immediate drops)
 	FRICTION       = 0.3   // Ground friction
 	WALKFORCE      = 1.5   // Walking acceleration (increased for more responsive movement)
 	WALKSPEED      = 10.0  // Maximum walk speed (increased for visible movement at 10 FPS)
-	JUMPFORCE      = -8.0  // Initial jump force (negative = upward, increased for higher jumps)
-	MAXVERTSPEED   = 12.0  // Terminal velocity (max fall speed, increased for stronger gravity)
+	JUMPFORCE      = -12.0 // Initial jump force (negative = upward, very high for 500px jumps)
+	MAXVERTSPEED   = 20.0  // Terminal velocity (max fall speed, much higher for fast falls)
 	GROUNDTHRESHOLD = 5.0  // Distance tolerance for ground detection (pixels)
 )
 
@@ -296,11 +296,19 @@ func (ai *botAI) applyPhysics(dt float64) {
 	} else {
 		// === IN AIR PHYSICS ===
 		
-		// Apply gravity - NO horizontal air resistance for straight drops
+		// Apply gravity - MUCH stronger now for immediate drops
 		vacc += GRAVFORCE
 		
-		// No air resistance on horizontal movement - let it maintain momentum
-		// This prevents the "sliding down hill" appearance
+		// Apply SLIGHT horizontal air resistance to make falls look more vertical
+		// This gives a tiny bit of slope but mostly vertical drop
+		if ai.hspeed != 0 {
+			airResistance := 0.15 // Very light resistance - just enough to look more vertical
+			if ai.hspeed > 0 {
+				hacc -= airResistance
+			} else {
+				hacc += airResistance
+			}
+		}
 	}
 	
 	// Update velocities
@@ -365,8 +373,8 @@ func (ai *botAI) move(dt float64) {
 				heightDiff := platformHeight - crntY
 				
 				// If platform is above us (climbing up), ALWAYS try to jump
-				// Increased limit to 300px to handle most platform heights
-				if heightDiff < 0 && heightDiff > -300 { // Platform is up to 300 pixels higher
+				// Increased limit to 500px to handle tall multi-level platforms
+				if heightDiff < 0 && heightDiff > -500 { // Platform is up to 500 pixels higher
 					// Jump to try to reach the platform
 					ai.vspeed = JUMPFORCE
 					ai.canjump = false

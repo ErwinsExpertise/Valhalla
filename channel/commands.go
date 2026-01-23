@@ -1819,6 +1819,15 @@ func (server *Server) gmCommand(conn mnet.Client, msg string) {
 		// Set bot position to GM's exact position (including foothold)
 		// This ensures bot spawns exactly where the GM is standing
 		bot.pos = newPos(plr.pos.x, plr.pos.y, plr.pos.foothold)
+		
+		// CRITICAL: Also update botAI's internal position to match
+		// Otherwise botAI still has the old portal position from initialization
+		if bot.botAI != nil {
+			bot.botAI.x = float64(plr.pos.x)
+			bot.botAI.y = float64(plr.pos.y)
+			bot.botAI.fhid = plr.pos.foothold
+		}
+		
 		bot.rates = &server.rates
 
 		log.Printf("Bot '%s' (ID:%d) spawned by GM %s at map %d position (%d, %d, foothold %d)", 
