@@ -526,21 +526,45 @@ func (ai *botAI) getWallOrEdge(left bool, nextY float64) wallOrEdgeInfo {
 		// Calculate SIGNED height difference (negative = platform above, positive = platform below)
 		heightDiff := float64(groundPos.y) - nextY
 		
+		// SPECIAL CASE: If we detect a big drop (> 200px), check if there's actually a platform ABOVE
+		// This happens when bot is on low platform with high platform ahead
+		// getFinalPosition drops straight down and finds ground way below, missing the climb
+		if heightDiff > 200 {
+			// Check for platform above by testing higher Y positions
+			for testY := nextY - 50; testY >= nextY - 500; testY -= 50 {
+				testPosAbove := newPos(int16(testX), int16(testY), 0)
+				groundAbove := ai.bot.inst.fhHist.getFinalPosition(testPosAbove)
+				
+				if groundAbove.foothold != 0 {
+					heightDiffAbove := float64(groundAbove.y) - nextY
+					
+					// Found a platform above! Check if it's reachable
+					if heightDiffAbove < 0 && abs(heightDiffAbove) <= 500 {
+						// Platform above is within jump range - use this instead!
+						return wallOrEdgeInfo{
+							position:       ai.x,
+							isEdge:         true,
+							platformHeight: float64(groundAbove.y),
+						}
+					}
+				}
+			}
+			
+			// No reachable platform above found - it's truly a dangerous drop
+			return wallOrEdgeInfo{
+				position:       ai.x,
+				isEdge:         true,
+				platformHeight: float64(groundPos.y),
+			}
+		}
+		
 		// For climbs (platform above), detect edges up to 500px to match jump height
-		// For drops (platform below), only detect small drops up to 200px
 		// Use abs() for consistent height comparison
 		if heightDiff < 0 && abs(heightDiff) > 500 {
 			// Platform is MORE than 500px above - too high to jump, treat as wall
 			return wallOrEdgeInfo{
 				position:       ai.x,
 				isEdge:         false, // Wall, not climbable edge
-				platformHeight: float64(groundPos.y),
-			}
-		} else if heightDiff > 200 {
-			// Platform is MORE than 200px below - too dangerous to drop, treat as edge to reverse
-			return wallOrEdgeInfo{
-				position:       ai.x,
-				isEdge:         true,
 				platformHeight: float64(groundPos.y),
 			}
 		} else if abs(heightDiff) > 20 {
@@ -577,21 +601,45 @@ func (ai *botAI) getWallOrEdge(left bool, nextY float64) wallOrEdgeInfo {
 		// Calculate SIGNED height difference (negative = platform above, positive = platform below)
 		heightDiff := float64(groundPos.y) - nextY
 		
+		// SPECIAL CASE: If we detect a big drop (> 200px), check if there's actually a platform ABOVE
+		// This happens when bot is on low platform with high platform ahead
+		// getFinalPosition drops straight down and finds ground way below, missing the climb
+		if heightDiff > 200 {
+			// Check for platform above by testing higher Y positions
+			for testY := nextY - 50; testY >= nextY - 500; testY -= 50 {
+				testPosAbove := newPos(int16(testX), int16(testY), 0)
+				groundAbove := ai.bot.inst.fhHist.getFinalPosition(testPosAbove)
+				
+				if groundAbove.foothold != 0 {
+					heightDiffAbove := float64(groundAbove.y) - nextY
+					
+					// Found a platform above! Check if it's reachable
+					if heightDiffAbove < 0 && abs(heightDiffAbove) <= 500 {
+						// Platform above is within jump range - use this instead!
+						return wallOrEdgeInfo{
+							position:       ai.x,
+							isEdge:         true,
+							platformHeight: float64(groundAbove.y),
+						}
+					}
+				}
+			}
+			
+			// No reachable platform above found - it's truly a dangerous drop
+			return wallOrEdgeInfo{
+				position:       ai.x,
+				isEdge:         true,
+				platformHeight: float64(groundPos.y),
+			}
+		}
+		
 		// For climbs (platform above), detect edges up to 500px to match jump height
-		// For drops (platform below), only detect small drops up to 200px
 		// Use abs() for consistent height comparison
 		if heightDiff < 0 && abs(heightDiff) > 500 {
 			// Platform is MORE than 500px above - too high to jump, treat as wall
 			return wallOrEdgeInfo{
 				position:       ai.x,
 				isEdge:         false, // Wall, not climbable edge
-				platformHeight: float64(groundPos.y),
-			}
-		} else if heightDiff > 200 {
-			// Platform is MORE than 200px below - too dangerous to drop, treat as edge to reverse
-			return wallOrEdgeInfo{
-				position:       ai.x,
-				isEdge:         true,
 				platformHeight: float64(groundPos.y),
 			}
 		} else if abs(heightDiff) > 20 {
