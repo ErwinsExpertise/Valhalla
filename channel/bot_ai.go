@@ -110,17 +110,15 @@ func (ai *botAI) Update() {
 	now := time.Now()
 
 	// Check if it's time for next action
-	if now.Before(ai.nextActionTime) {
-		return
-	}
-
-	// Decide what to do next
-	if ai.state == StateStanding {
-		// Currently stopped, start walking
-		ai.startWalking()
-	} else if ai.state == StateWalking {
-		// Currently walking, stop
-		ai.stopWalking()
+	if now.After(ai.nextActionTime) || now.Equal(ai.nextActionTime) {
+		// Decide what to do next
+		if ai.state == StateStanding {
+			// Currently stopped, start walking
+			ai.startWalking()
+		} else if ai.state == StateWalking {
+			// Currently walking, stop
+			ai.stopWalking()
+		}
 	}
 }
 
@@ -236,6 +234,26 @@ func (ai *botAI) PerformMovement() {
 
 // applyPhysics calculates forces and accelerations (from Physics.cpp move_normal)
 func (ai *botAI) applyPhysics(dt float64) {
+	// If bot is standing still (not Walking/Jumping/Falling), don't apply physics forces
+	if ai.state == StateStanding {
+		// Apply strong friction to stop quickly
+		if ai.hspeed != 0 {
+			friction := FRICTION * 3.0 // Stronger friction when standing
+			if ai.hspeed > 0 {
+				ai.hspeed -= friction
+				if ai.hspeed < 0 {
+					ai.hspeed = 0
+				}
+			} else {
+				ai.hspeed += friction
+				if ai.hspeed > 0 {
+					ai.hspeed = 0
+				}
+			}
+		}
+		return
+	}
+	
 	// Reset accelerations
 	hacc := 0.0
 	vacc := 0.0
@@ -342,22 +360,31 @@ func (ai *botAI) move(dt float64) {
 			if isEdge && ai.onground && ai.canjump {
 				heightDiff := platformHeight - crntY
 				
-				// If platform is above us (climbing up) or slightly below (small drop), try to jump
-				if heightDiff < 0 && heightDiff > -150 { // Platform is up to 150 pixels higher
+				// If platform is above us (climbing up), try to jump - reduced from 150px to 80px
+				if heightDiff < 0 && heightDiff > -80 { // Platform is up to 80 pixels higher (more reasonable jump height)
 					// Jump to try to reach the platform
 					ai.vspeed = JUMPFORCE
 					ai.canjump = false
 					ai.state = StateJumping
+					// Don't reverse direction - we're jumping forward
 				} else if heightDiff > 0 && heightDiff < 100 { // Platform is slightly below (drop down)
 					// Just walk off and fall naturally
-					// Don't reverse direction
+					// Don't reverse direction, let gravity handle it
 				} else {
 					// Can't reach platform or too far down, reverse direction
 					ai.facingLeft = !ai.facingLeft
+					// Stop walking state to prevent walking in place
+					if ai.state == StateWalking {
+						ai.state = StateStanding
+					}
 				}
 			} else {
 				// It's a wall or can't jump, reverse direction
 				ai.facingLeft = !ai.facingLeft
+				// Stop walking state to prevent walking in place
+				if ai.state == StateWalking {
+					ai.state = StateStanding
+				}
 			}
 		}
 	}
