@@ -298,6 +298,18 @@ func (calc *DamageCalculator) handleSpecialSkillDamage(result *CalcHitResult, mo
 	dex := float64(calc.player.dex)
 	luk := float64(calc.player.luk)
 
+	if skill.Skill(calc.skillID) == skill.MesoExplosion {
+		// Meso Explosion damage is calculated based on the meso amount
+		// This is a placeholder that will be validated during handleMesoExplosion
+		// where we have access to the actual meso drop amounts
+		// For now, just mark as valid to avoid false ban triggers
+		result.MinDamage = 0
+		result.MaxDamage = 999999999 // Very high cap to avoid false bans
+		result.ExpectedDmg = float64(result.ClientDamage)
+		result.IsValid = true
+		return true
+	}
+
 	if skill.Skill(calc.skillID) == skill.ShadowMeso {
 		if calc.skill != nil {
 			mesoCount := float64(calc.skill.X)

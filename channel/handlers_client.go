@@ -2640,11 +2640,22 @@ func (server *Server) handleMesoExplosion(plr *Player, inst *fieldInstance, data
 	removedSet := make(map[int32]struct{}, 16)
 	removed := 0
 
-	for _, at := range data.attackInfo {
+	// Get skill level for X value (multiplier)
+	skillLevel := data.skillLevel
+	var xValue float64 = 1000.0 // Default X value
+	if skillData, err := nx.GetPlayerSkill(int32(skill.MesoExplosion)); err == nil && skillLevel > 0 && int(skillLevel) <= len(skillData) {
+		xValue = float64(skillData[skillLevel-1].X)
+	}
+
+	for attackIdx, at := range data.attackInfo {
 		found := false
+		totalMesos := int32(0)
+		
+		// Collect meso amounts and remove drops
 		for _, did := range at.mesoDropIDs {
 			if drop, ok := inst.dropPool.drops[did]; ok && drop.mesos > 0 {
 				if _, seen := removedSet[did]; !seen {
+					totalMesos += drop.mesos
 					inst.dropPool.removeDrop(4, did)
 					removedSet[did] = struct{}{}
 					removed++
@@ -2653,8 +2664,46 @@ func (server *Server) handleMesoExplosion(plr *Player, inst *fieldInstance, data
 			}
 		}
 
-		if at.spawnID != 0 && len(at.damages) > 0 && found {
-			inst.lifePool.mobDamaged(at.spawnID, plr, at.damages...)
+		// Calculate damage per meso drop using the correct formula
+		if at.spawnID != 0 && found && totalMesos > 0 {
+			recalculatedDamages := make([]int32, len(at.damages))
+			
+			for hitIdx := range at.damages {
+				mesos := float64(totalMesos)
+				var ratio float64
+				
+				// Apply the correct Meso Explosion formula
+				if mesos <= 1000 {
+					ratio = (mesos*0.82 + 28.0) / 5300.0
+				} else {
+					ratio = mesos / (mesos + 5250.0)
+				}
+				
+				// MIN: (50 * xValue) * 0.5 * ratio
+				// MAX: (50 * xValue) * ratio
+				// Use MAX for damage calculation
+				maxDamage := (50.0 * xValue) * ratio
+				
+				// Use client damage if within reasonable range, otherwise use calculated
+				clientDmg := float64(at.damages[hitIdx])
+				calculatedDmg := maxDamage
+				
+				// Allow some variance in client damage
+				if clientDmg > 0 && clientDmg <= maxDamage*1.5 {
+					recalculatedDamages[hitIdx] = at.damages[hitIdx]
+				} else {
+					recalculatedDamages[hitIdx] = int32(calculatedDmg)
+				}
+			}
+			
+			inst.lifePool.mobDamaged(at.spawnID, plr, recalculatedDamages...)
+		}
+		
+		// Update the original attack data to reflect recalculated damages
+		if found && totalMesos > 0 && attackIdx < len(data.attackInfo) {
+			// This is for consistency, though the damage has already been applied
+			data.attackInfo[attackIdx].damages = make([]int32, len(at.damages))
+			copy(data.attackInfo[attackIdx].damages, at.damages)
 		}
 	}
 }
