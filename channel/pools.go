@@ -331,6 +331,7 @@ func (pool *lifePool) mobDamaged(poolID int32, damager *Player, dmg ...int32) {
 				
 				// Pickpocket: Check if damager has Pickpocket buff active and roll for meso drop
 				if pickpocketLevel, hasPickpocket := damager.buffs.activeSkillLevels[int32(skill.Pickpocket)]; hasPickpocket && pickpocketLevel > 0 {
+					// Get skill data once outside the damage loop
 					skillData, err := nx.GetPlayerSkill(int32(skill.Pickpocket))
 					if err == nil && int(pickpocketLevel) <= len(skillData) {
 						skillInfo := skillData[pickpocketLevel-1]

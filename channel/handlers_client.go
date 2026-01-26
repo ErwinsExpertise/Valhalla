@@ -2666,42 +2666,39 @@ func (server *Server) handleMesoExplosion(plr *Player, inst *fieldInstance, data
 
 		// Calculate damage per meso drop using the correct formula
 		if at.spawnID != 0 && found && totalMesos > 0 {
+			mesos := float64(totalMesos)
+			var ratio float64
+			
+			// Apply the correct Meso Explosion formula
+			if mesos <= constant.MesoExplosionLowMesoThreshold {
+				ratio = (mesos*constant.MesoExplosionLowMesoMultiplier + constant.MesoExplosionLowMesoOffset) / constant.MesoExplosionLowMesoDivisor
+			} else {
+				ratio = mesos / (mesos + constant.MesoExplosionHighMesoDivisorOffset)
+			}
+			
+			// MIN: (50 * xValue) * 0.5 * ratio
+			// MAX: (50 * xValue) * ratio
+			// Use MAX for damage calculation
+			maxDamage := (50.0 * xValue) * ratio
+			
 			recalculatedDamages := make([]int32, len(at.damages))
 			
 			for hitIdx := range at.damages {
-				mesos := float64(totalMesos)
-				var ratio float64
-				
-				// Apply the correct Meso Explosion formula
-				if mesos <= constant.MesoExplosionLowMesoThreshold {
-					ratio = (mesos*constant.MesoExplosionLowMesoMultiplier + constant.MesoExplosionLowMesoOffset) / constant.MesoExplosionLowMesoDivisor
-				} else {
-					ratio = mesos / (mesos + constant.MesoExplosionHighMesoDivisorOffset)
-				}
-				
-				// MIN: (50 * xValue) * 0.5 * ratio
-				// MAX: (50 * xValue) * ratio
-				// Use MAX for damage calculation
-				maxDamage := (50.0 * xValue) * ratio
-				
 				// Use client damage if within reasonable range, otherwise use calculated
 				clientDmg := float64(at.damages[hitIdx])
-				calculatedDmg := maxDamage
 				
 				// Allow some variance in client damage
 				if clientDmg > 0 && clientDmg <= maxDamage*constant.MesoExplosionDamageVarianceTolerance {
 					recalculatedDamages[hitIdx] = at.damages[hitIdx]
 				} else {
-					recalculatedDamages[hitIdx] = int32(calculatedDmg)
+					recalculatedDamages[hitIdx] = int32(maxDamage)
 				}
 			}
 			
 			inst.lifePool.mobDamaged(at.spawnID, plr, recalculatedDamages...)
 			
 			// Update the original attack data to reflect recalculated damages
-			if attackIdx < len(data.attackInfo) {
-				data.attackInfo[attackIdx].damages = recalculatedDamages
-			}
+			data.attackInfo[attackIdx].damages = recalculatedDamages
 		}
 	}
 }
