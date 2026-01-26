@@ -304,7 +304,7 @@ func (calc *DamageCalculator) handleSpecialSkillDamage(result *CalcHitResult, mo
 		// where we have access to the actual meso drop amounts
 		// For now, just mark as valid to avoid false ban triggers
 		result.MinDamage = 0
-		result.MaxDamage = 999999999 // Very high cap to avoid false bans
+		result.MaxDamage = constant.MesoExplosionMaxDamage
 		result.ExpectedDmg = float64(result.ClientDamage)
 		result.IsValid = true
 		return true

@@ -2673,10 +2673,10 @@ func (server *Server) handleMesoExplosion(plr *Player, inst *fieldInstance, data
 				var ratio float64
 				
 				// Apply the correct Meso Explosion formula
-				if mesos <= 1000 {
-					ratio = (mesos*0.82 + 28.0) / 5300.0
+				if mesos <= constant.MesoExplosionLowMesoThreshold {
+					ratio = (mesos*constant.MesoExplosionLowMesoMultiplier + constant.MesoExplosionLowMesoOffset) / constant.MesoExplosionLowMesoDivisor
 				} else {
-					ratio = mesos / (mesos + 5250.0)
+					ratio = mesos / (mesos + constant.MesoExplosionHighMesoDivisorOffset)
 				}
 				
 				// MIN: (50 * xValue) * 0.5 * ratio
@@ -2689,7 +2689,7 @@ func (server *Server) handleMesoExplosion(plr *Player, inst *fieldInstance, data
 				calculatedDmg := maxDamage
 				
 				// Allow some variance in client damage
-				if clientDmg > 0 && clientDmg <= maxDamage*1.5 {
+				if clientDmg > 0 && clientDmg <= maxDamage*constant.MesoExplosionDamageVarianceTolerance {
 					recalculatedDamages[hitIdx] = at.damages[hitIdx]
 				} else {
 					recalculatedDamages[hitIdx] = int32(calculatedDmg)
@@ -2697,13 +2697,11 @@ func (server *Server) handleMesoExplosion(plr *Player, inst *fieldInstance, data
 			}
 			
 			inst.lifePool.mobDamaged(at.spawnID, plr, recalculatedDamages...)
-		}
-		
-		// Update the original attack data to reflect recalculated damages
-		if found && totalMesos > 0 && attackIdx < len(data.attackInfo) {
-			// This is for consistency, though the damage has already been applied
-			data.attackInfo[attackIdx].damages = make([]int32, len(at.damages))
-			copy(data.attackInfo[attackIdx].damages, at.damages)
+			
+			// Update the original attack data to reflect recalculated damages
+			if attackIdx < len(data.attackInfo) {
+				data.attackInfo[attackIdx].damages = recalculatedDamages
+			}
 		}
 	}
 }
