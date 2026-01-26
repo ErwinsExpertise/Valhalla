@@ -2655,7 +2655,13 @@ func (server *Server) handleMesoExplosion(plr *Player, inst *fieldInstance, data
 		for _, did := range at.mesoDropIDs {
 			if drop, ok := inst.dropPool.drops[did]; ok && drop.mesos > 0 {
 				if _, seen := removedSet[did]; !seen {
-					totalMesos += drop.mesos
+					// Check for integer overflow before adding
+					if totalMesos > math.MaxInt32-drop.mesos {
+						// Cap at max value to prevent overflow
+						totalMesos = math.MaxInt32
+					} else {
+						totalMesos += drop.mesos
+					}
 					inst.dropPool.removeDrop(4, did)
 					removedSet[did] = struct{}{}
 					removed++
