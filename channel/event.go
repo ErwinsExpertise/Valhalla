@@ -24,6 +24,7 @@ type event struct {
 	onMapChangeCallback      func(plr scriptPlayerWrapper, dst scriptMapWrapper)
 	timeoutCallback          func(plr scriptPlayerWrapper)
 	playerLeaveEventCallback func(plr scriptPlayerWrapper)
+	reactorHitCallback       func(plr scriptPlayerWrapper, reactorName string)
 
 	program *goja.Program
 	vm      *goja.Runtime
@@ -83,6 +84,10 @@ func createEvent(id int32, instID int, players []int32, server *Server, program 
 
 	if fn := ctrl.vm.Get("onMapChange"); fn != nil && !goja.IsUndefined(fn) {
 		_ = ctrl.vm.ExportTo(fn, &ctrl.onMapChangeCallback)
+	}
+
+	if fn := ctrl.vm.Get("onReactorHit"); fn != nil && !goja.IsUndefined(fn) {
+		_ = ctrl.vm.ExportTo(fn, &ctrl.reactorHitCallback)
 	}
 
 	err = ctrl.vm.ExportTo(ctrl.vm.Get("playerLeaveEvent"), &ctrl.playerLeaveEventCallback)
