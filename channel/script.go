@@ -727,6 +727,24 @@ func (ctrl *scriptMapWrapper) PlayersInArea(id int) int {
 	return count
 }
 
+func (ctrl *scriptMapWrapper) IsPlayerInArea(plr scriptPlayerWrapper, id int) bool {
+	if ctrl == nil || ctrl.inst == nil || plr.plr == nil {
+		return false
+	}
+	if id < 0 {
+		return false
+	}
+	maps := nx.GetMaps()
+	if maps == nil {
+		return false
+	}
+	field, ok := maps[ctrl.inst.fieldID]
+	if !ok || id >= len(field.Areas) {
+		return false
+	}
+	return field.Areas[id].Inside(plr.plr.pos.x, plr.plr.pos.y)
+}
+
 func (ctrl *scriptMapWrapper) MobCount() int {
 	return ctrl.inst.lifePool.mobCount()
 }

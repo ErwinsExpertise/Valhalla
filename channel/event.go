@@ -211,6 +211,45 @@ func (e *event) SetDuration(duration string) {
 	}
 }
 
+func (e *event) Schedule(name, delay string) {
+	duration, err := time.ParseDuration(delay)
+	if err != nil {
+		log.Println("event schedule:", err)
+		return
+	}
+
+	select {
+	case <-e.finished:
+		return
+	default:
+	}
+
+	time.AfterFunc(duration, func() {
+		select {
+		case <-e.finished:
+			return
+		default:
+		}
+
+		e.server.dispatch <- func() {
+			select {
+			case <-e.finished:
+				return
+			default:
+			}
+
+			fn, ok := goja.AssertFunction(e.vm.Get(name))
+			if !ok {
+				return
+			}
+
+			if _, err := fn(goja.Undefined()); err != nil {
+				log.Println("event schedule:", err)
+			}
+		}
+	})
+}
+
 func (e *event) GetMap(id int32) scriptMapWrapper {
 	if field, ok := e.server.fields[id]; ok {
 		inst, err := field.getInstance(e.instanceID)

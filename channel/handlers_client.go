@@ -4785,7 +4785,14 @@ func (server *Server) playerHitReactor(conn mnet.Client, reader mpacket.Reader) 
 	_ = reader.ReadInt16() // delay
 
 	plr.inst.reactorPool.triggerHit(spawnID, 0, server, plr)
-
+	if plr.event != nil && plr.event.reactorHitCallback != nil {
+		if reactor, ok := plr.inst.reactorPool.reactors[spawnID]; ok && reactor.name != "" {
+			plr.event.reactorHitCallback(
+				scriptPlayerWrapper{plr: plr, server: server},
+				reactor.name,
+			)
+		}
+	}
 }
 
 func (server *Server) playerUseStorage(conn mnet.Client, reader mpacket.Reader) {

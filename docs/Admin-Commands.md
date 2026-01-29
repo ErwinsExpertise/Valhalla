@@ -913,6 +913,9 @@ Starts an event script.
 **Example:**
 ```
 /eventStart ola 1  # Start 'ola' event in instance 1
+/eventStart ox_quiz 1  # Start 'ox_quiz' event in instance 1
+/eventStart coconut 1  # Start 'coconut' event in instance 1
+/eventStart snowball 1  # Start 'snowball' event in instance 1
 ```
 
 ### `/events`
