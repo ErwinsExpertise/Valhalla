@@ -251,8 +251,11 @@ func (ai *botAI) PerformMovement() {
 	ai.updateState()
 
 	// === STEP 6: Sync bot position to player struct ===
-	ai.bot.pos.x = int16(ai.x)
-	ai.bot.pos.y = int16(ai.y)
+	// Round to nearest integer instead of truncating for smoother client display
+	newX := int16(ai.x + 0.5)
+	newY := int16(ai.y + 0.5)
+	ai.bot.pos.x = newX
+	ai.bot.pos.y = newY
 	ai.bot.pos.foothold = ai.fhid
 
 	// Update stance (facing direction)
@@ -474,17 +477,21 @@ func (ai *botAI) move(dt float64) {
 				}
 			} else {
 				// Can't jump (either in air or cooldown)
-				// Check if it's an edge with reachable platform - if so, continue forward
+				// Check if it's an edge with reachable platform
 				heightDiff := platformHeight - crntY
 				
 				if isEdge && heightDiff < 0 && abs(heightDiff) <= 500 {
-					// It's a reachable platform but we can't jump right now
-					// Continue moving forward - we'll try to jump when we land
-					// Don't stop, don't reverse
-					log.Printf("Bot %s continuing toward climbable platform (can't jump yet, heightDiff: %.1f)", 
-						ai.bot.Name, heightDiff)
+					// It's a reachable platform (< 500px above) but we can't jump right now
+					// DON'T stop or reverse - continue forward
+					// We'll retry jumping on next frame when hopefully on ground
+					// This prevents getting stuck in a reverse loop near edges
+					// Don't modify nextX, hspeed, or direction - just continue
+				} else if isEdge && heightDiff > 0 && heightDiff < 150 {
+					// Small drop (< 150px) - safe to walk off
+					// DON'T stop or reverse - just continue
 				} else {
-					// It's a wall or unreachable edge, stop and reverse direction
+					// It's a wall, unreachable edge (> 500px), or dangerous drop (> 150px)
+					// Stop and reverse direction
 					nextX = wallOrEdge
 					ai.hspeed = 0
 					
