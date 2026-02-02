@@ -30,9 +30,10 @@ type botAI struct {
 	randomSeed      int64 // Per-bot random seed for unique behavior
 
 	// Player state (from MapleStory client)
-	state         PlayerState
-	facingLeft    bool // true = left, false = right
-	lastMoveTime  time.Time
+	state          PlayerState
+	facingLeft     bool    // true = left, false = right (visual direction)
+	horizontalInput float64 // Horizontal input: -1 (left), 0 (none), 1 (right)
+	lastMoveTime   time.Time
 
 	// Physics state (PhysicsObject from MapleStory client)
 	hspeed    float64 // Horizontal velocity
@@ -71,17 +72,18 @@ func newBotAI(bot *Player) *botAI {
 		randomSeed:      randomSeed,
 		
 		// Initialize physics state
-		state:    StateStanding,
-		facingLeft: bot.rng.Intn(2) == 0, // Random initial facing
-		hspeed:   0,
-		vspeed:   0,
-		x:        float64(bot.pos.x),
-		y:        float64(bot.pos.y),
-		fhid:     bot.pos.foothold,
-		fhslope:  0,
-		fhlayer:  0,
-		onground: true,
-		canjump:  true,
+		state:           StateStanding,
+		facingLeft:      bot.rng.Intn(2) == 0, // Random initial facing
+		horizontalInput: 0, // No initial input
+		hspeed:          0,
+		vspeed:          0,
+		x:               float64(bot.pos.x),
+		y:               float64(bot.pos.y),
+		fhid:            bot.pos.foothold,
+		fhslope:         0,
+		fhlayer:         0,
+		onground:        true,
+		canjump:         true,
 	}
 }
 
@@ -144,8 +146,10 @@ func (ai *botAI) startWalking() {
 	// Decide direction based on preference
 	if directionRoll < preferenceThreshold {
 		ai.facingLeft = true
+		ai.horizontalInput = -1.0 // Want to move left
 	} else {
 		ai.facingLeft = false
+		ai.horizontalInput = 1.0 // Want to move right
 	}
 
 	ai.state = StateWalking
@@ -166,12 +170,13 @@ func (ai *botAI) startWalking() {
 // stopWalking makes the bot stop moving
 func (ai *botAI) stopWalking() {
 	ai.state = StateStanding
+	ai.horizontalInput = 0.0 // No input when standing
 	// LARGE variation in pause duration for each stop
 	variation := time.Millisecond * time.Duration(ai.bot.rng.Intn(2000)) // +/- up to 2 seconds
 	ai.nextActionTime = time.Now().Add(ai.pauseDuration + variation)
 }
 
-// tryJump attempts to make the bot jump
+// tryJump attempts to make the bot jump (physics.md lines 162-177)
 func (ai *botAI) tryJump() {
 	if ai.onground && ai.canjump && (ai.state == StateStanding || ai.state == StateWalking) {
 		ai.state = StateJumping
@@ -179,14 +184,9 @@ func (ai *botAI) tryJump() {
 		// Set vertical velocity (IDA: CUserLocal_DoJump @ 0x5BC5F7)
 		ai.vspeed = -JUMPVERTICALVELOCITY // -555.0
 		
-		// Set horizontal velocity if moving (IDA @ 0x5BC750)
-		if ai.hspeed != 0 {
-			// Preserve direction but set to jump horizontal multiplier
-			if ai.hspeed > 0 {
-				ai.hspeed = JUMPHORIZONTALMULT // 162.5
-			} else {
-				ai.hspeed = -JUMPHORIZONTALMULT // -162.5
-			}
+		// Set horizontal velocity ONLY if there's horizontal input (physics.md lines 171-177)
+		if ai.horizontalInput != 0 {
+			ai.hspeed = ai.horizontalInput * JUMPHORIZONTALMULT // ±162.5
 		}
 		
 		ai.canjump = false
@@ -289,38 +289,36 @@ func (ai *botAI) applyPhysics(dt float64) {
 	
 	if ai.onground {
 		// === GROUNDED PHYSICS (CMovePath_HandleGroundedMovement @ 0x5C03EE) ===
+		// physics.md lines 380-393
 		
-		if ai.state == StateWalking {
+		if ai.horizontalInput != 0 {
 			// Apply walking acceleration (IDA @ 0x5C0460)
-			walkDir := 1.0
-			if ai.facingLeft {
-				walkDir = -1.0
-			}
-			accel := walkDir * GROUNDEDACCELFORCE // ±140000
+			accel := ai.horizontalInput * GROUNDEDACCELFORCE // ±140000
 			ai.applyAccelerationClamped(&ai.hspeed, accel, dt, WALKSPEED)
 		} else {
-			// Apply friction when not actively walking
+			// Apply friction when no horizontal input
 			ai.applyFriction(ai.hspeed, GROUNDEDACCELFORCE, dt)
 		}
 		
 	} else {
 		// === AIRBORNE PHYSICS (CMovePath_ApplyAirborneVelocity @ 0x5BD3B6) ===
+		// physics.md lines 212-263
 		
-		// Apply gravity (IDA @ 0x5BD400)
+		// Apply gravity (IDA @ 0x5BD400) - ALWAYS when airborne
 		ai.applyGravity(&ai.vspeed, dt)
 		
-		// Apply air control if moving horizontally (IDA @ 0x5BD500)
-		if ai.state == StateWalking && ai.hspeed != 0 {
-			walkDir := 1.0
-			if ai.facingLeft {
-				walkDir = -1.0
-			}
-			accel := walkDir * AIRBORNEACCELERATION // ±2000
+		// Apply air control if player wants to move horizontally (IDA @ 0x5BD500)
+		// physics.md lines 222-233
+		if ai.horizontalInput != 0 {
+			// Pre-computed acceleration: 2000/125 = 160 per physics.md line 230
+			const effectiveAirAccel = 160.0
+			accel := ai.horizontalInput * effectiveAirAccel
 			ai.applyAccelerationClamped(&ai.hspeed, accel, dt, MAXAIRCONTROLVELOCITY)
+		} else {
+			// Apply air friction ONLY when no horizontal input (IDA @ 0x5BD560)
+			// physics.md lines 248-263 - KEY: Only when horizontalInput == 0
+			ai.applyAirFriction(&ai.hspeed, ai.vspeed, dt)
 		}
-		
-		// Apply air friction (IDA @ 0x5BD560)
-		ai.applyAirFriction(&ai.hspeed, ai.vspeed, dt)
 	}
 }
 
@@ -448,14 +446,15 @@ func (ai *botAI) move(dt float64) {
 					nextX = wallOrEdge
 					ai.hspeed = 0
 					
-					// Jump to try to reach the platform
+					// Jump to try to reach the platform (physics.md lines 162-177)
 					ai.vspeed = -JUMPVERTICALVELOCITY // -555.0
-					// Set horizontal velocity to jump multiplier
-					if ai.facingLeft {
-						ai.hspeed = -JUMPHORIZONTALMULT
-					} else {
-						ai.hspeed = JUMPHORIZONTALMULT
+					
+					// Set horizontal velocity ONLY if there's horizontal input
+					// physics.md line 171-177: if (state.horizontalInput != 0)
+					if ai.horizontalInput != 0 {
+						ai.hspeed = ai.horizontalInput * JUMPHORIZONTALMULT // ±162.5
 					}
+					
 					ai.canjump = false
 					ai.state = StateJumping
 					log.Printf("Bot %s jumping up to platform (heightDiff: %.1f)", ai.bot.Name, heightDiff)
