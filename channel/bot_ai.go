@@ -37,6 +37,8 @@ type botAI struct {
 	// Physics state (PhysicsObject from MapleStory client)
 	hspeed    float64 // Horizontal velocity
 	vspeed    float64 // Vertical velocity
+	prevHspeed float64 // Previous horizontal velocity (for trapezoidal integration)
+	prevVspeed float64 // Previous vertical velocity (for trapezoidal integration)
 	x         float64 // Precise X position (float for sub-pixel accuracy)
 	y         float64 // Precise Y position
 	fhid      int16   // Current foothold ID
@@ -173,21 +175,48 @@ func (ai *botAI) stopWalking() {
 func (ai *botAI) tryJump() {
 	if ai.onground && ai.canjump && (ai.state == StateStanding || ai.state == StateWalking) {
 		ai.state = StateJumping
-		ai.vspeed = JUMPFORCE
+		
+		// Set vertical velocity (IDA: CUserLocal_DoJump @ 0x5BC5F7)
+		ai.vspeed = -JUMPVERTICALVELOCITY // -555.0
+		
+		// Set horizontal velocity if moving (IDA @ 0x5BC750)
+		if ai.hspeed != 0 {
+			// Preserve direction but set to jump horizontal multiplier
+			if ai.hspeed > 0 {
+				ai.hspeed = JUMPHORIZONTALMULT // 162.5
+			} else {
+				ai.hspeed = -JUMPHORIZONTALMULT // -162.5
+			}
+		}
+		
 		ai.canjump = false
 	}
 }
 
-// Physics constants from MapleStory client (from Physics.cpp)
-// Note: Speeds are tuned for 10 FPS server update rate
+// Physics constants from MapleStory v40 client (extracted from IDA @ 0x62E340-0x62E3C0)
+// All values are per-SECOND and will be multiplied by dt (delta time)
+// Reference: https://gist.github.com/ThatMapleDev/8fa5dc8471973cf60ca303e9a945a955
 const (
-	GRAVFORCE      = 2.5   // Gravity acceleration per frame (MUCH stronger for immediate drops)
-	FRICTION       = 0.3   // Ground friction
-	WALKFORCE      = 1.5   // Walking acceleration (increased for more responsive movement)
-	WALKSPEED      = 10.0  // Maximum walk speed (increased for visible movement at 10 FPS)
-	JUMPFORCE      = -12.0 // Initial jump force (negative = upward, very high for 500px jumps)
-	MAXVERTSPEED   = 20.0  // Terminal velocity (max fall speed, much higher for fast falls)
-	GROUNDTHRESHOLD = 5.0  // Distance tolerance for ground detection (pixels)
+	// Core movement constants
+	JUMPVERTICALVELOCITY   = 555.0    // Initial upward velocity on jump (IDA: g_JumpVerticalVelocity @ 0x62E358)
+	JUMPHORIZONTALMULT     = 162.5    // Horizontal velocity multiplier on jump (IDA: g_JumpHorizontalMultiplier @ 0x62E350)
+	WALKSPEED              = 125.0    // Maximum walk speed (IDA: g_WalkSpeed @ 0x62E360)
+	TERMINALVELOCITY       = 670.0    // Maximum fall speed (IDA: g_TerminalVelocity @ 0x62E3A0)
+	GROUNDEDACCELFORCE     = 140000.0 // Force for grounded acceleration (IDA: g_GroundedAccelForce @ 0x62E380)
+	AIRBORNEACCELERATION   = 2000.0   // Horizontal air control acceleration (IDA: g_AirborneAcceleration @ 0x62E390)
+	
+	// Computed constants (verified via client hooking)
+	EFFECTIVEGRAVITY       = 2000.0   // Effective gravity: (walkStats * 10000 * 2) / walkStats
+	AIRFRICTIONWEAK        = 0.8      // Air friction when rising/slow fall: 10000 * 0.01 / 125
+	AIRFRICTIONSTRONG      = 80.0     // Air friction when falling fast: 10000 / 125
+	MAXAIRCONTROLVELOCITY  = 8.928571 // Air control velocity cap: stat * 10000 * 0.0008928571
+	
+	// Integration
+	TRAPEZOIDALFACTOR      = 0.5      // Trapezoidal integration factor (IDA: g_TrapezoidFactor @ 0x6295C8)
+	
+	// Thresholds
+	GROUNDTHRESHOLD        = 5.0      // Distance tolerance for ground detection (pixels)
+	FALLINGFASTTHRESHOLD   = 100.0    // Velocity threshold to apply strong air friction
 )
 
 // PerformMovement executes one physics update cycle (from MapleStory client move_object)
@@ -242,107 +271,144 @@ func (ai *botAI) PerformMovement() {
 	ai.bot.inst.movePlayer(ai.bot.ID, moveData, ai.bot)
 }
 
-// applyPhysics calculates forces and accelerations (from Physics.cpp move_normal)
+// applyPhysics calculates forces and accelerations (from MapleStory client CMovePath_UpdatePhysics @ 0x5BC3B5)
+// Implements proper trapezoidal integration and client-accurate physics
 func (ai *botAI) applyPhysics(dt float64) {
-	// If bot is standing still (not Walking/Jumping/Falling), don't apply physics forces
+	// Store previous velocities for trapezoidal integration
+	ai.prevHspeed = ai.hspeed
+	ai.prevVspeed = ai.vspeed
+	
+	// If bot is standing still (not Walking/Jumping/Falling), apply friction only
 	if ai.state == StateStanding {
-		// Apply strong friction to stop quickly
+		// Apply friction to stop quickly
 		if ai.hspeed != 0 {
-			friction := FRICTION * 3.0 // Stronger friction when standing
-			if ai.hspeed > 0 {
-				ai.hspeed -= friction
-				if ai.hspeed < 0 {
-					ai.hspeed = 0
-				}
-			} else {
-				ai.hspeed += friction
-				if ai.hspeed > 0 {
-					ai.hspeed = 0
-				}
-			}
+			ai.applyFriction(ai.hspeed, GROUNDEDACCELFORCE, dt)
 		}
 		return
 	}
 	
-	// Reset accelerations
-	hacc := 0.0
-	vacc := 0.0
-
 	if ai.onground {
-		// === ON GROUND PHYSICS ===
+		// === GROUNDED PHYSICS (CMovePath_HandleGroundedMovement @ 0x5C03EE) ===
 		
-		// Apply horizontal walking force
 		if ai.state == StateWalking {
-			walkdir := 1.0
+			// Apply walking acceleration (IDA @ 0x5C0460)
+			walkDir := 1.0
 			if ai.facingLeft {
-				walkdir = -1.0
+				walkDir = -1.0
 			}
-			hacc += WALKFORCE * walkdir
+			accel := walkDir * GROUNDEDACCELFORCE // ±140000
+			ai.applyAccelerationClamped(&ai.hspeed, accel, dt, WALKSPEED)
+		} else {
+			// Apply friction when not actively walking
+			ai.applyFriction(ai.hspeed, GROUNDEDACCELFORCE, dt)
 		}
-		
-		// Apply friction
-		if ai.hspeed != 0 {
-			friction := FRICTION
-			if ai.hspeed > 0 {
-				hacc -= friction
-			} else {
-				hacc += friction
-			}
-		}
-		
-		// Apply slope force (simplified - assuming flat ground for now)
-		// TODO: Get actual slope from foothold and apply slope forces
 		
 	} else {
-		// === IN AIR PHYSICS ===
+		// === AIRBORNE PHYSICS (CMovePath_ApplyAirborneVelocity @ 0x5BD3B6) ===
 		
-		// Apply gravity - MUCH stronger now for immediate drops
-		vacc += GRAVFORCE
+		// Apply gravity (IDA @ 0x5BD400)
+		ai.applyGravity(&ai.vspeed, dt)
 		
-		// Apply SLIGHT horizontal air resistance to make falls look more vertical
-		// This gives a tiny bit of slope but mostly vertical drop
-		if ai.hspeed != 0 {
-			airResistance := 0.15 // Very light resistance - just enough to look more vertical
-			if ai.hspeed > 0 {
-				hacc -= airResistance
-			} else {
-				hacc += airResistance
+		// Apply air control if moving horizontally (IDA @ 0x5BD500)
+		if ai.state == StateWalking && ai.hspeed != 0 {
+			walkDir := 1.0
+			if ai.facingLeft {
+				walkDir = -1.0
 			}
+			accel := walkDir * AIRBORNEACCELERATION // ±2000
+			ai.applyAccelerationClamped(&ai.hspeed, accel, dt, MAXAIRCONTROLVELOCITY)
+		}
+		
+		// Apply air friction (IDA @ 0x5BD560)
+		ai.applyAirFriction(&ai.hspeed, ai.vspeed, dt)
+	}
+}
+
+// applyGravity applies gravity to vertical velocity (IDA @ 0x5BD400)
+func (ai *botAI) applyGravity(velocityY *float64, dt float64) {
+	if *velocityY < TERMINALVELOCITY {
+		*velocityY += EFFECTIVEGRAVITY * dt
+		if *velocityY > TERMINALVELOCITY {
+			*velocityY = TERMINALVELOCITY
 		}
 	}
+}
+
+// applyAccelerationClamped applies acceleration with velocity clamping (IDA: ApplyAccelerationClamped @ 0x5BD345)
+// This implements the client's acceleration function with proper max velocity limits
+func (ai *botAI) applyAccelerationClamped(velocity *float64, accel float64, dt float64, maxSpeed float64) {
+	*velocity += accel * dt
 	
-	// Update velocities
-	ai.hspeed += hacc
-	ai.vspeed += vacc
-	
-	// Apply speed caps
-	if ai.hspeed > WALKSPEED {
-		ai.hspeed = WALKSPEED
-	} else if ai.hspeed < -WALKSPEED {
-		ai.hspeed = -WALKSPEED
+	// Clamp to max speed
+	if *velocity > maxSpeed {
+		*velocity = maxSpeed
+	} else if *velocity < -maxSpeed {
+		*velocity = -maxSpeed
+	}
+}
+
+// applyFriction applies friction force to reduce velocity
+func (ai *botAI) applyFriction(velocity float64, frictionForce float64, dt float64) {
+	if velocity > 0 {
+		ai.hspeed -= frictionForce * dt
+		if ai.hspeed < 0 {
+			ai.hspeed = 0
+		}
+	} else if velocity < 0 {
+		ai.hspeed += frictionForce * dt
+		if ai.hspeed > 0 {
+			ai.hspeed = 0
+		}
+	}
+}
+
+// applyAirFriction applies air friction (IDA @ 0x5BD560)
+// Uses weak friction when rising/falling slowly, strong friction when falling fast
+func (ai *botAI) applyAirFriction(velocityX *float64, velocityY float64, dt float64) {
+	if *velocityX == 0 {
+		return
 	}
 	
-	// Enforce terminal velocity
-	if ai.vspeed > MAXVERTSPEED {
-		ai.vspeed = MAXVERTSPEED
+	// Determine friction strength based on vertical velocity
+	var friction float64
+	if velocityY > FALLINGFASTTHRESHOLD {
+		// Falling fast - use strong friction
+		friction = AIRFRICTIONSTRONG
+	} else {
+		// Rising or falling slowly - use weak friction
+		friction = AIRFRICTIONWEAK
 	}
 	
-	// Stop if speed is very small (prevents jitter)
-	if abs(ai.hspeed) < 0.01 {
-		ai.hspeed = 0
+	// Apply friction in opposite direction of movement
+	if *velocityX > 0 {
+		*velocityX -= friction * dt
+		if *velocityX < 0 {
+			*velocityX = 0
+		}
+	} else {
+		*velocityX += friction * dt
+		if *velocityX > 0 {
+			*velocityX = 0
+		}
 	}
 }
 
 // move applies velocities to position (from PhysicsObject.move())
 // Implements wall and edge collision detection from FootholdTree.cpp
+// Uses trapezoidal integration for smooth movement (IDA @ 0x5BD8C5)
 func (ai *botAI) move(dt float64) {
 	// Store current position before movement
 	crntX := ai.x
 	crntY := ai.y
 	
-	// Calculate next position
-	nextX := ai.x + ai.hspeed
-	nextY := ai.y + ai.vspeed
+	// === TRAPEZOIDAL INTEGRATION (IDA @ 0x5BD8C5-0x5BD962) ===
+	// position += (oldVelocity + newVelocity) * 0.5 * dt
+	avgHspeed := (ai.prevHspeed + ai.hspeed) * TRAPEZOIDALFACTOR
+	avgVspeed := (ai.prevVspeed + ai.vspeed) * TRAPEZOIDALFACTOR
+	
+	// Calculate next position using average velocities
+	nextX := ai.x + avgHspeed * dt
+	nextY := ai.y + avgVspeed * dt
 	
 	// === HORIZONTAL COLLISION DETECTION (from FootholdTree.cpp limit_movement) ===
 	if ai.hspeed != 0 {
@@ -383,7 +449,13 @@ func (ai *botAI) move(dt float64) {
 					ai.hspeed = 0
 					
 					// Jump to try to reach the platform
-					ai.vspeed = JUMPFORCE
+					ai.vspeed = -JUMPVERTICALVELOCITY // -555.0
+					// Set horizontal velocity to jump multiplier
+					if ai.facingLeft {
+						ai.hspeed = -JUMPHORIZONTALMULT
+					} else {
+						ai.hspeed = JUMPHORIZONTALMULT
+					}
 					ai.canjump = false
 					ai.state = StateJumping
 					log.Printf("Bot %s jumping up to platform (heightDiff: %.1f)", ai.bot.Name, heightDiff)
