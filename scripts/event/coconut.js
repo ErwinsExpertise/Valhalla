@@ -58,7 +58,9 @@ function afterPortal(plr, dst) {
 }
 
 function timeout(plr) {
-    plr.warp(exitMapID);
+    if (started) {
+        plr.warp(exitMapID);
+    }
 }
 
 function playerLeaveEvent(plr) {

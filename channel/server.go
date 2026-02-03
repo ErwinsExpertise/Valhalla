@@ -4,7 +4,6 @@ import (
 	"context"
 	"log"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/dop251/goja"
@@ -48,7 +47,6 @@ type Server struct {
 	guilds           map[int32]*guild
 	events           map[int32]*event
 	gmEvent          *event
-	gmEventMu        sync.RWMutex
 	rates            rates
 	ac               *anticheat.AntiCheat
 }

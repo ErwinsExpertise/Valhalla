@@ -49,9 +49,3 @@ func packetCoconutScore(maple, story int16) mpacket.Packet {
 	p.WriteInt16(story)
 	return p
 }
-
-func packetFieldSpecificData(team byte) mpacket.Packet {
-	p := mpacket.CreateWithOpcode(opcode.SendChannelFieldSpecificData)
-	p.WriteByte(team)
-	return p
-}

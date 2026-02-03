@@ -2970,35 +2970,41 @@ func (server *Server) npcChatStart(conn mnet.Client, reader mpacket.Reader) {
 }
 
 func (server *Server) hasActiveGMEvent() bool {
-	server.gmEventMu.RLock()
-	gmEvent := server.gmEvent
-	server.gmEventMu.RUnlock()
-	if gmEvent == nil || gmEvent.HasFinished() {
+	active := make(chan bool, 1)
+	select {
+	case server.dispatch <- func() {
+		active <- server.gmEvent != nil && !server.gmEvent.HasFinished()
+	}:
+		return <-active
+	default:
+		log.Println("gmEvent state check skipped: dispatcher busy, returning false (NPC entry)")
 		return false
 	}
-
-	return true
 }
 
 func (server *Server) gmEventMapID() int32 {
-	server.gmEventMu.RLock()
-	gmEvent := server.gmEvent
-	server.gmEventMu.RUnlock()
-	if gmEvent == nil {
-		return 0
-	}
-
-	if gmEvent.HasFinished() {
-		return 0
-	}
-
-	for _, id := range gmEvent.playerIDs {
-		if plr, err := server.players.GetFromID(id); err == nil && plr != nil && plr.mapID != 0 {
-			return plr.mapID
+	result := make(chan int32, 1)
+	select {
+	case server.dispatch <- func() {
+		if server.gmEvent == nil || server.gmEvent.HasFinished() {
+			result <- 0
+			return
 		}
-	}
 
-	return 0
+		for _, id := range server.gmEvent.playerIDs {
+			if plr, err := server.players.GetFromID(id); err == nil && plr != nil && plr.mapID != 0 {
+				result <- plr.mapID
+				return
+			}
+		}
+
+		result <- 0
+	}:
+		return <-result
+	default:
+		log.Println("gmEvent map lookup skipped: dispatcher busy, returning 0 (NPC entry)")
+		return 0
+	}
 }
 
 func (server *Server) npcChatContinue(conn mnet.Client, reader mpacket.Reader) {

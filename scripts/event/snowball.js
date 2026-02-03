@@ -37,6 +37,11 @@ function beginRound() {
     }
     started = true;
     ctrl.setDuration("60m");
+    var players = ctrl.players();
+    var time = ctrl.remainingTime();
+    for (const player of players) {
+        player.showCountdown(time);
+    }
     var field = ctrl.getMap(startMapID);
     if (field.getMapID() !== 0) {
         field.portalEnabled(true, "start00");
@@ -59,7 +64,9 @@ function afterPortal(plr, dst) {
 }
 
 function timeout(plr) {
-    plr.warp(exitMapID);
+    if (started) {
+        plr.warp(exitMapID);
+    }
 }
 
 function playerLeaveEvent(plr) {

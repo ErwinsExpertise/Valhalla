@@ -1645,19 +1645,19 @@ func (server *Server) gmCommand(conn mnet.Client, msg string) {
 		}
 
 		server.events[player.ID] = event
-		server.gmEventMu.Lock()
-		server.gmEvent = event
-		server.gmEventMu.Unlock()
+		server.dispatch <- func() {
+			server.gmEvent = event
+		}
 		event.start()
 
-		server.world.Send(internal.PacketChatMegaphone("[GM Event]",
-			fmt.Sprintf("%s event is starting on channel %d. Talk to the Maple Administrator (%d) to join.", command[1], server.ChannelID(), npcIDMapleAdministrator),
+		server.world.Send(internal.PacketChatMegaphone("[GM Notice]",
+			fmt.Sprintf("%s event is starting on channel %d. Talk to the Maple Administrator to join.", command[1], server.ChannelID()),
 			false,
 		))
 	case "eventStop":
-		server.gmEventMu.Lock()
-		server.gmEvent = nil
-		server.gmEventMu.Unlock()
+		server.dispatch <- func() {
+			server.gmEvent = nil
+		}
 	case "events":
 		info := "There are currently " + strconv.Itoa(len(server.events)) + " events running"
 		conn.Send(packetMessageNotice(info))
