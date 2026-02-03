@@ -23,6 +23,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+const (
+	npcIDMapleAdministrator = 9010000
+	reactorNameCoconut      = "coconut"
+	reactorNameSnowball     = "snowball"
+)
+
+
 // Prometheus metrics for packet observability
 var (
 	packetsTotal = prometheus.NewCounterVec(
@@ -166,6 +173,10 @@ func (server *Server) HandleClientPacket(conn mnet.Client, reader mpacket.Reader
 		server.playerSummonAttack(conn, reader)
 	case opcode.RecvChannelReactorHit:
 		server.playerHitReactor(conn, reader)
+	case opcode.RecvChannelCoconutAttack:
+		server.playerCoconutAttack(conn, reader)
+	case opcode.RecvChannelSnowballAttack:
+		server.playerSnowballAttack(conn, reader)
 	case opcode.RecvChannelNpcStorage:
 		server.playerUseStorage(conn, reader)
 	case opcode.RecvChannelMessenger:
@@ -2940,6 +2951,14 @@ func (server *Server) npcChatStart(conn mnet.Client, reader mpacket.Reader) {
 		log.Println("script init:", err)
 	}
 
+	if npcData.id == npcIDMapleAdministrator && server.hasActiveGMEvent() {
+		controller.vm.Set("gmEventActive", true)
+		controller.vm.Set("gmEventChannel", server.ChannelID())
+		controller.vm.Set("gmEventMap", int(server.gmEventMapID()))
+	} else {
+		controller.vm.Set("gmEventActive", false)
+	}
+
 	server.npcChat[conn] = controller
 	server.updateNPCInteractionMetric(1)
 
@@ -2948,6 +2967,38 @@ func (server *Server) npcChatStart(conn mnet.Client, reader mpacket.Reader) {
 		delete(server.npcChat, conn)
 		server.updateNPCInteractionMetric(-1)
 	}
+}
+
+func (server *Server) hasActiveGMEvent() bool {
+	server.gmEventMu.RLock()
+	gmEvent := server.gmEvent
+	server.gmEventMu.RUnlock()
+	if gmEvent == nil || gmEvent.HasFinished() {
+		return false
+	}
+
+	return true
+}
+
+func (server *Server) gmEventMapID() int32 {
+	server.gmEventMu.RLock()
+	gmEvent := server.gmEvent
+	server.gmEventMu.RUnlock()
+	if gmEvent == nil {
+		return 0
+	}
+
+	if gmEvent.HasFinished() {
+		return 0
+	}
+
+	for _, id := range gmEvent.playerIDs {
+		if plr, err := server.players.GetFromID(id); err == nil && plr != nil && plr.mapID != 0 {
+			return plr.mapID
+		}
+	}
+
+	return 0
 }
 
 func (server *Server) npcChatContinue(conn mnet.Client, reader mpacket.Reader) {
@@ -4792,6 +4843,41 @@ func (server *Server) playerHitReactor(conn mnet.Client, reader mpacket.Reader) 
 				reactor.name,
 			)
 		}
+	}
+}
+
+func (server *Server) playerCoconutAttack(conn mnet.Client, reader mpacket.Reader) {
+	plr, err := server.players.GetFromConn(conn)
+	if err != nil || plr == nil {
+		return
+	}
+
+	coconutID := reader.ReadInt16()
+	delay := reader.ReadInt16()
+
+	if plr.inst != nil {
+		plr.inst.send(packetCoconutAttack(coconutID, delay, coconutHit))
+	}
+	if plr.event != nil && plr.event.reactorHitCallback != nil {
+		plr.event.reactorHitCallback(scriptPlayerWrapper{plr: plr, server: server}, reactorNameCoconut)
+	}
+}
+
+func (server *Server) playerSnowballAttack(conn mnet.Client, reader mpacket.Reader) {
+	plr, err := server.players.GetFromConn(conn)
+	if err != nil || plr == nil {
+		return
+	}
+
+	attackType := reader.ReadByte()
+	damage := reader.ReadInt16()
+	delay := reader.ReadInt16()
+
+	if plr.inst != nil {
+		plr.inst.send(packetSnowballHit(attackType, damage, delay))
+	}
+	if plr.event != nil && plr.event.reactorHitCallback != nil {
+		plr.event.reactorHitCallback(scriptPlayerWrapper{plr: plr, server: server}, reactorNameSnowball)
 	}
 }
 

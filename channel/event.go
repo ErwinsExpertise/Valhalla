@@ -1,6 +1,7 @@
 package channel
 
 import (
+	"fmt"
 	"log"
 	"slices"
 	"sync"
@@ -211,6 +212,15 @@ func (e *event) SetDuration(duration string) {
 	}
 }
 
+func (e *event) HasFinished() bool {
+	select {
+	case <-e.finished:
+		return true
+	default:
+		return false
+	}
+}
+
 func (e *event) Schedule(name, delay string) {
 	duration, err := time.ParseDuration(delay)
 	if err != nil {
@@ -250,12 +260,25 @@ func (e *event) Schedule(name, delay string) {
 	})
 }
 
+func (e *event) NotifyAll(msg string) {
+	for _, id := range e.playerIDs {
+		if plr, err := e.server.players.GetFromID(id); err == nil && plr != nil {
+			plr.Send(packetMessageNotice(msg))
+		}
+	}
+}
+
 func (e *event) GetMap(id int32) scriptMapWrapper {
 	if field, ok := e.server.fields[id]; ok {
 		inst, err := field.getInstance(e.instanceID)
-
 		if err != nil {
-			return scriptMapWrapper{}
+			log.Printf("event map %d instance %d missing, falling back to instance 0", id, e.instanceID)
+			inst, err = field.getInstance(0)
+			if err != nil {
+				log.Printf("event map %d instance 0 missing: %v", id, err)
+				return scriptMapWrapper{}
+			}
+			e.NotifyAll(fmt.Sprintf("Event map %d missing instance %d; using instance 0 instead.", id, e.instanceID))
 		}
 
 		return scriptMapWrapper{inst: inst, server: e.server}

@@ -6,13 +6,17 @@ var teamScores = { red: 0, blue: 0 };
 var teamOrder = ["red", "blue"];
 var scoreLimit = 30;
 var ended = false;
+var started = false;
 
 function start() {
-    ctrl.setDuration("5m");
+    ctrl.setDuration("10m");
 
     var field = ctrl.getMap(startMapID);
-    field.reset();
-    field.clearProperties();
+    if (field.getMapID() !== 0) {
+        field.reset();
+        field.clearProperties();
+        field.portalEnabled(false, "start00");
+    }
 
     var players = ctrl.players();
     var time = ctrl.remainingTime();
@@ -24,7 +28,25 @@ function start() {
         players[i].showCountdown(time);
     }
 
-    ctrl.schedule("endRound", "5m");
+    ctrl.schedule("beginRound", "10m");
+}
+
+function beginRound() {
+    if (ended || started) {
+        return;
+    }
+    started = true;
+    ctrl.setDuration("60m");
+    var players = ctrl.players();
+    var time = ctrl.remainingTime();
+    for (let i = 0; i < players.length; i++) {
+        players[i].showCountdown(time);
+    }
+    var field = ctrl.getMap(startMapID);
+    if (field.getMapID() !== 0) {
+        field.portalEnabled(true, "start00");
+    }
+    ctrl.schedule("endRound", "60m");
 }
 
 function beforePortal(plr, src, dst) {
@@ -49,7 +71,7 @@ function playerLeaveEvent(plr) {
 }
 
 function onReactorHit(plr, reactorName) {
-    if (ended || reactorName.indexOf("coconut") !== 0) {
+    if (!started || ended || reactorName.indexOf("coconut") !== 0) {
         return;
     }
 

@@ -6,13 +6,17 @@ var progress = { maple: 0, story: 0 };
 var teamOrder = ["maple", "story"];
 var targetProgress = 100;
 var ended = false;
+var started = false;
 
 function start() {
     ctrl.setDuration("10m");
 
     var field = ctrl.getMap(startMapID);
-    field.reset();
-    field.clearProperties();
+    if (field.getMapID() !== 0) {
+        field.reset();
+        field.clearProperties();
+        field.portalEnabled(false, "start00");
+    }
 
     var players = ctrl.players();
     var time = ctrl.remainingTime();
@@ -24,8 +28,26 @@ function start() {
         players[i].showCountdown(time);
     }
 
+    ctrl.schedule("beginRound", "10m");
+}
+
+function beginRound() {
+    if (ended || started) {
+        return;
+    }
+    started = true;
+    ctrl.setDuration("60m");
+    var field = ctrl.getMap(startMapID);
+    if (field.getMapID() !== 0) {
+        field.portalEnabled(true, "start00");
+    }
+    var players = ctrl.players();
+    var time = ctrl.remainingTime();
+    for (let i = 0; i < players.length; i++) {
+        players[i].showCountdown(time);
+    }
     ctrl.schedule("tick", "5s");
-    ctrl.schedule("endRound", "10m");
+    ctrl.schedule("endRound", "60m");
 }
 
 function beforePortal(plr, src, dst) {
@@ -50,7 +72,7 @@ function playerLeaveEvent(plr) {
 }
 
 function onReactorHit(plr, reactorName) {
-    if (ended || reactorName.indexOf("snow") !== 0) {
+    if (!started || ended || reactorName.indexOf("snow") !== 0) {
         return;
     }
 
@@ -64,7 +86,7 @@ function onReactorHit(plr, reactorName) {
 }
 
 function tick() {
-    if (ended) {
+    if (ended || !started) {
         return;
     }
 

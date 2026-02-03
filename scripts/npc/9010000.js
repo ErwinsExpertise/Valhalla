@@ -1,6 +1,8 @@
-npc.sendSelection("Hello! Having fun exploring Maple World? \r\n#L0##eDelete Un-droppable items.#l\r\n#L1#End conversation#l");
-var sel = npc.selection();
-
-if (sel === 0) {
-    npc.sendOk("Delete Un-droppable items – understood and executed!");
+if (!gmEventActive) {
+    npc.sendOk("There is no GM event running right now.");
+} else if (plr.channel() != gmEventChannel) {
+    plr.sendNotice("The GM event is on channel " + gmEventChannel + ". Please switch channels first.");
+    npc.sendOk("The GM event is on channel " + gmEventChannel + ". Please switch channels first.");
+} else if (npc.sendYesNo("A GM event is running on channel " + gmEventChannel + ". Enter now?")) {
+    plr.warp(gmEventMap);
 }

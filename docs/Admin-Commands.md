@@ -893,18 +893,17 @@ Adds guild points to your guild.
 
 ## Events
 
-### `/eventStart <name> <instance_id>`
+### `/eventStart <name>`
 
 Starts an event script.
 
 **Syntax:**
 ```
-/eventStart <event_name> <instance_id>
+/eventStart <event_name>
 ```
 
 **Parameters:**
 - `event_name` - Name of the event script
-- `instance_id` - Instance ID to run the event in
 
 **Notes:**
 - If in a party, all party members in the same instance will participate
@@ -912,10 +911,10 @@ Starts an event script.
 
 **Example:**
 ```
-/eventStart ola 1  # Start 'ola' event in instance 1
-/eventStart ox_quiz 1  # Start 'ox_quiz' event in instance 1
-/eventStart coconut 1  # Start 'coconut' event in instance 1
-/eventStart snowball 1  # Start 'snowball' event in instance 1
+/eventStart ola  # Start 'ola' event on current instance
+/eventStart ox_quiz  # Start 'ox_quiz' event on current instance
+/eventStart coconut  # Start 'coconut' event on current instance
+/eventStart snowball  # Start 'snowball' event on current instance
 ```
 
 ### `/events`

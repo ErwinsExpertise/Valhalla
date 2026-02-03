@@ -4,15 +4,19 @@ var level3Maps = [109030003, 109030103, 109030203, 109030303, 109030403];
 var exitWinnerMapID = 109050000;
 var exitMapID = 109050001;
 var ended = false;
+var started = false;
 
 function start() {
-    ctrl.setDuration("6m");
+    ctrl.setDuration("10m");
 
     var maps = level1Maps.concat(level2Maps, level3Maps);
     for (let i = 0; i < maps.length; i++) {
         var field = ctrl.getMap(maps[i]);
-        field.reset();
-        field.clearProperties();
+        if (field.getMapID() !== 0) {
+            field.reset();
+            field.clearProperties();
+            field.portalEnabled(false, "start00");
+        }
     }
 
     var players = ctrl.players();
@@ -22,6 +26,30 @@ function start() {
         var mapID = level1Maps[i % level1Maps.length];
         players[i].warp(mapID);
         players[i].showCountdown(time);
+    }
+
+    ctrl.schedule("beginRun", "10m");
+}
+
+function beginRun() {
+    if (ended || started) {
+        return;
+    }
+    started = true;
+
+    ctrl.setDuration("60m");
+    var players = ctrl.players();
+    var time = ctrl.remainingTime();
+    for (let i = 0; i < players.length; i++) {
+        players[i].showCountdown(time);
+    }
+
+    var maps = level1Maps.concat(level2Maps, level3Maps);
+    for (let i = 0; i < maps.length; i++) {
+        var field = ctrl.getMap(maps[i]);
+        if (field.getMapID() !== 0) {
+            field.portalEnabled(true, "start00");
+        }
     }
 }
 
@@ -49,8 +77,22 @@ function playerLeaveEvent(plr) {
 function onMapChange(plr, dst) {
     var mapID = dst.getMapID();
 
+    if (mapID === exitMapID) {
+        ctrl.removePlayer(plr);
+        if (ctrl.playerCount() === 0) {
+            ctrl.finished();
+        }
+        return;
+    }
+
     if (level3Maps.indexOf(mapID) !== -1) {
-        finishWinner(plr);
+        if (!started) {
+            plr.sendMessage("The event has not started yet.");
+            plr.warp(exitMapID);
+            ctrl.removePlayer(plr);
+        } else {
+            finishWinner(plr);
+        }
         return;
     }
 

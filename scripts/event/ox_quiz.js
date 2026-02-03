@@ -14,13 +14,17 @@ var questions = [
     { q: "Fish live in water.", a: 0 }
 ];
 var currentAnswer = 0;
+var started = false;
 
 function start() {
-    ctrl.setDuration("15m");
+    ctrl.setDuration("10m");
 
     var field = ctrl.getMap(startMapID);
-    field.reset();
-    field.clearProperties();
+    if (field.getMapID() !== 0) {
+        field.reset();
+        field.clearProperties();
+        field.portalEnabled(false, "start00");
+    }
 
     var players = ctrl.players();
     var time = ctrl.remainingTime();
@@ -30,7 +34,25 @@ function start() {
         players[i].showCountdown(time);
     }
 
-    ctrl.schedule("askQuestion", "5s");
+    ctrl.schedule("beginQuiz", "10m");
+}
+
+function beginQuiz() {
+    if (started) {
+        return;
+    }
+    started = true;
+    ctrl.setDuration("60m");
+    var field = ctrl.getMap(startMapID);
+    if (field.getMapID() !== 0) {
+        field.portalEnabled(true, "start00");
+    }
+    var players = ctrl.players();
+    var time = ctrl.remainingTime();
+    for (let i = 0; i < players.length; i++) {
+        players[i].showCountdown(time);
+    }
+    askQuestion();
 }
 
 function beforePortal(plr, src, dst) {
@@ -55,6 +77,9 @@ function playerLeaveEvent(plr) {
 }
 
 function askQuestion() {
+    if (!started) {
+        return;
+    }
     if (questions.length === 0) {
         finishQuiz();
         return;
@@ -72,6 +97,9 @@ function askQuestion() {
 }
 
 function checkAnswer() {
+    if (!started) {
+        return;
+    }
     var map = ctrl.getMap(startMapID);
     var players = ctrl.players();
 
