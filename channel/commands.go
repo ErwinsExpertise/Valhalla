@@ -1602,8 +1602,8 @@ func (server *Server) gmCommand(conn mnet.Client, msg string) {
 
 		player.inst.send(packetPortalEffectt(2, "gate"))
 	case "eventStart":
-		if len(command) != 3 {
-			conn.Send(packetMessageRedText("Usage is <name> <instance id>"))
+		if len(command) < 2 {
+			conn.Send(packetMessageRedText("Usage is <name>"))
 			return
 		}
 
@@ -1614,19 +1614,14 @@ func (server *Server) gmCommand(conn mnet.Client, msg string) {
 			return
 		}
 
-		instanceID, err := strconv.Atoi(command[2])
-
-		if err != nil {
-			conn.Send(packetMessageRedText(err.Error()))
-			return
-		}
-
 		player, err := server.players.GetFromConn(conn)
 
 		if err != nil {
 			conn.Send(packetMessageRedText(err.Error()))
 			return
 		}
+
+		instanceID := player.inst.id
 
 		ids := []int32{}
 
@@ -1650,7 +1645,19 @@ func (server *Server) gmCommand(conn mnet.Client, msg string) {
 		}
 
 		server.events[player.ID] = event
+		server.dispatch <- func() {
+			server.gmEvent = event
+		}
 		event.start()
+
+		server.world.Send(internal.PacketChatMegaphone("[GM Notice]",
+			fmt.Sprintf("%s event is starting on channel %d. Talk to the Maple Administrator to join.", command[1], server.ChannelID()),
+			false,
+		))
+	case "eventStop":
+		server.dispatch <- func() {
+			server.gmEvent = nil
+		}
 	case "events":
 		info := "There are currently " + strconv.Itoa(len(server.events)) + " events running"
 		conn.Send(packetMessageNotice(info))

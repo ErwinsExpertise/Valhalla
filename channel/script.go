@@ -593,6 +593,20 @@ func (ctrl *scriptPlayerWrapper) Name() string {
 	return ctrl.plr.Name
 }
 
+func (ctrl *scriptPlayerWrapper) Channel() int {
+	if ctrl.plr == nil {
+		return 0
+	}
+	return int(ctrl.server.id) + 1
+}
+
+func (ctrl *scriptPlayerWrapper) SendNotice(msg string) {
+	if ctrl.plr == nil {
+		return
+	}
+	ctrl.plr.Send(packetMessageNotice(msg))
+}
+
 func (ctrl *scriptPlayerWrapper) InventoryExchange(itemSource int32, srcCount int32, itemExchangeFor int32, count int16) bool {
 	if !ctrl.plr.removeItemsByID(itemSource, srcCount, false) {
 		return false
@@ -725,6 +739,24 @@ func (ctrl *scriptMapWrapper) PlayersInArea(id int) int {
 	}
 
 	return count
+}
+
+func (ctrl *scriptMapWrapper) IsPlayerInArea(plr scriptPlayerWrapper, id int) bool {
+	if ctrl == nil || ctrl.inst == nil || plr.plr == nil {
+		return false
+	}
+	if id < 0 {
+		return false
+	}
+	maps := nx.GetMaps()
+	if maps == nil {
+		return false
+	}
+	field, ok := maps[ctrl.inst.fieldID]
+	if !ok || id >= len(field.Areas) {
+		return false
+	}
+	return field.Areas[id].Inside(plr.plr.pos.x, plr.plr.pos.y)
 }
 
 func (ctrl *scriptMapWrapper) MobCount() int {

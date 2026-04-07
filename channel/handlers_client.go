@@ -23,6 +23,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+const (
+	npcIDMapleAdministrator = 9010000
+	reactorNameCoconut      = "coconut"
+	reactorNameSnowball     = "snowball"
+)
+
+
 // Prometheus metrics for packet observability
 var (
 	packetsTotal = prometheus.NewCounterVec(
@@ -166,6 +173,10 @@ func (server *Server) HandleClientPacket(conn mnet.Client, reader mpacket.Reader
 		server.playerSummonAttack(conn, reader)
 	case opcode.RecvChannelReactorHit:
 		server.playerHitReactor(conn, reader)
+	case opcode.RecvChannelCoconutAttack:
+		server.playerCoconutAttack(conn, reader)
+	case opcode.RecvChannelSnowballAttack:
+		server.playerSnowballAttack(conn, reader)
 	case opcode.RecvChannelNpcStorage:
 		server.playerUseStorage(conn, reader)
 	case opcode.RecvChannelMessenger:
@@ -2940,6 +2951,14 @@ func (server *Server) npcChatStart(conn mnet.Client, reader mpacket.Reader) {
 		log.Println("script init:", err)
 	}
 
+	if npcData.id == npcIDMapleAdministrator && server.hasActiveGMEvent() {
+		controller.vm.Set("gmEventActive", true)
+		controller.vm.Set("gmEventChannel", server.ChannelID())
+		controller.vm.Set("gmEventMap", int(server.gmEventMapID()))
+	} else {
+		controller.vm.Set("gmEventActive", false)
+	}
+
 	server.npcChat[conn] = controller
 	server.updateNPCInteractionMetric(1)
 
@@ -2947,6 +2966,44 @@ func (server *Server) npcChatStart(conn mnet.Client, reader mpacket.Reader) {
 	if ended := controller.run(); ended {
 		delete(server.npcChat, conn)
 		server.updateNPCInteractionMetric(-1)
+	}
+}
+
+func (server *Server) hasActiveGMEvent() bool {
+	active := make(chan bool, 1)
+	select {
+	case server.dispatch <- func() {
+		active <- server.gmEvent != nil && !server.gmEvent.HasFinished()
+	}:
+		return <-active
+	default:
+		log.Println("gmEvent state check skipped: dispatcher busy, returning false (NPC entry)")
+		return false
+	}
+}
+
+func (server *Server) gmEventMapID() int32 {
+	result := make(chan int32, 1)
+	select {
+	case server.dispatch <- func() {
+		if server.gmEvent == nil || server.gmEvent.HasFinished() {
+			result <- 0
+			return
+		}
+
+		for _, id := range server.gmEvent.playerIDs {
+			if plr, err := server.players.GetFromID(id); err == nil && plr != nil && plr.mapID != 0 {
+				result <- plr.mapID
+				return
+			}
+		}
+
+		result <- 0
+	}:
+		return <-result
+	default:
+		log.Println("gmEvent map lookup skipped: dispatcher busy, returning 0 (NPC entry)")
+		return 0
 	}
 }
 
@@ -4785,7 +4842,49 @@ func (server *Server) playerHitReactor(conn mnet.Client, reader mpacket.Reader) 
 	_ = reader.ReadInt16() // delay
 
 	plr.inst.reactorPool.triggerHit(spawnID, 0, server, plr)
+	if plr.event != nil && plr.event.reactorHitCallback != nil {
+		if reactor, ok := plr.inst.reactorPool.reactors[spawnID]; ok && reactor.name != "" {
+			plr.event.reactorHitCallback(
+				scriptPlayerWrapper{plr: plr, server: server},
+				reactor.name,
+			)
+		}
+	}
+}
 
+func (server *Server) playerCoconutAttack(conn mnet.Client, reader mpacket.Reader) {
+	plr, err := server.players.GetFromConn(conn)
+	if err != nil || plr == nil {
+		return
+	}
+
+	coconutID := reader.ReadInt16()
+	delay := reader.ReadInt16()
+
+	if plr.inst != nil {
+		plr.inst.send(packetCoconutAttack(coconutID, delay, coconutHit))
+	}
+	if plr.event != nil && plr.event.reactorHitCallback != nil {
+		plr.event.reactorHitCallback(scriptPlayerWrapper{plr: plr, server: server}, reactorNameCoconut)
+	}
+}
+
+func (server *Server) playerSnowballAttack(conn mnet.Client, reader mpacket.Reader) {
+	plr, err := server.players.GetFromConn(conn)
+	if err != nil || plr == nil {
+		return
+	}
+
+	attackType := reader.ReadByte()
+	damage := reader.ReadInt16()
+	delay := reader.ReadInt16()
+
+	if plr.inst != nil {
+		plr.inst.send(packetSnowballHit(attackType, damage, delay))
+	}
+	if plr.event != nil && plr.event.reactorHitCallback != nil {
+		plr.event.reactorHitCallback(scriptPlayerWrapper{plr: plr, server: server}, reactorNameSnowball)
+	}
 }
 
 func (server *Server) playerUseStorage(conn mnet.Client, reader mpacket.Reader) {

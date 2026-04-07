@@ -46,9 +46,14 @@ type Server struct {
 	parties          map[int32]*party
 	guilds           map[int32]*guild
 	events           map[int32]*event
+	gmEvent          *event
 	rates            rates
 	autoBan          bool
 	ac               *anticheat.AntiCheat
+}
+
+func (server *Server) ChannelID() int {
+	return int(server.id) + 1
 }
 
 // Initialise the server

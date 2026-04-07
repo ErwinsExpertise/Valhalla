@@ -74,6 +74,8 @@ const (
 	RecvChannelNpcMovement         byte = 0x6F
 	RecvChannelPlayerPickup        byte = 0x73
 	RecvChannelReactorHit          byte = 0x76
+	RecvChannelCoconutAttack       byte = 0x7A
+	RecvChannelSnowballAttack      byte = 0x7B
 	RecvChannelBoatMap             byte = 0x80
 	RecvCashShopOperation          byte = 0x85
 )

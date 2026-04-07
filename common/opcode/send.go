@@ -102,6 +102,11 @@ const (
 	SendChannelReactorChangeState      byte = 0xB5
 	SendChannelReactorEnterField       byte = 0xB7
 	SendChannelReactorLeaveField       byte = 0xB8
+	SendChannelSnowballState           byte = 0xB9
+	SendChannelSnowballHit             byte = 0xBA
+	SendChannelCoconutAttack           byte = 0xAF
+	SendChannelCoconutScore            byte = 0xB0
+	// 0xBD unused (field-specific data) - reserved for future use
 	SendChannelNpcDialogueBox          byte = 0xC5
 	SendChannelNpcShop                 byte = 0xC8
 	SendChannelNpcShopResult           byte = 0xC9
