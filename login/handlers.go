@@ -46,8 +46,10 @@ func (server *Server) HandleClientPacket(conn mnet.Client, reader mpacket.Reader
 		server.handleSelectCharacter(conn, reader)
 	case opcode.RecvReturnToLoginScreen:
 		server.handleReturnToLoginScreen(conn, reader)
+	case opcode.RecvPing:
+		// Thumbs Up
 	default:
-		log.Printf("UNKNOWN CLIENT PACKET: opcode=0x%04X, data=% X", op, reader.GetBuffer())
+		log.Printf("[LOGIN] UNKNOWN CLIENT PACKET: opcode=0x%04X, data=% X", op, reader.GetBuffer())
 	}
 }
 
@@ -294,7 +296,9 @@ func (server *Server) handleGoodLogin(conn mnet.Client, reader mpacket.Reader) {
 }
 
 func (server *Server) handleWorldSelect(conn mnet.Client, reader mpacket.Reader) {
-	conn.SetWorldID(reader.ReadByte())
+	worldID := reader.ReadByte()
+	log.Printf("world %d selected", worldID)
+	conn.SetWorldID(worldID)
 	reader.ReadByte() // ?
 
 	var warning, population byte = 0, 0

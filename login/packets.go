@@ -276,7 +276,8 @@ func packetLoginWorldListing(worldIndex byte, w internal.World) mpacket.Packet {
 			pac.WriteInt32(int32(1200.0 * (float64(v.Pop) / float64(v.MaxPop))))
 		}
 		pac.WriteByte(worldIndex)
-		pac.WriteInt16(int16(i - 1))
+		pac.WriteByte(byte(i + 1))
+		pac.WriteByte(0)
 	}
 
 	return pac

@@ -49,7 +49,7 @@ func (server *Server) HandleServerPacket(conn mnet.Server, reader mpacket.Reader
 	case opcode.LoginDeleteCharacter:
 		server.handleCharacterDeleted(conn, reader)
 	default:
-		log.Println("UNKNOWN SERVER PACKET:", reader)
+		log.Println("[WORLD] UNKNOWN SERVER PACKET:", reader)
 	}
 }
 

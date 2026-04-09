@@ -22,7 +22,7 @@ func (server *Server) HandleServerPacket(conn mnet.Server, reader mpacket.Reader
 	case opcode.CashShopBad:
 		log.Panicln("CashShop unable to connect to world")
 	default:
-		log.Println("UNKNOWN SERVER PACKET:", reader)
+		log.Println("[CASHSHOP] UNKNOWN SERVER PACKET:", reader)
 	}
 }
 

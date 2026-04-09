@@ -46,7 +46,7 @@ func (server *Server) HandleServerPacket(conn mnet.Server, reader mpacket.Reader
 		server.handleSyncParties(conn, reader)
 
 	default:
-		log.Println("UNKNOWN SERVER PACKET:", reader)
+		log.Println("[CHANNEL] UNKNOWN SERVER PACKET:", reader)
 	}
 }
 
