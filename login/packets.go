@@ -19,11 +19,11 @@ func packetLoginResponse(result byte, userID int32, gender byte, isAdmin bool, u
 		pac.WriteInt32(userID)
 		pac.WriteByte(gender)
 		pac.WriteBool(isAdmin)
-		pac.WriteByte(0x01) // country id
+		pac.WriteByte(0x01)
 		pac.WriteString(username)
 	} else if result == 0x02 {
 		pac.WriteByte(byte(isBanned))
-		pac.WriteInt64(0) // Expire time, for now let set this to epoch
+		pac.WriteInt64(0)
 	}
 
 	pac.WriteInt64(0)
@@ -35,12 +35,38 @@ func packetLoginResponse(result byte, userID int32, gender byte, isAdmin bool, u
 
 func packetLoginBanned(endTime int64, reason byte) mpacket.Packet {
 	pac := mpacket.CreateWithOpcode(opcode.SendLoginResponse)
-	pac.WriteByte(constant.LoginResultBanned)
+	pac.WriteByte(0x02)
 	pac.WriteByte(0x00)
-	pac.WriteInt32(15)
+	pac.WriteInt32(0)
+	pac.WriteByte(reason)
+	pac.WriteBytes([]byte{0x01, 0x01, 0x01, 0x01, 0x00})
+
+	return pac
+}
+
+func packetLoginTempBanned(endTime int64, reason byte) mpacket.Packet {
+	pac := mpacket.CreateWithOpcode(opcode.SendLoginResponse)
+	pac.WriteByte(0x02)
+	pac.WriteBytes([]byte{0x00, 0x00, 0x00, 0x00, 0x00})
 	pac.WriteByte(reason)
 	pac.WriteInt64(endTime)
 
+	return pac
+}
+
+func packetLoginSuccess(username string) mpacket.Packet {
+	pac := mpacket.CreateWithOpcode(opcode.SendLoginResponse)
+	pac.WriteBytes([]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0x6A, 0x01, 0x00, 0x00, 0x00, 0x4E})
+	pac.WriteString(username)
+	pac.WriteBytes([]byte{0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xDC, 0x3D, 0x0B, 0x28, 0x64, 0xC5, 0x01, 0x08, 0x00, 0x00, 0x00})
+
+	return pac
+}
+
+func packetTest() mpacket.Packet {
+	pac := mpacket.CreateWithOpcode(opcode.SendLoginResponse)
+	pac.WriteInt(int(constant.LoginResultInvalidPassword))
+	pac.WriteInt16(0)
 	return pac
 }
 
@@ -205,12 +231,40 @@ func loginWritePlayerCharacter(pac *mpacket.Packet, pos int32, char player) {
 	pac.WriteInt32(4) // increase / decrease amount
 }
 
+/*
+	public static MaplePacket getServerList(int serverIndex, String serverName, Map<Integer, Integer> channelLoad) {
+	    mplew.writeShort(SendPacketOpcode.SERVERLIST.getValue()); // 0x0A
+	    mplew.write(serverIndex);
+	    mplew.writeMapleAsciiString(serverName);
+	    mplew.write(2); // World flag (1: E, 2: N, 3: H)
+	    mplew.writeMapleAsciiString(""); // Event message
+	    mplew.write(0x64); // Rate modifier
+	    mplew.write(0x0); // Event XP
+	    mplew.write(0x64); // Rate modifier
+	    mplew.write(0x0); // Drop rate
+	    mplew.write(0x0);
+	    mplew.write(lastChannel);
+
+	    for (int i = 1; i <= lastChannel; i++) {
+	        mplew.writeMapleAsciiString(serverName + "-" + i);
+	        mplew.writeInt(load);
+	        mplew.write(serverIndex);
+	        mplew.writeShort(i - 1);
+	    }
+
+	    return mplew.getPacket();
+	}
+*/
 func packetLoginWorldListing(worldIndex byte, w internal.World) mpacket.Packet {
 	pac := mpacket.CreateWithOpcode(opcode.SendLoginWorldList)
 	pac.WriteByte(worldIndex) // world id
 	pac.WriteString(w.Name)   // World name -
 	pac.WriteByte(w.Ribbon)   // Ribbon on world - 0 = normal, 1 = event, 2 = new, 3 = hot
 	pac.WriteString(w.Message)
+	pac.WriteByte(0x64)
+	pac.WriteByte(0x0)
+	pac.WriteByte(0x64)
+	pac.WriteByte(0x0)
 	pac.WriteByte(0)                     // ? exp event notification?
 	pac.WriteByte(byte(len(w.Channels))) // number of channels
 
@@ -222,8 +276,7 @@ func packetLoginWorldListing(worldIndex byte, w internal.World) mpacket.Packet {
 			pac.WriteInt32(int32(1200.0 * (float64(v.Pop) / float64(v.MaxPop))))
 		}
 		pac.WriteByte(worldIndex)
-		pac.WriteByte(byte(i + 1)) // channel id
-		pac.WriteByte(0)           // ?
+		pac.WriteInt16(int16(i - 1))
 	}
 
 	return pac

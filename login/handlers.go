@@ -20,34 +20,34 @@ import (
 
 // HandleClientPacket data
 func (server *Server) HandleClientPacket(conn mnet.Client, reader mpacket.Reader) {
-	opcode := reader.ReadInt16()
-	log.Printf("Packet opcode: 0x%04X", opcode)
+	op := reader.ReadInt16()
+	log.Printf("Packet opcode: 0x%04X", op)
 
-	switch opcode {
-	case 0x0001:
+	switch op {
+	case opcode.RecvLoginRequest:
 		server.handleLoginRequest(conn, reader)
-	case 0x0008:
+	case opcode.RecvLoginEULA:
 		server.handleEULA(conn, reader)
-	case 0x0006:
+	case opcode.RecvLoginCheckLogin:
 		server.handleGoodLogin(conn, reader)
-	case 0x0007:
+	case opcode.RecvLoginRegisterPin:
 		server.handlePinRegistration(conn, reader)
-	case 0x0004:
+	case opcode.RecvLoginWorldSelect:
 		server.handleWorldSelect(conn, reader)
-	case 0x0005:
+	case opcode.RecvLoginChannelSelect:
 		server.handleChannelSelect(conn, reader)
-	case 0x0011:
+	case opcode.RecvLoginNameCheck:
 		server.handleNameCheck(conn, reader)
-	case 0x0015:
+	case opcode.RecvLoginNewCharacter:
 		server.handleNewCharacter(conn, reader)
-	case 0x0016:
+	case opcode.RecvLoginDeleteChar:
 		server.handleDeleteCharacter(conn, reader)
-	case 0x000F:
+	case opcode.RecvLoginSelectCharacter:
 		server.handleSelectCharacter(conn, reader)
-	case 0x001B:
+	case opcode.RecvReturnToLoginScreen:
 		server.handleReturnToLoginScreen(conn, reader)
 	default:
-		log.Printf("UNKNOWN CLIENT PACKET: opcode=0x%04X, data=% X", opcode, reader.GetBuffer())
+		log.Printf("UNKNOWN CLIENT PACKET: opcode=0x%04X, data=% X", op, reader.GetBuffer())
 	}
 }
 
@@ -99,7 +99,8 @@ func (server *Server) handleLoginRequest(conn mnet.Client, reader mpacket.Reader
 			return
 		}
 		if banned {
-			conn.Send(packetLoginBanned(endEpoch, constant.BanReasonHacking))
+			pkt := packetLoginBanned(endEpoch, constant.BanReasonHacking)
+			conn.Send(pkt)
 			return
 		}
 	}
