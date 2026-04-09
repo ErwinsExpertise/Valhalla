@@ -14,15 +14,12 @@ import (
 )
 
 func (server *Server) HandleClientPacket(conn mnet.Client, reader mpacket.Reader) {
-	op := reader.ReadByte()
+	op := reader.ReadInt16()
 
 	switch op {
-	/*
-		case opcode.RecvPing:
-		case opcode.RecvClientMigrate:
-			server.handlePlayerConnect(conn, reader)
-
-	*/
+	case opcode.RecvPing:
+	case opcode.RecvClientMigrate:
+		server.handlePlayerConnect(conn, reader)
 	case opcode.RecvCashShopOperation:
 		server.handleCashShopOperation(conn, reader)
 	case opcode.RecvChannelUserPortal:

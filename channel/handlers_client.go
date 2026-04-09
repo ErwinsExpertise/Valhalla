@@ -48,6 +48,7 @@ func (server *Server) HandleClientPacket(conn mnet.Client, reader mpacket.Reader
 	// Read opcode first for logging/metrics and to make panic logs useful
 	op := reader.ReadInt16()
 	packetsTotal.WithLabelValues(fmt.Sprintf("%d", op)).Inc()
+	log.Printf("[CHANNEL] Opcode: %d (0x%04X)", op, op)
 
 	// Panic guard per packet to avoid dropping the connection loop on handler bugs
 	defer func() {
@@ -182,7 +183,6 @@ func (server *Server) HandleClientPacket(conn mnet.Client, reader mpacket.Reader
 		server.playerPetLoot(conn, reader)
 	case opcode.RecvChannelUseSack:
 		server.playerUseSack(conn, reader)
-
 	default:
 		unknownPacketsTotal.Inc()
 		// Let's send a no change to make sure characters aren't stuck on unknown packets
