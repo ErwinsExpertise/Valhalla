@@ -1,16 +1,21 @@
 package opcode
 
 const (
-	SendLoginResponse                  byte = 0x01
-	SendLoginWorldMeta                 byte = 0x03
-	SendLoginPinOperation              byte = 0x07 // Add 1 byte, 1 = register byte a pin
-	SendLoginPinStuff                  byte = 0x08 // Setting byte pin good
-	SendLoginWorldList                 byte = 0x09
-	SendLoginCharacterData             byte = 0x0A
-	SendLoginCharacterMigrate          byte = 0x0B
-	SendLoginNameCheckResult           byte = 0x0C
-	SendLoginNewCharacterGood          byte = 0x0D
-	SendLoginDeleteCharacter           byte = 0x0E
+	SendLoginResponse  byte = 1 // LOGIN_STATUS
+	SendLoginWorldMeta byte = 3 // SERVERSTATUS
+
+	SendLoginPinOperation byte = 6 // PIN_OPERATION
+	// ⚠️ Remove "PinStuff" — not a real opcode, it's part of PIN_OPERATION flow
+
+	SendLoginWorldList        byte = 10 // SERVERLIST
+	SendLoginCharacterData    byte = 11 // CHARLIST
+	SendLoginCharacterMigrate byte = 12 // SERVER_IP
+
+	SendLoginNameCheckResult  byte = 13 // CHAR_NAME_RESPONSE
+	SendLoginNewCharacterGood byte = 14 // ADD_NEW_CHAR_ENTRY
+	SendLoginDeleteCharacter  byte = 15 // DELETE_CHAR_RESPONSE
+
+	SendLoginRelogResponse             byte = 22 // RELOG_RESPONSE
 	SendChannelChange                  byte = 0x0F
 	SendLoginRestarter                 byte = 0x15
 	SendChannelInventoryOperation      byte = 0x18

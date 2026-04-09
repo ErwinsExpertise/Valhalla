@@ -58,11 +58,14 @@ func (server *Server) HandleClientPacket(conn mnet.Client, reader mpacket.Reader
 	}()
 
 	switch op {
-	case opcode.RecvPing:
-	case opcode.RecvClientMigrate:
-		server.playerConnect(conn, reader)
-	case opcode.RecvCHannelChangeChannel:
-		server.playerChangeChannel(conn, reader)
+	/*
+		case opcode.RecvPing:
+		case opcode.RecvClientMigrate:
+			server.playerConnect(conn, reader)
+		case opcode.RecvCHannelChangeChannel:
+			server.playerChangeChannel(conn, reader)
+
+	*/
 	case opcode.RecvChannelUserPortal:
 		// This opcode is used for revival UI as well.
 		server.playerUsePortal(conn, reader)
