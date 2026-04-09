@@ -20,31 +20,34 @@ import (
 
 // HandleClientPacket data
 func (server *Server) HandleClientPacket(conn mnet.Client, reader mpacket.Reader) {
-	switch reader.ReadByte() {
-	case opcode.RecvLoginRequest:
+	opcode := reader.ReadInt16()
+	log.Printf("Packet opcode: 0x%04X", opcode)
+
+	switch opcode {
+	case 0x0001:
 		server.handleLoginRequest(conn, reader)
-	case opcode.RecvLoginEULA:
+	case 0x0008:
 		server.handleEULA(conn, reader)
-	case opcode.RecvLoginCheckLogin:
+	case 0x0006:
 		server.handleGoodLogin(conn, reader)
-	case opcode.RecvLoginRegisterPin:
+	case 0x0007:
 		server.handlePinRegistration(conn, reader)
-	case opcode.RecvLoginWorldSelect:
+	case 0x0004:
 		server.handleWorldSelect(conn, reader)
-	case opcode.RecvLoginChannelSelect:
+	case 0x0005:
 		server.handleChannelSelect(conn, reader)
-	case opcode.RecvLoginNameCheck:
+	case 0x0011:
 		server.handleNameCheck(conn, reader)
-	case opcode.RecvLoginNewCharacter:
+	case 0x0015:
 		server.handleNewCharacter(conn, reader)
-	case opcode.RecvLoginDeleteChar:
+	case 0x0016:
 		server.handleDeleteCharacter(conn, reader)
-	case opcode.RecvLoginSelectCharacter:
+	case 0x000F:
 		server.handleSelectCharacter(conn, reader)
-	case opcode.RecvReturnToLoginScreen:
+	case 0x001B:
 		server.handleReturnToLoginScreen(conn, reader)
 	default:
-		log.Println("UNKNOWN CLIENT PACKET:", reader)
+		log.Printf("UNKNOWN CLIENT PACKET: opcode=0x%04X, data=% X", opcode, reader.GetBuffer())
 	}
 }
 

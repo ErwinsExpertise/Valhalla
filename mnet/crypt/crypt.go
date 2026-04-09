@@ -2,12 +2,10 @@ package crypt
 
 import (
 	"crypto/aes"
-	"crypto/cipher"
 )
 
 const (
 	encryptHeaderSize = 4
-	blocksize         = 1460
 )
 
 type Maple struct {
@@ -22,7 +20,8 @@ func New(key [4]byte, mapleVersion int) *Maple {
 		copy(c.key[4*i:], key[:])
 	}
 
-	c.mapleVersion = mapleVersion
+	swapped := ((mapleVersion >> 8) & 0xFF) | ((mapleVersion << 8) & 0xFF00)
+	c.mapleVersion = int(int16(swapped))
 
 	return &c
 }
@@ -46,11 +45,11 @@ func (c *Maple) Decrypt(p []byte, maple, aes bool) {
 		c.aesCrypt(p)
 	}
 
+	c.Shuffle()
+
 	if maple {
 		mapleDecrypt(p)
 	}
-
-	c.Shuffle()
 }
 
 func (c *Maple) IV() []byte {
@@ -58,11 +57,18 @@ func (c *Maple) IV() []byte {
 }
 
 func GetPacketLength(encryptedHeader []byte) int {
-	return int((uint16(encryptedHeader[0]) + uint16(encryptedHeader[1])*0x100) ^
-		(uint16(encryptedHeader[2]) + uint16(encryptedHeader[3])*0x100))
+	packetHeader := int(encryptedHeader[0])<<24 | int(encryptedHeader[1])<<16 | int(encryptedHeader[2])<<8 | int(encryptedHeader[3])
+	packetLength := ((packetHeader >> 16) ^ (packetHeader & 0xFFFF))
+	packetLength = ((packetLength << 8) & 0xFF00) | ((packetLength >> 8) & 0xFF)
+	return packetLength
 }
 
-var ivShiftKey = [...]byte{
+func (c *Maple) checkPacket(packet []byte) bool {
+	return ((packet[0]^byte(c.mapleVersion>>8))&0xFF == c.key[2]) &&
+		((packet[1]^byte(c.mapleVersion))&0xFF == c.key[3])
+}
+
+var funnyBytes = [...]byte{
 	0xEC, 0x3F, 0x77, 0xA4, 0x45, 0xD0, 0x71, 0xBF, 0xB7, 0x98, 0x20, 0xFC, 0x4B, 0xE9, 0xB3, 0xE1,
 	0x5C, 0x22, 0xF7, 0x0C, 0x44, 0x1B, 0x81, 0xBD, 0x63, 0x8D, 0xD4, 0xC3, 0xF2, 0x10, 0x19, 0xE0,
 	0xFB, 0xA1, 0x6E, 0x66, 0xEA, 0xAE, 0xD6, 0xCE, 0x06, 0x18, 0x4E, 0xEB, 0x78, 0x95, 0xDB, 0xBA,
@@ -78,27 +84,45 @@ var ivShiftKey = [...]byte{
 	0x09, 0x76, 0x9E, 0x30, 0x0E, 0xE4, 0xB2, 0x94, 0xA0, 0x3B, 0x34, 0x1D, 0x28, 0x0F, 0x36, 0xE3,
 	0x23, 0xB4, 0x03, 0xD8, 0x90, 0xC8, 0x3C, 0xFE, 0x5E, 0x32, 0x24, 0x50, 0x1F, 0x3A, 0x43, 0x8A,
 	0x96, 0x41, 0x74, 0xAC, 0x52, 0x33, 0xF0, 0xD9, 0x29, 0x80, 0xB1, 0x16, 0xD3, 0xAB, 0x91, 0xB9,
-	0x84, 0x7F, 0x61, 0x1E, 0xCF, 0xC5, 0xD1, 0x56, 0x3D, 0xCA, 0xF4, 0x05, 0xC6, 0xE5, 0x08, 0x49}
+	0x84, 0x7F, 0x61, 0x1E, 0xCF, 0xC5, 0xD1, 0x56, 0x3D, 0xCA, 0xF4, 0x05, 0xC6, 0xE5, 0x08, 0x49,
+	0x4F, 0x64, 0x69, 0x6E, 0x4D, 0x53, 0x7E, 0x46, 0x72, 0x7A}
 
 func (c *Maple) Shuffle() {
 	newIV := []byte{0xF2, 0x53, 0x50, 0xC6}
 
 	for i := 0; i < 4; i++ {
 		input := c.key[i]
-		shiftVal := ivShiftKey[input]
+		elina := newIV[1]
+		anna := input
+		moritz := funnyBytes[elina]
+		moritz -= input
+		newIV[0] += moritz
+		moritz = newIV[2]
+		moritz ^= funnyBytes[anna]
+		elina -= byte(int(moritz) & 0xFF)
+		newIV[1] = elina
+		elina = newIV[3]
+		moritz = elina
+		elina -= byte(int(newIV[0]) & 0xFF)
+		moritz = funnyBytes[moritz]
+		moritz += input
+		moritz ^= newIV[2]
+		newIV[2] = moritz
+		elina += funnyBytes[anna]
+		newIV[3] = elina
 
-		newIV[0] += ivShiftKey[newIV[1]] - input
-		newIV[1] -= newIV[2] ^ shiftVal
-		newIV[2] ^= ivShiftKey[newIV[3]] + input
-		newIV[3] -= newIV[0] - shiftVal
+		merry := uint32(newIV[0]) & 0xFF
+		merry |= (uint32(newIV[1]) << 8) & 0xFF00
+		merry |= (uint32(newIV[2]) << 16) & 0xFF0000
+		merry |= (uint32(newIV[3]) << 24) & 0xFF000000
+		retValue := merry >> 0x1D
+		merry = merry << 3
+		retValue = retValue | merry
 
-		val := uint32(newIV[3])<<24 | uint32(newIV[2])<<16 | uint32(newIV[1])<<8 | uint32(newIV[0])
-		shift := val>>0x1D | val<<0x03
-
-		newIV[0] = byte(shift & uint32(0xFF))
-		newIV[1] = byte(shift >> 8 & uint32(0xFF))
-		newIV[2] = byte(shift >> 16 & uint32(0xFF))
-		newIV[3] = byte(shift >> 24 & uint32(0xFF))
+		newIV[0] = byte(retValue & 0xFF)
+		newIV[1] = byte((retValue >> 8) & 0xFF)
+		newIV[2] = byte((retValue >> 16) & 0xFF)
+		newIV[3] = byte((retValue >> 24) & 0xFF)
 	}
 
 	for i := byte(0); i < 4; i++ {
@@ -109,123 +133,97 @@ func (c *Maple) Shuffle() {
 func (c *Maple) generateHeader(p []byte) {
 	dataLength := len(p[encryptHeaderSize:])
 
-	a := (int(c.key[3]) << 8) | int(c.key[2])
+	iiv := int(c.key[3]) & 0xFF
+	iiv |= (int(c.key[2]) << 8) & 0xFF00
 
-	a ^= -(c.mapleVersion + 1)
-	b := a ^ dataLength
+	iiv ^= int(c.mapleVersion)
+	mlength := ((dataLength << 8) & 0xFF00) | (dataLength >> 8)
+	xoredIv := iiv ^ mlength
 
-	p[0] = byte(a % 0x100)
-	p[1] = byte((a - int(p[0])) / 0x100)
-	p[2] = byte(b ^ 0x100)
-	p[3] = byte((b - int(p[2])) / 0x100)
+	p[0] = byte((iiv >> 8) & 0xFF)
+	p[1] = byte(iiv & 0xFF)
+	p[2] = byte((xoredIv >> 8) & 0xFF)
+	p[3] = byte(xoredIv & 0xFF)
 }
 
-// Credits: Kagami (fran[c]esco)
-func ror(val byte, num int) byte {
-	for i := 0; i < num; i++ {
-		var lowbit int
-
-		if val&1 > 0 {
-			lowbit = 1
-		} else {
-			lowbit = 0
-		}
-
-		val >>= 1
-		val |= byte(lowbit << 7)
-	}
-
-	return val
+func rol(val byte, count int) byte {
+	tmp := uint16(val) << (count % 8)
+	return byte((tmp & 0xFF) | (tmp >> 8))
 }
 
-// Credits: Kagami (fran[c]esco)
-func rol(val byte, num int) byte {
-	var highbit int
-
-	for i := 0; i < num; i++ {
-		if val&0x80 > 0 {
-			highbit = 1
-		} else {
-			highbit = 0
-		}
-
-		val <<= 1
-		val |= byte(highbit)
-	}
-
-	return val
+func ror(val byte, count int) byte {
+	tmp := uint16(val) << 8
+	tmp = tmp >> (count % 8)
+	return byte((tmp & 0xFF) | (tmp >> 8))
 }
 
-// Credits: Kagami (fran[c]esco)
 func mapleDecrypt(buf []byte) {
-	var j int32
-	var a, b, c byte
+	for j := 1; j <= 6; j++ {
+		remember := byte(0)
+		dataLength := byte(len(buf) & 0xFF)
+		var nextRemember byte
 
-	for i := byte(0); i < 3; i++ {
-		a = 0
-		b = 0
-
-		for j = int32(len(buf)); j > 0; j-- {
-			c = buf[j-1]
-			c = rol(c, 3)
-			c ^= 0x13
-			a = c
-			c ^= b
-			c = byte(int32(c) - j)
-			c = ror(c, 4)
-			b = a
-			buf[j-1] = c
-		}
-
-		a = 0
-		b = 0
-
-		for j = int32(len(buf)); j > 0; j-- {
-			c = buf[int32(len(buf))-j]
-			c -= 0x48
-			c ^= 0xFF
-			c = rol(c, int(j))
-			a = c
-			c ^= b
-			c = byte(int32(c) - j)
-			c = ror(c, 3)
-			b = a
-			buf[int32(len(buf))-j] = c
+		if j%2 == 0 {
+			for i := 0; i < len(buf); i++ {
+				cur := buf[i]
+				cur -= 0x48
+				cur = (^cur) & 0xFF
+				cur = rol(cur, int(dataLength))
+				nextRemember = cur
+				cur ^= remember
+				remember = nextRemember
+				cur -= dataLength
+				cur = ror(cur, 3)
+				buf[i] = cur
+				dataLength--
+			}
+		} else {
+			for i := len(buf) - 1; i >= 0; i-- {
+				cur := buf[i]
+				cur = rol(cur, 3)
+				cur ^= 0x13
+				nextRemember = cur
+				cur ^= remember
+				remember = nextRemember
+				cur -= dataLength
+				cur = ror(cur, 4)
+				buf[i] = cur
+				dataLength--
+			}
 		}
 	}
 }
 
-// Credits: Kagami (fran[c]esco)
 func mapleCrypt(buf []byte) {
-	var j int32
-	var a, c byte
+	for j := 0; j < 6; j++ {
+		remember := byte(0)
+		dataLength := byte(len(buf) & 0xFF)
 
-	for i := byte(0); i < 3; i++ {
-		a = 0
-
-		for j = int32(len(buf)); j > 0; j-- {
-			c = buf[int32(len(buf))-j]
-			c = rol(c, 3)
-			c = byte(int32(c) + j)
-			c ^= a
-			a = c
-			c = ror(a, int(j))
-			c ^= 0xFF
-			c += 0x48
-			buf[int32(len(buf))-j] = c
-		}
-
-		a = 0
-
-		for j = int32(len(buf)); j > 0; j-- {
-			c = buf[j-1]
-			c = rol(c, 4)
-			c = byte(int32(c) + j)
-			c ^= a
-			a = c
-			c ^= 0x13
-			c = ror(c, 3)
-			buf[j-1] = c
+		if j%2 == 0 {
+			for i := 0; i < len(buf); i++ {
+				cur := buf[i]
+				cur = rol(cur, 3)
+				cur += dataLength
+				cur ^= remember
+				remember = cur
+				cur = ror(cur, int(dataLength))
+				cur = (^cur) & 0xFF
+				cur += 0x48
+				dataLength--
+				buf[i] = cur
+			}
+		} else {
+			for i := len(buf) - 1; i >= 0; i-- {
+				cur := buf[i]
+				cur = rol(cur, 4)
+				cur += dataLength
+				cur ^= remember
+				remember = cur
+				cur ^= 0x13
+				cur = ror(cur, 3)
+				dataLength--
+				buf[i] = cur
+			}
 		}
 	}
 }
@@ -240,35 +238,40 @@ var aeskey = [32]byte{
 	0x33, 0x00, 0x00, 0x00,
 	0x52, 0x00, 0x00, 0x00}
 
-// Credits: Kagami (fran[c]esco)
 func (c *Maple) aesCrypt(buf []byte) {
-	var pos, tpos, cbwrite, cb int32 = 0, 0, 0, int32(len(buf))
-	var first byte = 1
+	remaining := len(buf)
+	llength := 0x5B0
+	start := 0
 
-	cb = int32(len(buf))
-
-	for cb > pos {
-		tpos = blocksize - int32(first*4)
-
-		if cb > pos+tpos {
-			cbwrite = tpos
-		} else {
-			cbwrite = cb - pos
-		}
-
-		block, err := aes.NewCipher(aeskey[:])
-
-		if err != nil {
-			panic(err) // cbf to handle this unlikely error
-		}
-
-		stream := cipher.NewOFB(block, c.key[:])
-		stream.XORKeyStream(buf[pos:pos+cbwrite], buf[pos:pos+cbwrite])
-
-		pos += tpos
-
-		if first == 1 {
-			first = 0
-		}
+	block, err := aes.NewCipher(aeskey[:])
+	if err != nil {
+		panic(err)
 	}
+
+	for remaining > 0 {
+		myIv := multiplyBytes(c.key[:4], 4, 4)
+
+		if remaining < llength {
+			llength = remaining
+		}
+
+		for x := start; x < (start + llength); x++ {
+			if (x-start)%len(myIv) == 0 {
+				block.Encrypt(myIv, myIv)
+			}
+			buf[x] ^= myIv[(x-start)%len(myIv)]
+		}
+
+		start += llength
+		remaining -= llength
+		llength = 0x5B4
+	}
+}
+
+func multiplyBytes(in []byte, count, mul int) []byte {
+	ret := make([]byte, count*mul)
+	for x := 0; x < count*mul; x++ {
+		ret[x] = in[x%count]
+	}
+	return ret
 }

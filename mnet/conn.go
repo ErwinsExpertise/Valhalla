@@ -1,6 +1,7 @@
 package mnet
 
 import (
+	"log"
 	"math/rand"
 	"net"
 	"sync"
@@ -38,7 +39,9 @@ func clientReader(conn net.Conn, eRecv chan *Event, mapleVersion int16, headerSi
 			readSize = headerSize
 
 			if cryptRecv != nil {
-				cryptRecv.Decrypt(buffer, true, false)
+				log.Printf("RAW ENCRYPTED PACKET: %X", buffer)
+				cryptRecv.Decrypt(buffer, true, true)
+				log.Printf("DECRYPTED PACKET: %X", buffer)
 			}
 
 			eRecv <- &Event{Type: MEClientPacket, Conn: conn, Packet: buffer}
@@ -107,7 +110,7 @@ func (bc *baseConn) Writer() {
 		copy(tmp, p)
 
 		if bc.cryptSend != nil {
-			bc.cryptSend.Encrypt(tmp, true, false)
+			bc.cryptSend.Encrypt(tmp, true, true)
 		}
 
 		if bc.interServer {
