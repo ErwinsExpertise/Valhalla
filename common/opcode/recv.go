@@ -13,7 +13,7 @@ const (
 	RecvLoginDeleteChar            int16 = 22
 	RecvReturnToLoginScreen        int16 = 27
 	RecvPing                       int16 = 19
-	RecvClientMigrate              int16 = 31
+	RecvClientMigrate              int16 = 16
 	RecvChannelUserPortal          byte  = 0x1E
 	RecvCHannelChangeChannel       byte  = 0x1F
 	RecvChannelEnterCashShop       byte  = 0x20

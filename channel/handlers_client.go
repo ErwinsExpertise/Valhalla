@@ -46,7 +46,7 @@ func init() {
 
 func (server *Server) HandleClientPacket(conn mnet.Client, reader mpacket.Reader) {
 	// Read opcode first for logging/metrics and to make panic logs useful
-	op := reader.ReadByte()
+	op := reader.ReadInt16()
 	packetsTotal.WithLabelValues(fmt.Sprintf("%d", op)).Inc()
 
 	// Panic guard per packet to avoid dropping the connection loop on handler bugs
@@ -58,14 +58,11 @@ func (server *Server) HandleClientPacket(conn mnet.Client, reader mpacket.Reader
 	}()
 
 	switch op {
-	/*
-		case opcode.RecvPing:
-		case opcode.RecvClientMigrate:
-			server.playerConnect(conn, reader)
-		case opcode.RecvCHannelChangeChannel:
-			server.playerChangeChannel(conn, reader)
-
-	*/
+	case opcode.RecvPing:
+	case opcode.RecvClientMigrate:
+		server.playerConnect(conn, reader)
+	case opcode.RecvCHannelChangeChannel:
+		server.playerChangeChannel(conn, reader)
 	case opcode.RecvChannelUserPortal:
 		// This opcode is used for revival UI as well.
 		server.playerUsePortal(conn, reader)
@@ -185,6 +182,7 @@ func (server *Server) HandleClientPacket(conn mnet.Client, reader mpacket.Reader
 		server.playerPetLoot(conn, reader)
 	case opcode.RecvChannelUseSack:
 		server.playerUseSack(conn, reader)
+
 	default:
 		unknownPacketsTotal.Inc()
 		// Let's send a no change to make sure characters aren't stuck on unknown packets
