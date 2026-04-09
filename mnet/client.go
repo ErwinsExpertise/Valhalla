@@ -49,7 +49,7 @@ func NewClient(conn net.Conn, eRecv chan *Event, queueSize int, keySend, keyRecv
 	c.eSend = make(chan mpacket.Packet, queueSize)
 	c.eRecv = eRecv
 
-	c.cryptSend = crypt.New(keySend, constant.MapleVersion)
+	c.cryptSend = crypt.New(keySend, 0xFFFF-constant.MapleVersion)
 	c.cryptRecv = crypt.New(keyRecv, constant.MapleVersion)
 
 	c.reader = func() {

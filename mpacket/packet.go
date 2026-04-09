@@ -20,7 +20,7 @@ type Opcode byte
 func CreateWithOpcode(op byte) Packet {
 	p := Packet{}
 	p.WriteInt32(0)
-	p.WriteByte(op)
+	p.WriteInt16(int16(op))
 
 	return p
 }
