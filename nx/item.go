@@ -33,8 +33,10 @@ type Item struct {
 	UnitPrice                                                      float64
 	Life, Hungry                                                   int64
 	PickupItem, PickupAll, SweepForDrop                            int64
-	ConsumeHP, LongRange                                           int64
-	Recovery                                                       float64
+	PickupMeso, PickupOthers, PickUpBlock                          int64
+	ConsumeHP, ConsumeMP, LongRange, ConsumeOnPickup               int64
+	Recovery, RecoveryMP                                           float64
+	IncFatigue                                                     int64
 	ReqPOP                                                         int64 // ?
 	NameTag                                                        int64
 	Pachinko                                                       int64
@@ -59,6 +61,19 @@ type Item struct {
 	Fs                                                             int64
 	ChatBalloon                                                    int64
 	MoveTo                                                         int32
+	Skill                                                          int32
+	MasterLevel                                                    int32
+	ReqSkillLevel                                                  int32
+	Evol                                                           int64
+	EvolNo                                                         int32
+	EvolReqItemID                                                  int32
+	EvolReqPetLvl                                                  int32
+	EvolIDs                                                        []int32
+	EvolProb                                                       []int32
+	Create                                                         int32
+	Left, Right, Top, Bottom                                       int16
+	Effect                                                         string
+	SoldInform, Direction, Emotion, ShowMessage                    int64
 	Interact                                                       map[byte]PetReaction
 	SpawnMobs                                                      map[int32]int32
 }
@@ -352,18 +367,32 @@ func (item *Item) getItem(node *gonx.Node, nodes []gonx.Node, textLookup []strin
 			item.PickupItem = gonx.DataToInt64(option.Data)
 		case "pickupAll":
 			item.PickupAll = gonx.DataToInt64(option.Data)
+		case "pickupMeso":
+			item.PickupMeso = gonx.DataToInt64(option.Data)
+		case "pickupOthers":
+			item.PickupOthers = gonx.DataToInt64(option.Data)
+		case "pickUpBlock":
+			item.PickUpBlock = gonx.DataToInt64(option.Data)
 		case "sweepForDrop":
 			item.SweepForDrop = gonx.DataToInt64(option.Data)
 		case "longRange":
 			item.LongRange = gonx.DataToInt64(option.Data)
 		case "consumeHP":
 			item.ConsumeHP = gonx.DataToInt64(option.Data)
+		case "consumeMP":
+			item.ConsumeMP = gonx.DataToInt64(option.Data)
+		case "consumeOnPickup":
+			item.ConsumeOnPickup = gonx.DataToInt64(option.Data)
 		case "unitPrice":
 			item.UnitPrice = gonx.DataToFloat64(option.Data)
 		case "timeLimited":
 			item.TimeLimited = gonx.DataToInt64(option.Data)
 		case "recovery":
 			item.Recovery = gonx.DataToFloat64(option.Data)
+		case "recoveryMP":
+			item.RecoveryMP = float64(gonx.DataToInt16(option.Data))
+		case "incFatigue":
+			item.IncFatigue = gonx.DataToInt64(option.Data)
 		case "regPOP":
 			fallthrough
 		case "reqPOP":
@@ -420,7 +449,56 @@ func (item *Item) getItem(node *gonx.Node, nodes []gonx.Node, textLookup []strin
 			item.ChatBalloon = gonx.DataToInt64(option.Data)
 		case "moveTo":
 			item.MoveTo = gonx.DataToInt32(option.Data)
+		case "skill":
+			item.Skill = parseNumericNodeValue(option, textLookup)
+		case "masterLevel":
+			item.MasterLevel = parseNumericNodeValue(option, textLookup)
+		case "reqSkillLevel":
+			item.ReqSkillLevel = parseNumericNodeValue(option, textLookup)
+		case "evol":
+			item.Evol = gonx.DataToInt64(option.Data)
+		case "evolNo":
+			item.EvolNo = parseNumericNodeValue(option, textLookup)
+		case "evolReqItemID":
+			item.EvolReqItemID = parseNumericNodeValue(option, textLookup)
+		case "evolReqPetLvl":
+			item.EvolReqPetLvl = parseNumericNodeValue(option, textLookup)
+		case "evol1", "evol2", "evol3", "evol4":
+			item.EvolIDs = append(item.EvolIDs, parseNumericNodeValue(option, textLookup))
+		case "evolProb1", "evolProb2", "evolProb3", "evolProb4":
+			item.EvolProb = append(item.EvolProb, parseNumericNodeValue(option, textLookup))
+		case "left":
+			item.Left = gonx.DataToInt16(option.Data)
+		case "create":
+			item.Create = parseNumericNodeValue(option, textLookup)
+		case "right":
+			item.Right = gonx.DataToInt16(option.Data)
+		case "top":
+			item.Top = gonx.DataToInt16(option.Data)
+		case "bottom":
+			item.Bottom = gonx.DataToInt16(option.Data)
+		case "mob":
+			if item.SpawnMobs == nil {
+				item.SpawnMobs = make(map[int32]int32)
+			}
+			if option.ChildCount == 0 {
+				if id := parseNumericNodeValue(option, textLookup); id > 0 {
+					item.SpawnMobs[id] = 1
+				}
+			} else {
+				item.loadSpawnMobs(&option, nodes, textLookup)
+			}
 		case "sample":
+		case "effect":
+			item.Effect = getStringValue(&option, nodes, textLookup)
+		case "soldInform":
+			item.SoldInform = gonx.DataToInt64(option.Data)
+		case "direction":
+			item.Direction = gonx.DataToInt64(option.Data)
+		case "emotion":
+			item.Emotion = gonx.DataToInt64(option.Data)
+		case "showMessage":
+			item.ShowMessage = gonx.DataToInt64(option.Data)
 		case "iconD":
 		case "iconRawD":
 		case "iconReward":
@@ -429,67 +507,61 @@ func (item *Item) getItem(node *gonx.Node, nodes []gonx.Node, textLookup []strin
 		case "mpR":
 			item.MPR = gonx.DataToInt16(option.Data)
 		case "thaw":
-		case "0":
-			fallthrough
-		case "1":
-			fallthrough
-		case "2":
-			fallthrough
-		case "3":
-			fallthrough
-		case "4":
-			fallthrough
-		case "5":
-			fallthrough
-		case "6":
-			fallthrough
-		case "7":
-			fallthrough
-		case "8":
-			fallthrough
-		case "9":
-			fallthrough
-		case "10":
-			fallthrough
-		case "11":
-			fallthrough
-		case "12":
-			fallthrough
-		case "13":
-			fallthrough
-		case "14":
-			fallthrough
-		case "15":
-			iterateChildren(node, nodes, textLookup, func(child gonx.Node, idx string) {
-				var id int32
-				var prob int32
-
-				for j := uint32(0); j < uint32(child.ChildCount); j++ {
-					option := nodes[child.ChildID+j]
-					key := textLookup[option.NameID]
-
-					switch key {
-					case "id":
-						id = gonx.DataToInt32(option.Data)
-					case "prob":
-						prob = gonx.DataToInt32(option.Data)
-					default:
-						log.Println("Unsupported NX item child option:", key, "->", option.Data)
-					}
-				}
-
-				if id > 0 && prob > 0 {
-					item.SpawnMobs[id] = prob
-				}
-			})
-		case "inc":
-		case "morph":
 		default:
+			if _, err := strconv.Atoi(optionName); err == nil {
+				item.loadSpawnMobs(&option, nodes, textLookup)
+				continue
+			}
+			if optionName == "inc" || optionName == "morph" {
+				continue
+			}
 			// Consider gating this log behind a verbosity flag to reduce noise in production.
 			log.Println("Unsupported NX item option:", optionName, "->", option.Data)
 		}
 
 	}
+}
+
+func (item *Item) loadSpawnMobs(node *gonx.Node, nodes []gonx.Node, textLookup []string) {
+	if item.SpawnMobs == nil {
+		item.SpawnMobs = make(map[int32]int32)
+	}
+
+	var id int32
+	var prob int32
+
+	for j := uint32(0); j < uint32(node.ChildCount); j++ {
+		option := nodes[node.ChildID+j]
+		key := textLookup[option.NameID]
+
+		switch key {
+		case "id":
+			id = parseNumericNodeValue(option, textLookup)
+		case "prob":
+			prob = parseNumericNodeValue(option, textLookup)
+		default:
+			log.Println("Unsupported NX item child option:", key, "->", option.Data)
+		}
+	}
+
+	if id > 0 {
+		if prob <= 0 {
+			prob = 1
+		}
+		item.SpawnMobs[id] = prob
+	}
+}
+
+func parseNumericNodeValue(node gonx.Node, textLookup []string) int32 {
+	if node.Type == 3 {
+		ref := textLookup[gonx.DataToUint32(node.Data)]
+		ref = strings.TrimSuffix(ref, filepath.Ext(ref))
+		if n, err := strconv.ParseInt(ref, 10, 32); err == nil {
+			return int32(n)
+		}
+	}
+
+	return gonx.DataToInt32(node.Data)
 }
 
 func (itm *Item) loadPetInteract(node *gonx.Node, nodes []gonx.Node, textLookup []string) {

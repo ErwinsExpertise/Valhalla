@@ -1,8 +1,12 @@
 package nx
 
 import (
+	"encoding/binary"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/Hucaru/gonx"
 )
@@ -21,7 +25,7 @@ var reactorInfos map[int32]ReactorInfo
 
 // LoadFile into useable types
 func LoadFile(fname string) {
-	nodes, textLookup, _, _, err := gonx.Parse(fname)
+	nodes, textLookup, err := loadNXSource(fname)
 
 	if err != nil {
 		panic(err)
@@ -29,6 +33,7 @@ func LoadFile(fname string) {
 
 	items = extractItems(nodes, textLookup)
 	maps = extractMaps(nodes, textLookup)
+	applyMapNames(maps, nodes, textLookup)
 	mobs = extractMobs(nodes, textLookup)
 	playerSkills, mobSkills = extractSkills(nodes, textLookup)
 	quests = extractQuests(nodes, textLookup)
@@ -37,6 +42,137 @@ func LoadFile(fname string) {
 	reactorInfos = extractReactors(nodes, textLookup)
 
 	loadBestItems()
+}
+
+func loadNXSource(path string) ([]gonx.Node, []string, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if !info.IsDir() {
+		nodes, textLookup, _, _, err := gonx.Parse(path)
+		return nodes, textLookup, err
+	}
+
+	return loadNXDirectory(path)
+}
+
+func loadNXDirectory(dir string) ([]gonx.Node, []string, error) {
+	manifest := []string{
+		"Base.nx",
+		"Character.nx",
+		"Effect.nx",
+		"Etc.nx",
+		"Item.nx",
+		"Map.nx",
+		"Mob.nx",
+		"Morph.nx",
+		"Npc.nx",
+		"Quest.nx",
+		"Reactor.nx",
+		"Skill.nx",
+		"Sound.nx",
+		"String.nx",
+		"TamingMob.nx",
+		"UI.nx",
+	}
+
+	builder := newNXBuilder(len(manifest))
+
+	for i, name := range manifest {
+		filePath := filepath.Join(dir, name)
+		nodes, textLookup, _, _, err := gonx.Parse(filePath)
+		if err != nil {
+			return nil, nil, fmt.Errorf("parse %s: %w", name, err)
+		}
+
+		wrapper := strings.TrimSuffix(name, filepath.Ext(name))
+		builder.addWrappedTree(i, wrapper, nodes, textLookup)
+	}
+
+	return builder.nodes, builder.text, nil
+}
+
+type nxBuilder struct {
+	nodes []gonx.Node
+	text  []string
+	ids   map[string]uint32
+}
+
+func newNXBuilder(wrapperCount int) *nxBuilder {
+	b := &nxBuilder{
+		nodes: []gonx.Node{{ChildCount: uint16(wrapperCount)}},
+		text:  []string{""},
+		ids:   map[string]uint32{"": 0},
+	}
+
+	b.nodes[0].ChildID = uint32(len(b.nodes))
+	b.nodes = append(b.nodes, make([]gonx.Node, wrapperCount)...)
+
+	return b
+}
+
+func (b *nxBuilder) addText(s string) uint32 {
+	if id, ok := b.ids[s]; ok {
+		return id
+	}
+
+	id := uint32(len(b.text))
+	b.text = append(b.text, s)
+	b.ids[s] = id
+	return id
+}
+
+func (b *nxBuilder) addWrappedTree(slot int, name string, srcNodes []gonx.Node, srcText []string) {
+	root := &srcNodes[0]
+	wrapperIdx := int(b.nodes[0].ChildID) + slot
+	b.fillWrapper(wrapperIdx, name, root, srcNodes, srcText)
+}
+
+func (b *nxBuilder) fillWrapper(dstIdx int, name string, srcRoot *gonx.Node, srcNodes []gonx.Node, srcText []string) {
+	wrapper := &b.nodes[dstIdx]
+	wrapper.NameID = b.addText(name)
+	wrapper.Type = 0
+
+	if srcRoot.ChildCount == 0 {
+		return
+	}
+
+	wrapper.ChildCount = srcRoot.ChildCount
+	wrapper.ChildID = uint32(len(b.nodes))
+	b.nodes = append(b.nodes, make([]gonx.Node, srcRoot.ChildCount)...)
+
+	for i := uint32(0); i < uint32(srcRoot.ChildCount); i++ {
+		b.fillNode(int(wrapper.ChildID+i), int(srcRoot.ChildID+i), srcNodes, srcText)
+	}
+}
+
+func (b *nxBuilder) fillNode(dstIdx int, srcIdx int, srcNodes []gonx.Node, srcText []string) {
+	src := srcNodes[srcIdx]
+	dst := &b.nodes[dstIdx]
+	dst.NameID = b.addText(srcText[src.NameID])
+	dst.Type = src.Type
+	dst.Data = src.Data
+	if src.Type == 3 {
+		ref := srcText[gonx.DataToUint32(src.Data)]
+		binary.LittleEndian.PutUint32(dst.Data[:4], b.addText(ref))
+		for i := 4; i < len(dst.Data); i++ {
+			dst.Data[i] = 0
+		}
+	}
+
+	if src.ChildCount == 0 {
+		return
+	}
+
+	dst.ChildCount = src.ChildCount
+	dst.ChildID = uint32(len(b.nodes))
+	b.nodes = append(b.nodes, make([]gonx.Node, src.ChildCount)...)
+
+	for i := uint32(0); i < uint32(src.ChildCount); i++ {
+		b.fillNode(int(dst.ChildID+i), int(src.ChildID+i), srcNodes, srcText)
+	}
 }
 
 // GetItem from loaded nx

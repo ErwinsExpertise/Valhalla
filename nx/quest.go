@@ -34,6 +34,7 @@ type Quest struct {
 type CheckBlock struct {
 	NPC   int32
 	Job   int32
+	Jobs  []int32
 	LvMin int32
 	LvMax int32
 	Pop   int32
@@ -73,6 +74,7 @@ type ActItem struct {
 	Count  int32
 	Prop   int32
 	Job    int32
+	Jobs   []int32
 	Gender int32
 }
 
@@ -156,7 +158,15 @@ func parseQuestCheck(out map[int16]Quest, nodes []gonx.Node, text []string) {
 					case "npc":
 						block.NPC = gonx.DataToInt32(entry.Data)
 					case "job":
-						block.Job = gonx.DataToInt32(entry.Data)
+						if entry.ChildCount == 0 {
+							block.Job = gonx.DataToInt32(entry.Data)
+							block.Jobs = []int32{block.Job}
+						} else {
+							block.Jobs = parseJobList(&entry, nodes, text)
+							if len(block.Jobs) > 0 {
+								block.Job = block.Jobs[0]
+							}
+						}
 					case "lvmin":
 						block.LvMin = gonx.DataToInt32(entry.Data)
 					case "lvmax":
@@ -332,7 +342,15 @@ func parseActItems(node *gonx.Node, nodes []gonx.Node, text []string) []ActItem 
 			case "prop":
 				ai.Prop = gonx.DataToInt32(f.Data)
 			case "job":
-				ai.Job = gonx.DataToInt32(f.Data)
+				if f.ChildCount == 0 {
+					ai.Job = gonx.DataToInt32(f.Data)
+					ai.Jobs = []int32{ai.Job}
+				} else {
+					ai.Jobs = parseJobList(&f, nodes, text)
+					if len(ai.Jobs) > 0 {
+						ai.Job = ai.Jobs[0]
+					}
+				}
 			case "gender":
 				ai.Gender = gonx.DataToInt32(f.Data)
 			}

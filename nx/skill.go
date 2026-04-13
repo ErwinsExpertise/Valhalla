@@ -25,6 +25,7 @@ type PlayerSkill struct {
 	MobCount              int64
 	AttackCount           int64
 	Damage                int64
+	CriticalDamage        int64
 	Fixdamage             int64
 	Rb, Lt                gonx.Vector
 	Hs                    string
@@ -40,6 +41,7 @@ type MobSkill struct {
 	MpCon           int32
 	Limit, Interval int64
 	MobID           []int64
+	Count           int64
 	SummonEffect    int64
 	Time            int64
 }
@@ -103,7 +105,7 @@ func extractSkills(nodes []gonx.Node, textLookup []string) (map[int32][]PlayerSk
 				})
 
 				for _, s := range skillIDs {
-					// First get cooltime at skill level (if it exists)
+					// First get skill-level cooltime if it exists outside the level block.
 					var skillCooltime int64
 					coolPath := playerSkillSearch + "/" + s + "/cooltime"
 					gonx.FindNode(coolPath, nodes, textLookup, func(node *gonx.Node) {
@@ -201,8 +203,12 @@ func getPlayerSkill(node *gonx.Node, nodes []gonx.Node, textLookup []string) Pla
 			skill.AttackCount = gonx.DataToInt64(option.Data)
 		case "damage":
 			skill.Damage = gonx.DataToInt64(option.Data)
+		case "criticalDamage":
+			skill.CriticalDamage = gonx.DataToInt64(option.Data)
 		case "fixdamage":
 			skill.Fixdamage = gonx.DataToInt64(option.Data)
+		case "cooltime":
+			skill.Cooltime = gonx.DataToInt64(option.Data)
 		case "rb":
 			skill.Rb = gonx.DataToVector(option.Data)
 		case "hs":
@@ -259,6 +265,8 @@ func getMobSkill(node *gonx.Node, nodes []gonx.Node, textLookup []string) MobSki
 			skill.Time = gonx.DataToInt64(option.Data)
 		case "mpCon":
 			skill.MpCon = gonx.DataToInt32(option.Data)
+		case "count":
+			skill.Count = gonx.DataToInt64(option.Data)
 
 		// not sure what these are used for
 		case "lt":

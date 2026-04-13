@@ -1,0 +1,153 @@
+Missing hard-coded NX IDs verified against v48
+Workspace: C:\Users\daddy\desktop\MapleDev\Valhalla
+NX source: C:\Users\daddy\desktop\MapleDev\v48\wz\nx
+
+Commented out in source
+
+constant\skill\mob.go
+- line 86: mob skill 115 (`Mob.speedUpAoe`)
+- line 96: mob skill 129 (`Mob.SendToTown`)
+- line 98: mob skill 132 (`Mob.CrazySkull`)
+- line 99: mob skill 133 (`Mob.Zombify`)
+- line 102: mob skill 142 (`Mob.ArmorSkill`)
+- line 103: mob skill 143 (`Mob.WeaponDamageReflect`)
+- line 104: mob skill 144 (`Mob.MagicDamageReflect`)
+- line 105: mob skill 145 (`Mob.AnyDamageReflect`)
+- line 106: mob skill 150 (`Mob.McWeaponAttackUp`)
+- line 107: mob skill 151 (`Mob.McMagicAttackUp`)
+- line 108: mob skill 152 (`Mob.McWeaponDefenseUp`)
+- line 109: mob skill 153 (`Mob.McMagicDefenseUp`)
+- line 110: mob skill 154 (`Mob.McAccuracyUp`)
+- line 111: mob skill 155 (`Mob.McAvoidUp`)
+- line 112: mob skill 156 (`Mob.McSpeedUp`)
+- line 113: mob skill 157 (`Mob.McSeal`)
+
+login\handlers.go
+- line 385: starter bottom item 1062115 removed from `allowedBottom`
+- line 386: starter top item 1042167 removed from `allowedTop`
+- line 387: starter shoes item 1072383 removed from `allowedShoes`
+- line 388: starter weapon item 1442079 removed from `allowedWeapons`
+
+Missing script references kept for follow-up only
+
+scripts\npc\1052001.js
+- line 14: item 1332063
+
+scripts\npc\1052012.js
+- line 17: map 193000000
+
+scripts\npc\1061007.js
+- line 2: map 105000000
+
+scripts\npc\1061016.js
+- line 4: item 4001261
+- line 6: item 1072375
+- line 7: item 4001261
+
+scripts\npc\1061018.js
+- line 2: map 105100100
+
+scripts\npc\1061100.js
+- line 31: map 105000011
+
+scripts\npc\1063000.js
+- line 9: map 105000000
+
+scripts\npc\1063001.js
+- line 8: map 105000000
+
+scripts\npc\1063002.js
+- line 10: map 105000000
+
+scripts\npc\1092000.js
+- line 4: map 912000100
+
+scripts\npc\1092007.js
+- line 5: map 912040300
+
+scripts\npc\1092008.js
+- line 2: map 912040100
+- line 4: map 912040200
+
+scripts\npc\1092010.js
+- line 5: item 4032094
+- line 6: item 4032094
+- line 12: item 4032095
+- line 13: item 4032095
+
+scripts\npc\1102001.js
+- line 3: map 130020000
+
+scripts\npc\1102002.js
+- line 1: item 4220137
+- line 6: item 4220137
+
+scripts\npc\2012008.js
+- line 7: item 5153015
+- line 8: item 5153015
+
+scripts\npc\2030006.js
+- line 13: map 910540000
+
+scripts\npc\2041013.js
+- line 10: item 5153015
+- line 11: item 5153015
+
+scripts\npc\2110000.js
+- line 1: npc 2110000
+
+scripts\npc\22000.js
+- line 2: item 4031801
+- line 7: item 4031801
+
+scripts\npc\9100100.js
+- line 5: item 5451000
+
+scripts\npc\9100101.js
+- line 2: item 5451000
+
+scripts\npc\9100102.js
+- line 2: item 5451000
+
+scripts\npc\9100103.js
+- line 6: item 5451000
+
+scripts\npc\9100104.js
+- line 5: item 5451000
+
+scripts\npc\9100105.js
+- line 2: item 5451000
+- line 37: item 5451000
+
+scripts\npc\9100106.js
+- line 5: item 5451000
+
+scripts\npc\9100107.js
+- line 2: item 5451000
+
+scripts\npc\9120015.js
+- line 8: map 801040000
+
+scripts\npc\9120100.js
+- line 19: item 5150053
+- line 20: item 5150053
+- line 33: item 5151036
+- line 34: item 5151036
+
+scripts\npc\9120101.js
+- line 14: item 5150052
+- line 15: item 5150052
+- line 28: item 5151035
+- line 29: item 5151035
+
+scripts\npc\9120102.js
+- line 20: item 5152057
+- line 21: item 5152057
+- line 40: item 5152045
+- line 41: item 5152045
+
+scripts\npc\9120103.js
+- line 19: item 5152056
+- line 20: item 5152056
+- line 34: item 5152046
+- line 35: item 5152046

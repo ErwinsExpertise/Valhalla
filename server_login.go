@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sync"
 	"syscall"
 	"time"
@@ -65,7 +66,7 @@ func (ls *loginServer) run() {
 	log.Printf("Listening on %q:%q", ls.config.ClientListenAddress, ls.config.ClientListenPort)
 
 	start := time.Now()
-	nx.LoadFile("Data.nx")
+	nx.LoadFile(filepath.Join("..", "v48", "wz", "nx"))
 	elapsed := time.Since(start)
 
 	log.Println("Loaded and parsed Wizet data (NX) in", elapsed)

@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"syscall"
@@ -76,7 +77,7 @@ func (cs *channelServer) run() {
 	<-cs.dispatchReady
 
 	start := time.Now()
-	nx.LoadFile("Data.nx")
+	nx.LoadFile(filepath.Join("..", "v48", "wz", "nx"))
 	elapsed := time.Since(start)
 	log.Println("Loaded and parsed Wizet data (NX) in", elapsed)
 

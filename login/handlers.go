@@ -382,10 +382,10 @@ func (server *Server) handleNewCharacter(conn mnet.Client, reader mpacket.Reader
 	allowedEyes := []int32{20000, 20001, 20002, 21000, 21001, 21002, 20100, 20401, 20402, 21700, 21201, 21002}
 	allowedHair := []int32{30000, 30020, 30030, 31000, 31040, 31050}
 	allowedHairColour := []int32{0, 7, 3, 2}
-	allowedBottom := []int32{1060002, 1060006, 1061002, 1061008, 1062115}
-	allowedTop := []int32{1040002, 1040006, 1040010, 1041002, 1041006, 1041010, 1041011, 1042167}
-	allowedShoes := []int32{1072001, 1072005, 1072037, 1072038, 1072383}
-	allowedWeapons := []int32{1302000, 1322005, 1312004, 1442079}
+	allowedBottom := []int32{1060002, 1060006, 1061002, 1061008}                         // v48 missing: 1062115
+	allowedTop := []int32{1040002, 1040006, 1040010, 1041002, 1041006, 1041010, 1041011} // v48 missing: 1042167
+	allowedShoes := []int32{1072001, 1072005, 1072037, 1072038}                          // v48 missing: 1072383
+	allowedWeapons := []int32{1302000, 1322005, 1312004}                                 // v48 missing: 1442079
 	allowedSkinColour := []int32{0, 1, 2, 3}
 
 	inSlice := func(val int32, s []int32) bool {

@@ -90,6 +90,11 @@ type Map struct {
 	Version                   int64
 	Bgm, MapMark              string
 	Cloud, HideMinimap        int64
+	ProtectItem               int64
+	ReactorShuffle            int64
+	ReactorShuffleName        string
+	AllMoveCheck              int64
+	Zakum2Hack                int64
 	MapDesc, Effect           string
 	Fs                        float64
 	TimeLimit                 int64
@@ -101,7 +106,7 @@ type Map struct {
 func extractMaps(nodes []gonx.Node, textLookup []string) map[int32]Map {
 	maps := make(map[int32]Map)
 
-	searches := []string{"/Map/Map/Map0", "/Map/Map/Map1", "/Map/Map/Map2", "/Map/Map/Map9"}
+	searches := []string{"/Map/Map/Map0", "/Map/Map/Map1", "/Map/Map/Map2", "/Map/Map/Map6", "/Map/Map/Map8", "/Map/Map/Map9"}
 
 	for _, search := range searches {
 		valid := gonx.FindNode(search, nodes, textLookup, func(node *gonx.Node) {
@@ -160,6 +165,59 @@ func extractMaps(nodes []gonx.Node, textLookup []string) map[int32]Map {
 	return maps
 }
 
+func applyMapNames(maps map[int32]Map, nodes []gonx.Node, textLookup []string) {
+	root := findChildNode("/String/Map.img", nodes, textLookup)
+	if root == nil {
+		return
+	}
+
+	for id, mapInfo := range maps {
+		if mapInfo.MapName != "" && mapInfo.StreetName != "" {
+			continue
+		}
+
+		if name, street, ok := lookupMapName(root, id, nodes, textLookup); ok {
+			if mapInfo.MapName == "" {
+				mapInfo.MapName = name
+			}
+			if mapInfo.StreetName == "" {
+				mapInfo.StreetName = street
+			}
+			maps[id] = mapInfo
+		}
+	}
+}
+
+func lookupMapName(root *gonx.Node, id int32, nodes []gonx.Node, textLookup []string) (string, string, bool) {
+	target := strconv.Itoa(int(id))
+
+	for i := uint32(0); i < uint32(root.ChildCount); i++ {
+		group := nodes[root.ChildID+i]
+		for j := uint32(0); j < uint32(group.ChildCount); j++ {
+			entry := nodes[group.ChildID+j]
+			if textLookup[entry.NameID] != target {
+				continue
+			}
+
+			var name string
+			var street string
+			for k := uint32(0); k < uint32(entry.ChildCount); k++ {
+				field := nodes[entry.ChildID+k]
+				switch textLookup[field.NameID] {
+				case "mapName":
+					name = textLookup[gonx.DataToUint32(field.Data)]
+				case "streetName":
+					street = textLookup[gonx.DataToUint32(field.Data)]
+				}
+			}
+
+			return name, street, name != "" || street != ""
+		}
+	}
+
+	return "", "", false
+}
+
 func getMapInfo(node *gonx.Node, nodes []gonx.Node, textLookup []string) Map {
 	var m Map
 	for i := uint32(0); i < uint32(node.ChildCount); i++ {
@@ -212,6 +270,16 @@ func getMapInfo(node *gonx.Node, nodes []gonx.Node, textLookup []string) Map {
 			m.Cloud = gonx.DataToInt64(option.Data)
 		case "hideMinimap":
 			m.HideMinimap = gonx.DataToInt64(option.Data)
+		case "protectItem":
+			m.ProtectItem = gonx.DataToInt64(option.Data)
+		case "reactorShuffle":
+			m.ReactorShuffle = gonx.DataToInt64(option.Data)
+		case "reactorShuffleName":
+			m.ReactorShuffleName = textLookup[gonx.DataToUint32(option.Data)]
+		case "allMoveCheck":
+			m.AllMoveCheck = gonx.DataToInt64(option.Data)
+		case "zakum2Hack":
+			m.Zakum2Hack = gonx.DataToInt64(option.Data)
 		case "mapDesc":
 			m.MapDesc = textLookup[gonx.DataToUint32(option.Data)]
 		case "effect":

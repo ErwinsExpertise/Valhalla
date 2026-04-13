@@ -52,7 +52,7 @@ func createPlayerSkillFromData(ID int32, level byte) (playerSkill, error) {
 		Level:        level,
 		Mastery:      byte(skill[level-1].Mastery),
 		Cooldown:     0,
-		CooldownTime: int16(skill[level-1].Time),
+		CooldownTime: int16(skill[level-1].Cooltime),
 		TimeLastUsed: 0,
 	}, nil
 }
@@ -85,7 +85,7 @@ func getSkillsFromCharID(id int32) []playerSkill {
 			continue
 		}
 
-		ps.CooldownTime = int16(skillData[ps.Level-1].Time)
+		ps.CooldownTime = int16(skillData[ps.Level-1].Cooltime)
 		skills = append(skills, ps)
 	}
 
@@ -2545,6 +2545,19 @@ func (d *Player) meetsPrevQuestState(req nx.QuestStateReq) bool {
 
 // meetsQuestBlock validates prereqs/Item counts.
 func (d *Player) meetsQuestBlock(blk nx.CheckBlock) bool {
+	if len(blk.Jobs) > 0 && !questJobAllowed(int32(d.job), blk.Job, blk.Jobs) {
+		return false
+	}
+	if blk.LvMin > 0 && int32(d.level) < blk.LvMin {
+		return false
+	}
+	if blk.LvMax > 0 && int32(d.level) > blk.LvMax {
+		return false
+	}
+	if blk.Pop > 0 && int32(d.fame) < blk.Pop {
+		return false
+	}
+
 	// Previous quest states
 	for _, rq := range blk.PrevQuests {
 		if rq.State > 0 && !d.meetsPrevQuestState(rq) {
@@ -2581,6 +2594,10 @@ func (d *Player) applyQuestAct(act nx.ActBlock, npcID int32, questID int16) erro
 
 	totalWeight := int32(0)
 	for _, ai := range act.Items {
+		if !questActItemAllowed(ai, int32(d.job), d.gender) {
+			continue
+		}
+
 		if ai.Count > 0 {
 			if ai.Prop > 0 {
 				// Random reward candidate; accumulate weight but grant after rolling.
@@ -2617,6 +2634,9 @@ func (d *Player) applyQuestAct(act nx.ActBlock, npcID int32, questID int16) erro
 		var selectedItem *nx.ActItem
 		for i := range act.Items {
 			ai := &act.Items[i]
+			if !questActItemAllowed(*ai, int32(d.job), d.gender) {
+				continue
+			}
 			if ai.Count > 0 && ai.Prop > 0 {
 				cumulative += ai.Prop
 				if roll < cumulative {
@@ -2639,6 +2659,28 @@ func (d *Player) applyQuestAct(act nx.ActBlock, npcID int32, questID int16) erro
 	}
 
 	return nil
+}
+
+func questJobAllowed(playerJob int32, legacyJob int32, jobs []int32) bool {
+	if len(jobs) == 0 {
+		return legacyJob == 0 || playerJob == legacyJob
+	}
+
+	for _, job := range jobs {
+		if job == 0 || playerJob == job {
+			return true
+		}
+	}
+
+	return false
+}
+
+func questActItemAllowed(ai nx.ActItem, playerJob int32, gender byte) bool {
+	if !questJobAllowed(playerJob, ai.Job, ai.Jobs) {
+		return false
+	}
+
+	return ai.Gender < 0 || ai.Gender == 2 || byte(ai.Gender) == gender
 }
 
 // tryStartQuest validates NX Start requirements, starts quest, applies Act(0).
@@ -3158,11 +3200,6 @@ func packetPlayerEnterGame(plr Player, channelID int32) mpacket.Packet {
 	p.WriteBytes(randomBytes)
 	p.WriteBytes(randomBytes)
 	p.WriteBytes(randomBytes)
-	p.WriteBytes(randomBytes)
-
-	// Are active buffs Name encoded in here?
-	p.WriteByte(0xFF)
-	p.WriteByte(0xFF)
 
 	p.WriteInt32(plr.ID)
 	p.WritePaddedString(plr.Name, 13)
@@ -3171,7 +3208,8 @@ func packetPlayerEnterGame(plr Player, channelID int32) mpacket.Packet {
 	p.WriteInt32(plr.face)
 	p.WriteInt32(plr.hair)
 
-	p.WriteInt64(plr.petCashID)
+	// buffer[8] from GW_CharacterStat::Decode at offset +27
+	p.WriteBytes(make([]byte, 8))
 
 	p.WriteByte(plr.level)
 	p.WriteInt16(plr.job)
@@ -3922,6 +3960,36 @@ func packetPlayerHpChange(plrID, hp, maxHp int32) mpacket.Packet {
 	p.WriteInt32(plrID)
 	p.WriteInt32(hp)
 	p.WriteInt32(maxHp)
+
+	return p
+}
+
+func packetCashShopSet(plr *Player) mpacket.Packet {
+	p := mpacket.CreateWithOpcode(opcode.SendChannelSetCashShop)
+
+	plr.WriteCharacterInfoPacket(&p)
+
+	p.WriteByte(1)
+	p.WriteString(plr.GetAccountName())
+
+	p.WriteInt16(0) // Wishlist
+
+	p.WriteBytes(make([]byte, 121))
+
+	// Featured/Best items: Category (1..8, excluding Quest=9), Gender (0..1), then SN
+	for i := 1; i <= 8; i++ { // categories excluding Quest
+		for j := 0; j <= 1; j++ { // gender
+			for k := 0; k < 5; k++ { // top 5
+				p.WriteInt32(int32(i)) // Category
+				p.WriteInt32(int32(j)) // Gender
+				sn := nx.GetBestSN(i, j, k)
+				p.WriteInt32(sn) // 0 if none
+			}
+		}
+	}
+
+	p.WriteInt32(0)
+	p.WriteByte(0)
 
 	return p
 }

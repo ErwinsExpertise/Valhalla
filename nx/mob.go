@@ -20,6 +20,7 @@ type Mob struct {
 	MADamage, MDDamage int64
 	PADamage, PDDamage int64
 	Speed, Eva, Acc    int64
+	ChaseSpeed         int64
 	SummonType         int8
 	SummonOption       int32
 	Boss, Undead       int64
@@ -41,6 +42,11 @@ type Mob struct {
 	RemoveQuest        int64
 	RemoveAfter        string
 	PublicReward       int64
+	DamagedByMob       int64
+	DropItemPeriod     int64
+	OnlyNormalAttack   int64
+	FixedDamage        int64
+	HPGaugeHide        int64
 	HPTagBGColor       int64
 	HPTagColor         int64
 }
@@ -116,6 +122,8 @@ func getMob(node *gonx.Node, nodes []gonx.Node, textLookup []string) Mob {
 			mob.PDDamage = gonx.DataToInt64(option.Data)
 		case "speed":
 			mob.Speed = gonx.DataToInt64(option.Data)
+		case "chaseSpeed":
+			mob.ChaseSpeed = gonx.DataToInt64(option.Data)
 		case "eva":
 			mob.Eva = gonx.DataToInt64(option.Data)
 		case "acc":
@@ -133,7 +141,7 @@ func getMob(node *gonx.Node, nodes []gonx.Node, textLookup []string) Mob {
 			mob.ElemAttr = textLookup[gonx.DataToUint32(option.Data)]
 		case "link":
 			mob.Link = gonx.DataToInt64(option.Data)
-		case "flySpeed":
+		case "flySpeed", "flyspeed":
 			mob.FlySpeed = gonx.DataToInt64(option.Data)
 		case "noregen": // is this for both hp/mp?
 			mob.NoRegen = gonx.DataToInt64(option.Data)
@@ -157,7 +165,7 @@ func getMob(node *gonx.Node, nodes []gonx.Node, textLookup []string) Mob {
 			mob.NoFlip = gonx.DataToInt64(option.Data)
 		case "notAttack":
 			mob.NotAttack = gonx.DataToInt64(option.Data)
-		case "firstAttack":
+		case "firstAttack", "firstattack":
 			mob.FirstAttack = gonx.DataToInt64(option.Data)
 		case "removeQuest":
 			mob.RemoveQuest = gonx.DataToInt64(option.Data)
@@ -166,6 +174,16 @@ func getMob(node *gonx.Node, nodes []gonx.Node, textLookup []string) Mob {
 			mob.RemoveAfter = textLookup[idLookup]
 		case "publicReward":
 			mob.PublicReward = gonx.DataToInt64(option.Data)
+		case "damagedByMob":
+			mob.DamagedByMob = gonx.DataToInt64(option.Data)
+		case "dropItemPeriod":
+			mob.DropItemPeriod = gonx.DataToInt64(option.Data)
+		case "onlyNormalAttack":
+			mob.OnlyNormalAttack = gonx.DataToInt64(option.Data)
+		case "fixedDamage":
+			mob.FixedDamage = gonx.DataToInt64(option.Data)
+		case "HPgaugeHide":
+			mob.HPGaugeHide = gonx.DataToInt64(option.Data)
 		case "hpTagBgcolor":
 			mob.HPTagBGColor = gonx.DataToInt64(option.Data)
 		case "hpTagColor":
@@ -199,6 +217,7 @@ func getSkills(node *gonx.Node, nodes []gonx.Node, textLookup []string) map[byte
 				id = option.Data[0]
 			case "action":
 			case "effectAfter":
+			case "count":
 			default:
 				log.Println("Unsupported NX mob skill option:", optionName, "->", option.Data)
 			}
