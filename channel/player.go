@@ -3186,29 +3186,64 @@ func packetCannotEnterCashShop() mpacket.Packet {
 	return p
 }
 
+const (
+	setFieldCharSectionStats         int16 = 0x0001
+	setFieldCharSectionMeta          int16 = 0x0002
+	setFieldCharSectionSlotSizes     int16 = 0x0080
+	setFieldCharSectionEquip         int16 = 0x0004
+	setFieldCharSectionUse           int16 = 0x0008
+	setFieldCharSectionSetup         int16 = 0x0010
+	setFieldCharSectionEtc           int16 = 0x0020
+	setFieldCharSectionCash          int16 = 0x0040
+	setFieldCharSectionSkills        int16 = 0x0100
+	setFieldCharSectionActiveQuests  int16 = 0x0200
+	setFieldCharSectionMiniGames     int16 = 0x0400
+	setFieldCharSectionRings         int16 = 0x0800
+	setFieldCharSectionTeleportRocks int16 = 0x1000
+	setFieldCharSectionCompletedQ    int16 = 0x4000
+	setFieldCharSectionCooldowns     int16 = -0x8000
+	setFieldCharSectionMinimal             = setFieldCharSectionStats | setFieldCharSectionTeleportRocks
+	setFieldCharSectionInventory           = setFieldCharSectionEquip | setFieldCharSectionUse | setFieldCharSectionSetup | setFieldCharSectionEtc | setFieldCharSectionCash
+	setFieldCharSectionSafeZero            = setFieldCharSectionSkills | setFieldCharSectionCooldowns | setFieldCharSectionActiveQuests | setFieldCharSectionCompletedQ | setFieldCharSectionMiniGames
+)
+
 func packetPlayerEnterGame(plr Player, channelID int32) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelWarpToMap)
-	p.WriteInt32(channelID)
-	p.WriteByte(0) // character portal counter
-	p.WriteByte(1) // Is connecting
+	p.WriteInt32(channelID - 1)
+	p.WriteByte(0)
+	p.WriteByte(1)
 
-	randomBytes := make([]byte, 4)
+	randomBytes := make([]byte, 12)
 	_, err := rand.Read(randomBytes)
 	if err != nil {
 		panic(err.Error())
 	}
 	p.WriteBytes(randomBytes)
-	p.WriteBytes(randomBytes)
-	p.WriteBytes(randomBytes)
 
+	sectionMask := setFieldCharSectionMinimal | setFieldCharSectionMeta | setFieldCharSectionSlotSizes | setFieldCharSectionInventory | setFieldCharSectionSafeZero
+	p.WriteInt16(sectionMask)
+	writeSetFieldCharacterStats(&p, plr)
+	writeSetFieldPostStatByte(&p, plr)
+	writeSetFieldMesos(&p, plr.mesos)
+	writeSetFieldSlotSizes(&p, &plr)
+	writeSetFieldInventory(&p, plr)
+	writeSetFieldSkills(&p, plr)
+	writeSetFieldCooldowns(&p, plr)
+	writeSetFieldActiveQuests(&p, plr)
+	writeSetFieldCompletedQuests(&p, plr)
+	writeSetFieldEmptyMiniGames(&p)
+	writeSetFieldTeleportRocks(&p)
+
+	return p
+}
+
+func writeSetFieldCharacterStats(p *mpacket.Packet, plr Player) {
 	p.WriteInt32(plr.ID)
 	p.WritePaddedString(plr.Name, 13)
 	p.WriteByte(plr.gender)
 	p.WriteByte(plr.skin)
 	p.WriteInt32(plr.face)
 	p.WriteInt32(plr.hair)
-
-	// buffer[8] from GW_CharacterStat::Decode at offset +27
 	p.WriteBytes(make([]byte, 8))
 
 	p.WriteByte(plr.level)
@@ -3225,130 +3260,156 @@ func packetPlayerEnterGame(plr Player, channelID int32) mpacket.Packet {
 	p.WriteInt16(plr.sp)
 	p.WriteInt32(plr.exp)
 	p.WriteInt16(plr.fame)
-
 	p.WriteInt32(plr.mapID)
 	p.WriteByte(plr.mapPos)
 
-	p.WriteByte(20) // budy list size
-	p.WriteInt32(plr.mesos)
+	// Client consumes one byte after the stat block before optional sections.
+	// The exact meaning in this v48 SetField branch is still being verified.
+}
+
+func writeSetFieldPostStatByte(p *mpacket.Packet, plr Player) {
+	// Working packet dumps show inventory begins immediately after this byte.
+	// Keep the current value stable until the controlling decode branch is known.
+	p.WriteByte(plr.buddyListSize)
+}
+
+func writeSetFieldTeleportRocks(p *mpacket.Packet) {
+	for i := 0; i < constant.TeleportRockRegSlots; i++ {
+		p.WriteInt32(constant.InvalidMap)
+	}
+	for i := 0; i < constant.TeleportRockVIPSlots; i++ {
+		p.WriteInt32(constant.InvalidMap)
+	}
+}
+
+func writeSetFieldMesos(p *mpacket.Packet, mesos int32) {
+	p.WriteInt32(mesos)
+}
+
+func writeSetFieldSlotSizes(p *mpacket.Packet, plr *Player) {
+
+	if plr.equipSlotSize == 0 {
+		plr.equipSlotSize = 24
+	}
+	if plr.useSlotSize == 0 {
+		plr.useSlotSize = 24
+	}
+	if plr.setupSlotSize == 0 {
+		plr.setupSlotSize = 24
+	}
+	if plr.etcSlotSize == 0 {
+		plr.etcSlotSize = 24
+	}
+	if plr.cashSlotSize == 0 {
+		plr.cashSlotSize = 24
+	}
 
 	p.WriteByte(plr.equipSlotSize)
 	p.WriteByte(plr.useSlotSize)
 	p.WriteByte(plr.setupSlotSize)
 	p.WriteByte(plr.etcSlotSize)
 	p.WriteByte(plr.cashSlotSize)
+}
 
-	for _, v := range plr.equip {
-		if v.slotID < 0 && !v.cash {
-			p.WriteBytes(v.InventoryBytes())
+func writeSetFieldInventory(p *mpacket.Packet, plr Player) {
+	for _, it := range plr.equip {
+		if it.slotID < 0 && !it.cash {
+			p.WriteBytes(it.setFieldBytes())
+		}
+	}
+	p.WriteByte(0)
+
+	for _, it := range plr.equip {
+		if it.slotID < 0 && it.cash {
+			p.WriteBytes(it.setFieldBytes())
+		}
+	}
+	p.WriteByte(0)
+
+	writeSetFieldInventoryTab(p, plr.equip)
+	writeSetFieldInventoryTab(p, plr.use)
+	writeSetFieldInventoryTab(p, plr.setUp)
+	writeSetFieldInventoryTab(p, plr.etc)
+	writeSetFieldInventoryTab(p, plr.cash)
+}
+
+func writeSetFieldInventoryTab(p *mpacket.Packet, items []Item) {
+	cp := make([]Item, 0, len(items))
+	for _, it := range items {
+		if it.slotID > 0 {
+			cp = append(cp, it)
 		}
 	}
 
-	p.WriteByte(0)
+	sort.Slice(cp, func(i, j int) bool {
+		return cp[i].slotID < cp[j].slotID
+	})
 
-	// Equips
-	for _, v := range plr.equip {
-		if v.slotID < 0 && v.cash {
-			p.WriteBytes(v.InventoryBytes())
+	for _, it := range cp {
+		p.WriteBytes(it.setFieldBytes())
+	}
+	p.WriteByte(0)
+}
+
+func writeSetFieldSkills(p *mpacket.Packet, plr Player) {
+	if len(plr.skills) == 0 {
+		p.WriteInt16(0)
+		return
+	}
+
+	skills := make([]playerSkill, 0, len(plr.skills))
+	for _, ps := range plr.skills {
+		skills = append(skills, ps)
+	}
+
+	sort.Slice(skills, func(i, j int) bool {
+		return skills[i].ID < skills[j].ID
+	})
+
+	p.WriteInt16(int16(len(skills)))
+	for _, ps := range skills {
+		p.WriteInt32(ps.ID)
+		p.WriteInt32(int32(ps.Level))
+		if isFourthJobSkill(ps.ID) {
+			p.WriteInt32(int32(ps.Mastery))
+		}
+	}
+}
+
+func writeSetFieldCooldowns(p *mpacket.Packet, plr Player) {
+	active := make([]playerSkill, 0, len(plr.skills))
+	for _, ps := range plr.skills {
+		if ps.Cooldown > 0 {
+			active = append(active, ps)
 		}
 	}
 
-	p.WriteByte(0)
+	sort.Slice(active, func(i, j int) bool {
+		return active[i].ID < active[j].ID
+	})
 
-	// Inventory windows starts
-	for _, v := range plr.equip {
-		if v.slotID > -1 {
-			p.WriteBytes(v.InventoryBytes())
-		}
+	p.WriteInt16(int16(len(active)))
+	for _, ps := range active {
+		p.WriteInt32(ps.ID)
+		p.WriteInt16(ps.Cooldown)
 	}
+}
 
-	p.WriteByte(0)
+func writeSetFieldActiveQuests(p *mpacket.Packet, plr Player) {
+	writeActiveQuests(p, plr.quests.inProgressList())
+}
 
-	for _, v := range plr.use {
-		p.WriteBytes(v.InventoryBytes())
-	}
+func writeSetFieldCompletedQuests(p *mpacket.Packet, plr Player) {
+	writeCompletedQuests(p, plr.quests.completedList())
+}
 
-	p.WriteByte(0)
+func writeSetFieldEmptyMiniGames(p *mpacket.Packet) {
+	p.WriteInt16(0)
+}
 
-	for _, v := range plr.setUp {
-		p.WriteBytes(v.InventoryBytes())
-	}
-
-	p.WriteByte(0)
-
-	for _, v := range plr.etc {
-		p.WriteBytes(v.InventoryBytes())
-	}
-
-	p.WriteByte(0)
-
-	for _, v := range plr.cash {
-		p.WriteBytes(v.InventoryBytes())
-	}
-
-	p.WriteByte(0)
-
-	// Skills
-	p.WriteInt16(int16(len(plr.skills))) // number of skills
-
-	skillCooldowns := make(map[int32]int16)
-
-	for _, skill := range plr.skills {
-		p.WriteInt32(skill.ID)
-		p.WriteInt32(int32(skill.Level))
-
-		if skill.Cooldown > 0 {
-			skillCooldowns[skill.ID] = skill.Cooldown
-		}
-	}
-
-	p.WriteInt16(int16(len(skillCooldowns))) // number of cooldowns
-
-	for id, cooldown := range skillCooldowns {
-		p.WriteInt32(id)
-		p.WriteInt16(cooldown)
-	}
-
-	// Quests
-	writeActiveQuests(&p, plr.quests.inProgressList())
-	writeCompletedQuests(&p, plr.quests.completedList())
-
-	p.WriteInt16(0) // MiniGames
-	/*
-	   - uint16 count
-	   - repeat count times:
-	       - int32 a
-	       - int32 b
-	       - int32 c
-	       - int32 d
-	       - int32 e
-	*/
-	p.WriteInt16(0) // Rings
-	/*
-	   - uint16 count
-	   - repeat count times:
-	       - decode ring object
-	*/
-
-	// Teleport rocks (regular + VIP) INT32 = Saved MapID
-	for i := 0; i < constant.TeleportRockRegSlots; i++ {
-		if i < len(plr.regTeleportRocks) {
-			p.WriteInt32(plr.regTeleportRocks[i])
-		} else {
-			p.WriteInt32(constant.InvalidMap)
-		}
-	}
-	for i := 0; i < constant.TeleportRockVIPSlots; i++ {
-		if i < len(plr.vipTeleportRocks) {
-			p.WriteInt32(plr.vipTeleportRocks[i])
-		} else {
-			p.WriteInt32(constant.InvalidMap)
-		}
-	}
-
-	p.WriteInt64(time.Now().Unix())
-
-	return p
+func isFourthJobSkill(id int32) bool {
+	jobID := id / 10000
+	return jobID >= 100 && jobID%10 == 2
 }
 
 func packetInventoryAddItem(item Item, newItem bool) mpacket.Packet {
@@ -3619,12 +3680,12 @@ func packetBuddyChangeChannel(id int32, channelID int32) mpacket.Packet {
 func packetMapChange(mapID int32, channelID int32, mapPos byte, hp int16) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelWarpToMap)
 	p.WriteInt32(channelID)
-	p.WriteByte(0) // character portal counter
-	p.WriteByte(0) // Is connecting
+	p.WriteInt16(2)
 	p.WriteInt32(mapID)
 	p.WriteByte(mapPos)
 	p.WriteInt16(hp)
 	p.WriteByte(0) // flag for more reading
+	p.WriteInt64(0x01FFFFFFFFFFFFFF)
 
 	return p
 }

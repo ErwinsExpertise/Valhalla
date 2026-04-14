@@ -98,6 +98,8 @@ type Item struct {
 
 const neverExpire int64 = 150842304000000000
 
+var setFieldItemMagic = []byte{0x80, 0x05}
+
 // GenerateCashID generates a unique cash ID using crypto/rand
 func GenerateCashID() int64 {
 	var b [8]byte
@@ -594,6 +596,117 @@ func (v Item) bytes(shortSlot, storage bool) []byte {
 	}
 
 	return p
+}
+
+func (v Item) setFieldBytes() []byte {
+	p := mpacket.NewPacket()
+	v.writeSetFieldSlot(&p)
+	v.writeSetFieldBody(&p)
+	return p
+}
+
+func (v Item) writeSetFieldSlot(p *mpacket.Packet) {
+	if v.slotID < 0 {
+		pos := int16(-v.slotID)
+		if pos > 100 {
+			p.WriteByte(0)
+			p.WriteByte(byte(pos - 100))
+			return
+		}
+		p.WriteByte(byte(pos))
+		return
+	}
+
+	p.WriteByte(byte(v.slotID))
+}
+
+func (v Item) writeSetFieldBody(p *mpacket.Packet) {
+	if v.pet {
+		v.writeSetFieldPetBody(p)
+		return
+	}
+
+	if v.invID == 1 {
+		p.WriteByte(0x01)
+	} else {
+		p.WriteByte(0x02)
+	}
+
+	p.WriteInt32(v.ID)
+	p.WriteInt16(0)
+	p.WriteBytes(setFieldItemMagic)
+	p.WriteInt32(getSetFieldItemTimestamp(v.expireTime))
+	p.WriteByte(2)
+
+	if v.invID == 1 {
+		p.WriteByte(v.upgradeSlots)
+		p.WriteByte(v.scrollLevel)
+		p.WriteInt16(v.str)
+		p.WriteInt16(v.dex)
+		p.WriteInt16(v.intt)
+		p.WriteInt16(v.luk)
+		p.WriteInt16(v.hp)
+		p.WriteInt16(v.mp)
+		p.WriteInt16(v.watk)
+		p.WriteInt16(v.matk)
+		p.WriteInt16(v.wdef)
+		p.WriteInt16(v.mdef)
+		p.WriteInt16(v.accuracy)
+		p.WriteInt16(v.avoid)
+		p.WriteInt16(v.hands)
+		p.WriteInt16(v.speed)
+		p.WriteInt16(v.jump)
+		p.WriteString(v.creatorName)
+		p.WriteByte(byte(v.flag))
+		p.WriteByte(0)
+		p.WriteInt32(0)
+		p.WriteInt32(0)
+		return
+	}
+
+	p.WriteInt16(v.amount)
+	p.WriteString(v.creatorName)
+	p.WriteInt16(0)
+}
+
+func (v Item) writeSetFieldPetBody(p *mpacket.Packet) {
+	p.WriteByte(0x03)
+	p.WriteInt32(v.ID)
+	p.WriteByte(1)
+
+	petID := int32(0)
+	if v.petData != nil {
+		petID = v.petData.itemID
+	}
+	p.WriteInt32(petID)
+	p.WriteInt32(0)
+	p.WriteBytes([]byte{0x00, 0x80, 0x05, 0xBB, 0x46, 0xE6, 0x17, 0x02})
+
+	if v.petData != nil {
+		p.WritePaddedString(v.petData.name, 13)
+		p.WriteByte(v.petData.level)
+		p.WriteInt16(v.petData.closeness)
+		p.WriteByte(v.petData.fullness)
+	} else {
+		p.WritePaddedString("", 13)
+		p.WriteByte(1)
+		p.WriteInt16(0)
+		p.WriteByte(100)
+	}
+
+	p.WriteInt64(neverExpire)
+	p.WriteInt32(0)
+}
+
+func getSetFieldItemTimestamp(expireTime int64) int32 {
+	if expireTime == 0 || expireTime == neverExpire {
+		return 0
+	}
+
+	const itemYear2000 = -1085019342
+	const realYear2000 = int64(946681229830)
+	timeMinutes := (expireTime - realYear2000) / 1000 / 60
+	return int32(float64(timeMinutes)*35.762787) + itemYear2000
 }
 
 // Use applies stat changes for items
