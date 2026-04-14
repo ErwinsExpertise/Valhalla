@@ -171,7 +171,7 @@ Notes
 - `0x0002` reads a single `int32` and corresponds to mesos.
 - `0x0080` causes the client to read one slot-size byte for each of the five inventory tabs.
 - The single byte after the stat block is currently treated as an unknown post-stat field.
-- The single byte after the stat block remains branch-sensitive/unknown, but the client expects mesos and slot sizes immediately after it when `0x0002` and `0x0080` are set.
+- The single byte after the stat block is followed immediately by mesos and slot sizes when `0x0002` and `0x0080` are set.
 - Cooldowns are now serialized for skills that currently have an active cooldown.
 - Skills are now serialized with real learned-skill entries.
 - Active and completed quests are now serialized with the existing login quest writers.

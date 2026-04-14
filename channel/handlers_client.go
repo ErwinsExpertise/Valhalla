@@ -249,19 +249,18 @@ func (server *Server) playerConnect(conn mnet.Client, reader mpacket.Reader) {
 	conn.Send(packetMessageScrollingHeader(server.header))
 
 	field, ok := server.fields[plr.mapID]
-
 	if !ok {
+		log.Printf("playerConnect: field %d not found for player %d", plr.mapID, plr.ID)
 		return
 	}
 
 	inst, err := field.getInstance(0)
-
 	if err != nil {
+		log.Printf("playerConnect: unable to get instance 0 for map %d: %v", plr.mapID, err)
 		return
 	}
 
 	newPlr, err := server.players.GetFromConn(conn)
-
 	if err != nil {
 		log.Println(err)
 		return
@@ -274,86 +273,75 @@ func (server *Server) playerConnect(conn mnet.Client, reader mpacket.Reader) {
 	}
 
 	newPlr.sendBuddyList()
-
 	newPlr.UpdatePartyInfo = func(partyID, playerID, job, level, mapID int32, name string) {
 		server.world.Send(internal.PacketChannelPartyUpdateInfo(partyID, playerID, job, level, mapID, name))
 	}
 
 	var guildID sql.NullInt32
 	err = common.DB.QueryRow("SELECT guildID FROM characters WHERE ID=?", newPlr.ID).Scan(&guildID)
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	if guildID.Valid {
-		if guild, ok := server.guilds[guildID.Int32]; !ok {
-			guild, err = loadGuildFromDb(guildID.Int32, &server.players)
-
-			if err == nil {
-				server.guilds[guildID.Int32] = guild
-				newPlr.guild = guild
-			}
-		} else {
-			newPlr.guild = server.guilds[guildID.Int32]
-		}
-	} else {
-		var guildID int32
-		var inviter string
-		row, err := common.DB.Query("SELECT guildID, inviter FROM guild_invites WHERE playerID=?", newPlr.ID)
-
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		defer row.Close()
-
-		for row.Next() { // We should only ever have 1 row
-			row.Scan(&guildID, &inviter)
-			newPlr.Send(packetGuildInviteCard(guildID, inviter))
-		}
-	}
-
-	err = inst.addPlayer(newPlr)
-
 	if err != nil {
 		log.Println(err)
 		return
 	}
 
-	// Restore buffs (if any) saved during CC or previous logout, then audit for stale
-	newPlr.loadAndApplyBuffSnapshot()
+	if guildID.Valid {
+		if guild, ok := server.guilds[guildID.Int32]; ok {
+			newPlr.guild = guild
+		} else if guild, err := loadGuildFromDb(guildID.Int32, &server.players); err == nil {
+			server.guilds[guildID.Int32] = guild
+			newPlr.guild = guild
+		} else {
+			log.Printf("playerConnect: failed loading guild %d: %v", guildID.Int32, err)
+		}
+	} else {
+		rows, err := common.DB.Query("SELECT guildID, inviter FROM guild_invites WHERE playerID=?", newPlr.ID)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		defer rows.Close()
 
+		for rows.Next() {
+			var inviteGuildID int32
+			var inviter string
+			if err := rows.Scan(&inviteGuildID, &inviter); err != nil {
+				log.Println(err)
+				continue
+			}
+			newPlr.Send(packetGuildInviteCard(inviteGuildID, inviter))
+		}
+	}
+
+	if err = inst.addPlayer(newPlr); err != nil {
+		log.Println(err)
+		return
+	}
+
+	newPlr.loadAndApplyBuffSnapshot()
 	if newPlr.buffs != nil {
 		newPlr.buffs.plr.inst = newPlr.inst
 		newPlr.buffs.AuditAndExpireStaleBuffs()
 	}
 
-	// Check for quest mob kills
-	if len(newPlr.quests.inProgressList()) > 0 {
-		for _, q := range newPlr.quests.inProgressList() {
-			m := newPlr.quests.mobKills[q.id]
-			if m == nil {
-				continue
-			}
-			questData, err := nx.GetQuest(q.id)
-			if err != nil {
-				continue
-			}
-
-			newPlr.Send(packetQuestUpdateMobKills(q.id, newPlr.buildQuestKillString(questData)))
+	for _, q := range newPlr.quests.inProgressList() {
+		if newPlr.quests.mobKills[q.id] == nil {
+			continue
 		}
+		questData, err := nx.GetQuest(q.id)
+		if err != nil {
+			continue
+		}
+		newPlr.Send(packetQuestUpdateMobKills(q.id, newPlr.buildQuestKillString(questData)))
 	}
 
 	common.MetricsGauges["player_count"].With(prometheus.Labels{"channel": strconv.Itoa(int(server.id)), "world": server.worldName}).Inc()
-
 	server.world.Send(internal.PacketChannelPopUpdate(server.id, int16(server.players.count())))
 
+	guildIDValue := int32(0)
 	if guildID.Valid {
-		server.world.Send(internal.PacketChannelPlayerConnected(plr.ID, plr.Name, server.id, channelID > -1, newPlr.mapID, guildID.Int32))
-	} else {
-		server.world.Send(internal.PacketChannelPlayerConnected(plr.ID, plr.Name, server.id, channelID > -1, newPlr.mapID, 0))
+		guildIDValue = guildID.Int32
 	}
+	server.world.Send(internal.PacketChannelPlayerConnected(plr.ID, plr.Name, server.id, channelID > -1, newPlr.mapID, guildIDValue))
 }
 
 func (server *Server) playerChangeChannel(conn mnet.Client, reader mpacket.Reader) {
@@ -421,6 +409,11 @@ func (server Server) playerMovement(conn mnet.Client, reader mpacket.Reader) {
 
 	plr.UpdateMovement(finalData)
 
+	if plr.inst == nil {
+		plr.Send(packetPlayerNoChange())
+		return
+	}
+
 	field, ok := server.fields[plr.mapID]
 
 	if !ok {
@@ -448,6 +441,10 @@ func (server Server) playerEmote(conn mnet.Client, reader mpacket.Reader) {
 	field, ok := server.fields[plr.mapID]
 
 	if !ok {
+		return
+	}
+
+	if plr.inst == nil {
 		return
 	}
 
@@ -578,6 +575,8 @@ func (server Server) playerAddStatPoint(conn mnet.Client, reader mpacket.Reader)
 	if err != nil {
 		return
 	}
+
+	_ = reader.ReadInt32() // v48 client sends a leading tick/unknown int before the stat mask
 
 	if player.ap > 0 {
 		player.giveAP(-1)
