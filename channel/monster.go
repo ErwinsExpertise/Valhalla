@@ -131,9 +131,11 @@ func (m *monster) removeController() {
 }
 
 func (m *monster) acknowledgeController(moveID int16, movData movementFrag, allowedToUseSkill bool, skill, level byte) {
-	m.pos.x = movData.x
-	m.pos.y = movData.y
-	m.pos.foothold = movData.foothold
+	if movData.posSet {
+		m.pos.x = movData.x
+		m.pos.y = movData.y
+		m.pos.foothold = movData.foothold
+	}
 	m.stance = movData.stance
 	m.faceLeft = m.stance%2 == 1
 
@@ -599,8 +601,15 @@ func packetMobControl(m monster, chase bool) mpacket.Packet {
 	} else {
 		p.WriteByte(0x01)
 	}
+	p.WriteInt32(m.spawnID)
+	if chase {
+		p.WriteByte(1)
+	} else {
+		p.WriteByte(0)
+	}
 
-	p.Append(m.displayBytes())
+	body := m.displayBytes()
+	p.WriteBytes(body[5:])
 
 	return p
 }

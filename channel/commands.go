@@ -1509,7 +1509,7 @@ func (server *Server) gmCommand(conn mnet.Client, msg string) {
 			drops[i] = item
 		}
 
-		pool.createDrop(dropSpawnNormal, dropFreeForAll, mesos, plr.pos, true, plr.ID, 0, drops...)
+		pool.createDrop(dropSpawnNormal, dropFreeForAll, mesos, plr.pos, true, true, plr.ID, 0, drops...)
 	case "dropr":
 		var id int32
 		var err error

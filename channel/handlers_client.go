@@ -57,9 +57,9 @@ func (server *Server) HandleClientPacket(conn mnet.Client, reader mpacket.Reader
 		}
 	}()
 
-	log.Printf("[CHANNEL] recieved opcode: %d\n", op)
 	switch op {
 	case opcode.RecvPing:
+		server.playerPing(conn, reader)
 	case opcode.RecvClientMigrate:
 		server.playerConnect(conn, reader)
 	case opcode.RecvChannelChangeChannel:
@@ -1827,7 +1827,10 @@ func (server Server) playerPickupItem(conn mnet.Client, reader mpacket.Reader) {
 	}
 
 	if drop.mesos > 0 {
-		amount := int32(plr.inst.dropPool.rates.mesos * float32(drop.mesos))
+		amount := drop.mesos
+		if !drop.byPlayer {
+			amount = int32(plr.inst.dropPool.rates.mesos * float32(drop.mesos))
+		}
 		plr.giveMesos(amount)
 	} else {
 		_, err = plr.GiveItem(drop.item)
@@ -1850,7 +1853,6 @@ func (server Server) playerTakeDamage(conn mnet.Client, reader mpacket.Reader) {
 
 	_ = reader.ReadInt32() // leading tick/unknown int
 	dmgType := int8(reader.ReadByte())
-	log.Printf("playerTakeDamage: decoded={dmgType=%d}", dmgType)
 
 	if dmgType == -2 {
 		server.playerBumpDamage(conn, reader)
@@ -2268,11 +2270,17 @@ func (server *Server) chatSendAll(conn mnet.Client, reader mpacket.Reader) {
 func (server Server) mobControl(conn mnet.Client, reader mpacket.Reader) {
 	mobSpawnID := reader.ReadInt32()
 	moveID := reader.ReadInt16()
-	bits := reader.ReadByte()
+	skillPossibleByte := reader.ReadByte()
 	action := reader.ReadInt8()
-	skillData := reader.ReadUint32()
+	skill1 := reader.ReadByte()
+	skill2 := reader.ReadByte()
+	skill3 := reader.ReadByte()
+	skill4 := reader.ReadByte()
+	_ = reader.ReadByte()  // unknown
+	_ = reader.ReadInt32() // unknown
 
-	skillPossible := (bits & 0x0F) != 0
+	skillPossible := skillPossibleByte != 0
+	skillData := uint32(skill1) | uint32(skill2)<<8 | uint32(skill3)<<16 | uint32(skill4)<<24
 
 	plr, err := server.players.GetFromConn(conn)
 
@@ -2285,9 +2293,15 @@ func (server Server) mobControl(conn mnet.Client, reader mpacket.Reader) {
 		return
 	}
 
-	moveData, finalData, valid := parseMovement(reader)
+	mob, err := inst.lifePool.getMobFromID(mobSpawnID)
+	if err != nil {
+		return
+	}
 
-	moveBytes := generateMovementBytes(moveData)
+	rawMoveBytes := append([]byte(nil), reader.GetRestAsBytes()...)
+
+	moveData, finalData, valid := parseMobMovement(reader, mob.pos.x, mob.pos.y)
+	moveBytes := rawMoveBytes
 
 	inst.lifePool.mobAcknowledge(mobSpawnID, plr, moveID, skillPossible, action, skillData, moveData, finalData, moveBytes)
 	if !valid {
@@ -2327,7 +2341,6 @@ func (server Server) mobDamagePlayer(conn mnet.Client, reader mpacket.Reader, mo
 	if mobAttack < -1 {
 		mobSkillLevel = reader.ReadByte()
 		mobSkillID = reader.ReadByte()
-		log.Printf("mobDamagePlayer: decoded skill-hit={player=%s mobAttack=%d damage=%d skillID=%d skillLevel=%d}", plr.Name, mobAttack, damage, mobSkillID, mobSkillLevel)
 	} else {
 		mobID := reader.ReadInt32()
 		spawnID := reader.ReadInt32()
@@ -2428,11 +2441,7 @@ func (server Server) mobDamagePlayer(conn mnet.Client, reader mpacket.Reader, mo
 		}
 
 		if !plr.admin() {
-			beforeHP := plr.hp
 			plr.damagePlayer(int16(damage))
-			log.Printf("mobDamagePlayer: applied damage={player=%s beforeHP=%d damage=%d afterHP=%d reducedDamage=%d}", plr.Name, beforeHP, damage, plr.hp, reducedDamage)
-		} else {
-			log.Printf("mobDamagePlayer skipped HP apply because player=%s is admin", plr.Name)
 		}
 
 		inst.send(packetPlayerReceivedDmg(plr.ID, mobAttack, damage, reducedDamage, spawnID, mobID, healSkillID, stance, reflectAction, reflected, reflectX, reflectY))
@@ -2471,7 +2480,6 @@ func (server Server) playerMeleeSkill(conn mnet.Client, reader mpacket.Reader) {
 	}
 
 	data, valid := getAttackInfo(reader, *plr, attackMelee)
-	log.Printf("playerMeleeSkill: decoded={player=%s valid=%t skillID=%d skillLevel=%d targets=%d projectile=%d mesoExplosion=%t}", plr.Name, valid, data.skillID, data.skillLevel, len(data.attackInfo), data.projectileID, data.isMesoExplosion)
 
 	if !valid {
 		return
@@ -2553,7 +2561,6 @@ func (server Server) playerRangedSkill(conn mnet.Client, reader mpacket.Reader) 
 	}
 
 	data, valid := getAttackInfo(reader, *plr, attackRanged)
-	log.Printf("playerRangedSkill: decoded={player=%s valid=%t skillID=%d skillLevel=%d targets=%d projectile=%d}", plr.Name, valid, data.skillID, data.skillLevel, len(data.attackInfo), data.projectileID)
 
 	if !valid {
 		return
@@ -2607,7 +2614,6 @@ func (server Server) playerMagicSkill(conn mnet.Client, reader mpacket.Reader) {
 	}
 
 	data, valid := getAttackInfo(reader, *plr, attackMagic)
-	log.Printf("playerMagicSkill: decoded={player=%s valid=%t skillID=%d skillLevel=%d targets=%d projectile=%d}", plr.Name, valid, data.skillID, data.skillLevel, len(data.attackInfo), data.projectileID)
 
 	if !valid {
 		return
@@ -5239,7 +5245,10 @@ func (server *Server) playerPetLoot(conn mnet.Client, reader mpacket.Reader) {
 	}
 
 	if drop.mesos > 0 {
-		amount := int32(plr.inst.dropPool.rates.mesos * float32(drop.mesos))
+		amount := drop.mesos
+		if !drop.byPlayer {
+			amount = int32(plr.inst.dropPool.rates.mesos * float32(drop.mesos))
+		}
 		plr.giveMesos(amount)
 	} else {
 		_, err = plr.GiveItem(drop.item)
@@ -5257,4 +5266,8 @@ func (server *Server) playerPetLoot(conn mnet.Client, reader mpacket.Reader) {
 func (server *Server) playerQuickslotKeyMappedModified(conn mnet.Client, reader mpacket.Reader) {
 	// player.updateQuickslotKeyMap()
 	//  UNKNOWN CLIENT PACKET( 110 ): [Packet] (19) : 6E 00 00 00 00 00 01 00 00 00 2A 00 00 00 01 EA 0C 3D 00
+}
+
+func (server *Server) playerPing(conn mnet.Client, reader mpacket.Reader) {
+	// should we send ack?
 }

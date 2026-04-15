@@ -252,6 +252,13 @@ func (pool *lifePool) mobAcknowledge(poolID int32, plr *Player, moveID int16, sk
 				return
 			}
 
+			if !finalData.posSet {
+				finalData.x = moveData.origX
+				finalData.y = moveData.origY
+				finalData.foothold = v.pos.foothold
+				finalData.posSet = true
+			}
+
 			pool.mobs[i].acknowledgeController(moveID, finalData, skillPossible, skillID, skillLevel)
 			pool.instance.sendExcept(packetMobMove(poolID, skillPossible, action, skillData, moveBytes), v.controller.Conn)
 
@@ -322,7 +329,6 @@ func (pool *lifePool) performSkill(mob *monster, skillID, skillLevel byte, skill
 func (pool *lifePool) mobDamaged(poolID int32, damager *Player, dmg ...int32) {
 	for i, v := range pool.mobs {
 		if v.spawnID == poolID {
-			beforeHP := pool.mobs[i].hp
 
 			if damager != nil {
 				pool.mobs[i].removeController()
@@ -353,19 +359,13 @@ func (pool *lifePool) mobDamaged(poolID int32, damager *Player, dmg ...int32) {
 								mesoAmount = 5000
 							}
 
-							pool.dropPool.createDrop(dropSpawnNormal, dropTimeoutNonOwner, mesoAmount, v.pos, true, damager.ID, 0)
+							pool.dropPool.createDrop(dropSpawnNormal, dropTimeoutNonOwner, mesoAmount, v.pos, true, false, damager.ID, 0)
 						}
 					}
 				}
 			} else {
 				pool.mobs[i].giveDamage(nil, dmg...)
 			}
-
-			var damagerName string
-			if damager != nil {
-				damagerName = damager.Name
-			}
-			log.Printf("lifePool.mobDamaged: mobID=%d spawnID=%d damager=%s hits=%v beforeHP=%d afterHP=%d", v.id, v.spawnID, damagerName, dmg, beforeHP, pool.mobs[i].hp)
 
 			pool.showMobBossHPBar(v, nil)
 
@@ -478,7 +478,7 @@ func (pool *lifePool) mobDamaged(poolID int32, damager *Player, dmg ...int32) {
 							}
 							drops = append(drops, newItem)
 						}
-						pool.dropPool.createDrop(dropSpawnNormal, dropFreeForAll, int32(killer.rates.mesos*float32(mesos)), v.pos, true, 0, 0, drops...)
+						pool.dropPool.createDrop(dropSpawnNormal, dropFreeForAll, int32(killer.rates.mesos*float32(mesos)), v.pos, true, false, 0, 0, drops...)
 					}
 				}
 
@@ -956,6 +956,8 @@ type fieldDrop struct {
 	finalPos  pos
 
 	dropType byte
+
+	byPlayer bool
 }
 
 const (
@@ -1034,7 +1036,10 @@ func (pool *dropPool) playerAttemptPickup(drop fieldDrop, player *Player, pickup
 	pool.instance.send(packetRemoveDrop(pickupType, drop.ID, player.ID))
 
 	if drop.mesos > 0 {
-		amount = int16(pool.rates.mesos * float32(drop.mesos))
+		amount = int16(drop.mesos)
+		if !drop.byPlayer {
+			amount = int16(pool.rates.mesos * float32(drop.mesos))
+		}
 	} else {
 		amount = drop.item.amount
 	}
@@ -1057,7 +1062,7 @@ const itemDistance = 20 // Between 15 and 20?
 const itemDisppearTimeout = time.Minute * 2
 const itemLootableByAllTimeout = time.Minute * 1
 
-func (pool *dropPool) createDrop(spawnType byte, dropType byte, mesos int32, dropFrom pos, expire bool, ownerID, partyID int32, items ...Item) {
+func (pool *dropPool) createDrop(spawnType byte, dropType byte, mesos int32, dropFrom pos, expire, byPlayer bool, ownerID, partyID int32, items ...Item) {
 	iCount := len(items)
 	var offset int16 = 0
 
@@ -1093,6 +1098,7 @@ func (pool *dropPool) createDrop(spawnType byte, dropType byte, mesos int32, dro
 					expireTime:  expireTime,
 					timeoutTime: timeoutTime,
 					neverExpire: false,
+					byPlayer:    byPlayer,
 
 					originPos: dropFrom,
 					finalPos:  finalPos,
@@ -1136,6 +1142,7 @@ func (pool *dropPool) createDrop(spawnType byte, dropType byte, mesos int32, dro
 				expireTime:  expireTime,
 				timeoutTime: timeoutTime,
 				neverExpire: false,
+				byPlayer:    byPlayer,
 
 				originPos: dropFrom,
 				finalPos:  finalPos,
@@ -1607,7 +1614,7 @@ func (pool *reactorPool) processStateSideEffects(r *fieldReactor, plr *Player) {
 				items = append(items, newItem)
 			}
 
-			pool.instance.dropPool.createDrop(dropSpawnNormal, dropFreeForAll, int32(reactorDrops.money), r.pos, true, 0, 0, items...)
+			pool.instance.dropPool.createDrop(dropSpawnNormal, dropFreeForAll, int32(reactorDrops.money), r.pos, true, false, 0, 0, items...)
 
 		case constant.ReactorSpawnNPC:
 		case constant.ReactorRunScript:

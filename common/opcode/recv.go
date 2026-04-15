@@ -12,7 +12,7 @@ const (
 	RecvLoginNewCharacter          int16 = 21
 	RecvLoginDeleteChar            int16 = 22
 	RecvReturnToLoginScreen        int16 = 27
-	RecvPing                       int16 = 19
+	RecvPing                       int16 = 0x19
 	RecvClientMigrate              int16 = 16
 	RecvChannelUserPortal          int16 = 0x1E
 	RecvChannelChangeChannel       int16 = 0x1F
@@ -51,7 +51,7 @@ const (
 	RecvChannelTeleportRock        int16 = 0x51
 	RecvChannelLieDetectorResult   int16 = 0x54
 	RecvChannelQuestOperation      int16 = 0x55
-	RecvChannelAcknowledgeBuff     int16 = 0x8A
+	RecvChannelAcknowledgeBuff     int16 = 0xFF
 	RecvChannelCharacterReport     int16 = 0x57
 	RecvChannelGroupChat           int16 = 0x58
 	RecvChannelSlashCommands       int16 = 0x59
@@ -70,9 +70,9 @@ const (
 	RecvChannelSummonMove          int16 = 0x6F
 	RecvChannelSummonAttack        int16 = 0x70
 	RecvChannelSummonDamage        int16 = 0x71
-	RecvChannelMobControl          int16 = 0x77
-	RecvChannelDistance            int16 = 0x78
-	RecvChannelNpcMovement         int16 = 0x81
+	RecvChannelMobControl          int16 = 0x81
+	RecvChannelDistance            int16 = 0x82
+	RecvChannelNpcMovement         int16 = 0x8A
 	RecvChannelPlayerPickup        int16 = 0x8E
 	RecvChannelReactorHit          int16 = 0x91
 	RecvChannelBoatMap             int16 = 0x9C

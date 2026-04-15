@@ -1548,7 +1548,7 @@ func (d *Player) dropMesos(amount int32) error {
 	}
 
 	d.takeMesos(amount)
-	d.inst.dropPool.createDrop(dropSpawnNormal, dropFreeForAll, amount, d.pos, true, d.ID, d.ID)
+	d.inst.dropPool.createDrop(dropSpawnNormal, dropFreeForAll, amount, d.pos, true, true, d.ID, d.ID)
 
 	return nil
 }
@@ -1590,7 +1590,7 @@ func (d *Player) moveItem(start, end, amount int16, invID byte) error {
 			}
 		}
 
-		d.inst.dropPool.createDrop(dropSpawnNormal, dropFreeForAll, 0, d.pos, true, d.ID, 0, dropItem)
+		d.inst.dropPool.createDrop(dropSpawnNormal, dropFreeForAll, 0, d.pos, true, true, d.ID, 0, dropItem)
 
 		return nil
 	}
