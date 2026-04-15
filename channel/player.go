@@ -3137,61 +3137,56 @@ func packetPlayerSkillAnimation(charID int32, party bool, skillID int32, level b
 func packetPlayerGiveBuff(mask []byte, values []byte, delay int16, extra byte) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelTempStatChange)
 
-	// Normalize to 8 bytes (low dword, high dword)
+	// Masks are already encoded in the same reversed-DWORD order used by CTS flags.
 	if len(mask) < 8 {
 		tmp := make([]byte, 8)
-		copy(tmp[8-len(mask):], mask)
+		copy(tmp, mask)
 		mask = tmp
 	} else if len(mask) > 8 {
-		mask = mask[len(mask)-8:]
+		mask = mask[:8]
 	}
+	writeExtra := buffMaskNeedsExtraByte(mask)
 	p.WriteBytes(mask)
 
-	// Per-stat value triples (short value, int32 skill, short time)
+	// Per-stat value triples (short value, int32 source, int32 duration)
 	p.WriteBytes(values)
 
 	// Self path: 2-byte delay
 	p.WriteInt16(delay)
 
-	// Optional extra (only if specific bits are present)
-
-	writeExtra := buffMaskNeedsExtraByte(mask)
 	if writeExtra {
 		p.WriteByte(extra)
 	}
-
-	p.WriteInt64(0)
-	p.WriteInt64(0)
 
 	return p
 }
 
 func buffMaskNeedsExtraByte(mask []byte) bool {
-	isSetLSB := func(bit int) bool {
-		idx := bit / 8
-		if idx < 0 || idx >= len(mask) {
-			return false
-		}
-		shift := uint(bit % 8)
-		return (mask[idx] & (1 << shift)) != 0
+	if len(mask) < 8 {
+		return false
 	}
-	return isSetLSB(BuffComboAttack) || isSetLSB(BuffCharges)
+	value := uint64(mask[0]) | uint64(mask[1])<<8 | uint64(mask[2])<<16 | uint64(mask[3])<<24 |
+		uint64(mask[4])<<32 | uint64(mask[5])<<40 | uint64(mask[6])<<48 | uint64(mask[7])<<56
+	const forcedStatExtraMask uint64 = 0x408B40020180
+	return (value & forcedStatExtraMask) != 0
 }
 
 // Self-cancel using 8-byte mask
 func packetPlayerCancelBuff(mask []byte) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelRemoveTempStat)
 
-	// Normalize to 8 bytes
+	// Masks are already encoded in the same reversed-DWORD order used by CTS flags.
 	if len(mask) < 8 {
 		tmp := make([]byte, 8)
-		copy(tmp[8-len(mask):], mask)
+		copy(tmp, mask)
 		mask = tmp
 	} else if len(mask) > 8 {
-		mask = mask[len(mask)-8:]
+		mask = mask[:8]
 	}
 	p.WriteBytes(mask)
-	p.WriteUint64(0)
+	if buffMaskNeedsExtraByte(mask) {
+		p.WriteByte(0)
+	}
 	return p
 }
 
@@ -3936,13 +3931,13 @@ func packetPlayerGiveForeignBuff(charID int32, mask []byte, values []byte, delay
 	p := mpacket.CreateWithOpcode(opcode.SendChannelPlayerGiveForeignBuff)
 	p.WriteInt32(charID)
 
-	// Normalize to 8 bytes (low dword, high dword) like self path
+	// Masks are already encoded in the same reversed-DWORD order used by CTS flags.
 	if len(mask) < 8 {
 		tmp := make([]byte, 8)
-		copy(tmp[8-len(mask):], mask)
+		copy(tmp, mask)
 		mask = tmp
 	} else if len(mask) > 8 {
-		mask = mask[len(mask)-8:]
+		mask = mask[:8]
 	}
 	p.WriteBytes(mask)
 

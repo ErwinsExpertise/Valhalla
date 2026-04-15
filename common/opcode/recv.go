@@ -41,7 +41,7 @@ const (
 	RecvChannelPassiveRegen        int16 = 0x44
 	RecvChannelAddSkillPoint       int16 = 0x45
 	RecvChannelSpecialSkill        int16 = 0x46
-	RecvChannelRequestBuffCancel   int16 = 0x47
+	RecvChannelRequestBuffCancel   int16 = 0x39
 	RecvChannelPlayerDropMesos     int16 = 0x49
 	RecvChannelPlayerFame          int16 = 0x4A
 	RecvChannelCharacterInfo       int16 = 0x4C
@@ -51,7 +51,7 @@ const (
 	RecvChannelTeleportRock        int16 = 0x51
 	RecvChannelLieDetectorResult   int16 = 0x54
 	RecvChannelQuestOperation      int16 = 0x55
-	RecvChannelAcknowledgeBuff     int16 = 0xFF
+	RecvChannelAcknowledgeBuff     int16 = 0x4E
 	RecvChannelCharacterReport     int16 = 0x57
 	RecvChannelGroupChat           int16 = 0x58
 	RecvChannelSlashCommands       int16 = 0x59

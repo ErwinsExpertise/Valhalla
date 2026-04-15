@@ -4173,8 +4173,20 @@ func getAffectedPartyMembers(p *party, src *Player, affected byte) []*Player {
 	return ret
 }
 
+func isPartySkillRequest(skillID int32) bool {
+	switch skill.Skill(skillID) {
+	case skill.Haste, skill.BanditHaste,
+		skill.Bless, skill.IronWill, skill.Rage,
+		skill.Meditation, skill.ILMeditation,
+		skill.MesoUp, skill.HolySymbol, skill.HyperBody,
+		skill.Heal, skill.Dispel, skill.Resurrection:
+		return true
+	default:
+		return false
+	}
+}
+
 func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader) {
-	// Minimal, safe implementation to keep packet stream in sync and apply basic validations/costs.
 	plr, err := server.players.GetFromConn(conn)
 	if err != nil {
 		return
@@ -4186,20 +4198,38 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 		return
 	}
 
-	// The packet layout for special skills generally starts with [skillID int32][skillLevel byte]
+	_ = reader.ReadInt32() // update_time
 	skillID := reader.ReadInt32()
 	skillLevel := reader.ReadByte()
+	partyMask := byte(0)
+	delay := int16(0)
+	targetIDs := make([]int32, 0)
+
+	if isPartySkillRequest(skillID) && len(reader.GetRestAsBytes()) > 2 {
+		partyMask = reader.ReadByte()
+		if skill.Skill(skillID) == skill.Dispel && len(reader.GetRestAsBytes()) >= 2 {
+			delay = reader.ReadInt16()
+		}
+	}
+
+	if len(reader.GetRestAsBytes()) > 2 {
+		targetCount := int(reader.ReadByte())
+		targetIDs = make([]int32, 0, targetCount)
+		for i := 0; i < targetCount && len(reader.GetRestAsBytes()) >= 4; i++ {
+			targetIDs = append(targetIDs, reader.ReadInt32())
+		}
+	}
+
+	if len(reader.GetRestAsBytes()) == 2 {
+		delay = reader.ReadInt16()
+	}
 
 	// Validate the Player owns the skill and level does not exceed learned level
 	ps, ok := plr.skills[skillID]
 	if !ok || skillLevel == 0 || skillLevel > ps.Level {
-		// Possible hack/desync; drop request
 		plr.Send(packetPlayerNoChange())
 		return
 	}
-
-	partyMask := reader.ReadByte() // party flags
-	delay := reader.ReadInt16()    // delay
 
 	switch skill.Skill(skillID) {
 	case skill.Haste, skill.BanditHaste, skill.Bless, skill.IronWill, skill.Rage,
@@ -4411,18 +4441,6 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 		skill.ShadowWeb,
 		skill.Doom:
 
-		_ = reader.ReadInt16() // padding
-
-		mobIDs := make([]int32, 0)
-		restBytes := reader.GetRestAsBytes()
-		for i := 0; i+4 <= len(restBytes); i += 4 {
-			mobID := int32(restBytes[i]) | int32(restBytes[i+1])<<8 | int32(restBytes[i+2])<<16 | int32(restBytes[i+3])<<24
-			if mobID == 0 || mobID < 0 {
-				break
-			}
-			mobIDs = append(mobIDs, mobID)
-		}
-
 		plr.inst.send(packetPlayerSkillAnimation(plr.ID, false, skillID, skillLevel))
 
 		var statMask int32
@@ -4446,7 +4464,7 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 		}
 
 		if plr.inst != nil {
-			for _, mobID := range mobIDs {
+			for _, mobID := range targetIDs {
 				plr.inst.lifePool.applyMobBuff(mobID, skillID, skillLevel, statMask, plr.inst)
 			}
 		}
