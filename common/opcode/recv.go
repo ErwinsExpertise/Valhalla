@@ -67,9 +67,10 @@ const (
 	RecvChannelPetInteraction      int16 = 0x6A
 	RecvChannelPetLoot             int16 = 0x6B
 	RecvChannelQuickSlot           int16 = 0x6E
-	RecvChannelSummonMove          int16 = 0x6F
-	RecvChannelSummonAttack        int16 = 0x70
-	RecvChannelSummonDamage        int16 = 0x71
+	RecvChannelSummonAck           int16 = 0x56
+	RecvChannelSummonMove          int16 = 0x78
+	RecvChannelSummonAttack        int16 = 0x79
+	RecvChannelSummonDamage        int16 = 0x7A
 	RecvChannelMobControl          int16 = 0x81
 	RecvChannelDistance            int16 = 0x82
 	RecvChannelNpcMovement         int16 = 0x8A

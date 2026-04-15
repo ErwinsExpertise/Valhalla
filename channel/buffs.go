@@ -57,6 +57,8 @@ const (
 	BuffEchoOfHero       = 0x1000000000000
 	BuffThaw             = 0x20000000
 	BuffCurse            = 0x80000000
+	BuffSummon           = BuffComboAttack
+	BuffPuppet           = BuffPickPocketMesoUP
 )
 
 // skillBuffBits stores per-skill bit positions in the CFlag.
@@ -154,11 +156,11 @@ func LoadBuffs() {
 	AddSkillBuff(int32(skill.SuperGMHolySymbol), BuffHolySymbol)
 	AddSkillBuff(int32(skill.SuperGMHide), BuffDarkSight)
 
-	AddSkillBuff(int32(skill.SilverHawk), BuffComboAttack)
-	AddSkillBuff(int32(skill.GoldenEagle), BuffComboAttack)
-	AddSkillBuff(int32(skill.Puppet), BuffPickPocketMesoUP)
-	AddSkillBuff(int32(skill.SniperPuppet), BuffPickPocketMesoUP)
-	AddSkillBuff(int32(skill.SummonDragon), BuffComboAttack)
+	AddSkillBuff(int32(skill.SilverHawk), BuffSummon)
+	AddSkillBuff(int32(skill.GoldenEagle), BuffSummon)
+	AddSkillBuff(int32(skill.Puppet), BuffPuppet)
+	AddSkillBuff(int32(skill.SniperPuppet), BuffPuppet)
+	AddSkillBuff(int32(skill.SummonDragon), BuffSummon)
 }
 
 func init() {
@@ -365,6 +367,20 @@ func durationToForcedStatUnits(remainMs int32) int16 {
 	return int16(units)
 }
 
+func skillUsesOneAsOption(skillID int32, bit int) bool {
+	s := skill.Skill(skillID)
+	switch bit {
+	case BuffComboAttack:
+		return s == skill.ComboAttack || s == skill.SilverHawk || s == skill.GoldenEagle || s == skill.SummonDragon
+	case BuffPickPocketMesoUP:
+		return s == skill.Puppet || s == skill.SniperPuppet
+	case BuffMonsterRiding:
+		return true
+	default:
+		return false
+	}
+}
+
 func (cb *CharacterBuffs) buildBuffTriplesWireOrder(skillID int32, level byte, bits []int, remainMs int32) []byte {
 	levels, err := nx.GetPlayerSkill(skillID)
 	if err != nil || level == 0 || int(level) > len(levels) {
@@ -373,6 +389,10 @@ func (cb *CharacterBuffs) buildBuffTriplesWireOrder(skillID int32, level byte, b
 	sl := levels[level-1]
 
 	val := func(bit int) int16 {
+		if skillUsesOneAsOption(skillID, bit) {
+			return 1
+		}
+
 		switch bit {
 		case BuffSpeed:
 			if sl.Speed != 0 {
@@ -435,6 +455,12 @@ func (cb *CharacterBuffs) buildBuffTriplesWireOrder(skillID int32, level byte, b
 			BuffRecovery, BuffMapleWarrior, BuffStance, BuffSharpEyes, BuffManaReflection,
 			BuffShadowClaw, BuffInfinity, BuffHolyShield, BuffHamstring, BuffBlind,
 			BuffConcentrate, BuffMonsterRiding, BuffEchoOfHero:
+			if bit == BuffStance && sl.Prop != 0 {
+				return int16(sl.Prop)
+			}
+			if bit == BuffShadowClaw {
+				return 0
+			}
 			if sl.X != 0 {
 				return int16(sl.X)
 			}
@@ -471,6 +497,32 @@ func (cb *CharacterBuffs) buildBuffTriplesWireOrder(skillID int32, level byte, b
 	}
 
 	return out
+}
+
+func buildForeignMaskBytes64(bits []int) []byte {
+	remoteBits := make([]int, 0, len(bits))
+	for _, bit := range bits {
+		switch bit {
+		case BuffSpeed,
+			BuffComboAttack,
+			BuffCharges,
+			BuffStun,
+			BuffPoison,
+			BuffSeal,
+			BuffDarkness,
+			BuffWeakness,
+			BuffCurse,
+			BuffShadowPartner,
+			BuffDarkSight,
+			BuffSoulArrow,
+			BuffMonsterRiding:
+			remoteBits = append(remoteBits, bit)
+		}
+	}
+	if len(remoteBits) == 0 {
+		return nil
+	}
+	return buildMaskBytes64(remoteBits)
 }
 
 func buildItemBuffTriplesWireOrder(meta nx.Item, bits []int, durationMs int32, sourceID int32) []byte {
@@ -879,7 +931,7 @@ func (cb *CharacterBuffs) AddBuffFromCC(charId, skillID int32, expiresAtMs int64
 		return
 	}
 
-	// Extra trailing byte only for combo/charges.
+	// Some v48 local temp-stat masks require an extra trailing byte.
 	extra := byte(0)
 
 	// Send to self
@@ -888,7 +940,9 @@ func (cb *CharacterBuffs) AddBuffFromCC(charId, skillID int32, expiresAtMs int64
 	// Build and broadcast the foreign buff state so others see the effect/state.
 	if cb.plr != nil && cb.plr.inst != nil {
 		fMask, fVals := cb.buildForeignBuffMaskAndValues(skillID, level, bits)
-		cb.plr.inst.sendExcept(packetPlayerGiveForeignBuff(cb.plr.ID, fMask, fVals, delay), cb.plr.Conn)
+		if len(fMask) > 0 {
+			cb.plr.inst.sendExcept(packetPlayerGiveForeignBuff(cb.plr.ID, fMask, fVals, delay), cb.plr.Conn)
+		}
 	}
 
 	cb.activeSkillLevels[skillID] = level
@@ -930,6 +984,10 @@ func (cb *CharacterBuffs) buildForeignBuffMaskAndValues(skillID int32, level byt
 
 	addedBits := make([]int, 0, 8)
 	out := make([]byte, 0, 32)
+	isSummonSkill := func() bool {
+		s := skill.Skill(skillID)
+		return s == skill.SilverHawk || s == skill.GoldenEagle || s == skill.SummonDragon
+	}
 
 	// Speed: write byte N
 	if hasBit(BuffSpeed) {
@@ -944,7 +1002,7 @@ func (cb *CharacterBuffs) buildForeignBuffMaskAndValues(skillID int32, level byt
 	if hasBit(BuffComboAttack) {
 		addedBits = append(addedBits, BuffComboAttack)
 		val := byte(1)
-		if sl.X != 0 {
+		if !isSummonSkill() && sl.X != 0 {
 			val = byte(sl.X)
 		}
 		out = append(out, val)
@@ -990,28 +1048,35 @@ func (cb *CharacterBuffs) buildForeignBuffMaskAndValues(skillID int32, level byt
 		id := skillID
 		out = append(out, byte(id), byte(id>>8), byte(id>>16), byte(id>>24))
 	}
+	// ShadowPartner: toggle, no payload on remote path
+	if hasBit(BuffShadowPartner) {
+		addedBits = append(addedBits, BuffShadowPartner)
+	}
 	// SoulArrow: toggle, no payload
 	if hasBit(BuffSoulArrow) {
 		addedBits = append(addedBits, BuffSoulArrow)
-	}
-	// ShadowPartner: toggle, no payload
-	if hasBit(BuffShadowPartner) {
-		addedBits = append(addedBits, BuffShadowPartner)
 	}
 	// DarkSight: toggle, no payload
 	if hasBit(BuffDarkSight) {
 		addedBits = append(addedBits, BuffDarkSight)
 	}
-	// BuffHands: toggle, no payload (used for Recovery skill visual indicator)
-	if hasBit(BuffHands) {
-		addedBits = append(addedBits, BuffHands)
+	// Monster Riding: toggle, no payload on remote path
+	if hasBit(BuffMonsterRiding) {
+		addedBits = append(addedBits, BuffMonsterRiding)
 	}
 
 	if len(addedBits) == 0 {
 		return nil, nil
 	}
-	mask := buildMaskBytes64(addedBits)
+	mask := buildForeignMaskBytes64(addedBits)
+	if len(mask) == 0 {
+		return nil, nil
+	}
 	return mask, out
+}
+
+func buildForeignCancelMask(bits []int) []byte {
+	return buildForeignMaskBytes64(bits)
 }
 
 // dispelAllBuffs removes all active buffs from the player
@@ -1161,9 +1226,6 @@ func (cb *CharacterBuffs) expireBuffNow(skillID int32) {
 		if skillID < 0 {
 			if mask, ok2 := cb.itemMasks[skillID]; ok2 {
 				cb.plr.Send(packetPlayerCancelBuff(mask))
-				if cb.plr.inst != nil {
-					cb.plr.inst.sendExcept(packetPlayerCancelForeignBuff(cb.plr.ID, mask), cb.plr.Conn)
-				}
 				delete(cb.itemMasks, skillID)
 			}
 		}
@@ -1173,7 +1235,9 @@ func (cb *CharacterBuffs) expireBuffNow(skillID int32) {
 
 	cb.plr.Send(packetPlayerCancelBuff(maskBytes))
 	if cb.plr.inst != nil {
-		cb.plr.inst.sendExcept(packetPlayerCancelForeignBuff(cb.plr.ID, maskBytes), cb.plr.Conn)
+		if fmask := buildForeignCancelMask(bits); len(fmask) > 0 {
+			cb.plr.inst.sendExcept(packetPlayerCancelForeignBuff(cb.plr.ID, fmask), cb.plr.Conn)
+		}
 	}
 
 	delete(cb.activeSkillLevels, skillID)

@@ -5,6 +5,7 @@ import (
 
 	"github.com/Hucaru/Valhalla/common/opcode"
 	"github.com/Hucaru/Valhalla/constant"
+	"github.com/Hucaru/Valhalla/constant/skill"
 	"github.com/Hucaru/Valhalla/mpacket"
 )
 
@@ -30,17 +31,38 @@ type summonState struct {
 	summon *summon
 }
 
-func packetShowSummon(ownerID int32, su *summon) mpacket.Packet {
+func summonMovementType(su *summon) byte {
+	if su == nil {
+		return 0
+	}
+	if su.IsPuppet {
+		return 0
+	}
+	switch skill.Skill(su.SkillID) {
+	case skill.SilverHawk, skill.GoldenEagle, skill.SummonDragon:
+		return 3
+	default:
+		return 0
+	}
+}
+
+func packetShowSummon(ownerID int32, su *summon, animated bool) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelSpecialMapObjectSpawn)
 	p.WriteInt32(ownerID)
 	p.WriteInt32(su.SkillID)
 	p.WriteByte(su.Level)
 	p.WriteInt16(su.Pos.x)
 	p.WriteInt16(su.Pos.y)
-	p.WriteByte(su.Stance)
-	p.WriteInt16(su.Foothold)
-	p.WriteBool(!su.IsPuppet)
-	p.WriteBool(false)
+	p.WriteByte(0)
+	p.WriteByte(0)
+	p.WriteByte(0)
+	p.WriteByte(summonMovementType(su))
+	p.WriteByte(1)
+	if animated {
+		p.WriteByte(0)
+	} else {
+		p.WriteByte(1)
+	}
 	return p
 }
 
@@ -49,20 +71,16 @@ func packetRemoveSummon(ownerID int32, summonID int32, reason byte) mpacket.Pack
 	p.WriteInt32(ownerID)
 	p.WriteInt32(summonID)
 	p.WriteByte(reason)
-	p.WriteInt64(0)
-	p.WriteInt64(0)
-	p.WriteInt64(0)
 	return p
 }
 
-func packetSummonMove(ownerID int32, summonID int32, moveBytes []byte) mpacket.Packet {
+func packetSummonMove(ownerID int32, summonID int32, start pos, moveBytes mpacket.Packet) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelSummonMove)
 	p.WriteInt32(ownerID)
 	p.WriteInt32(summonID)
+	p.WriteInt16(start.x)
+	p.WriteInt16(start.y)
 	p.WriteBytes(moveBytes)
-	p.WriteInt64(0)
-	p.WriteInt64(0)
-	p.WriteInt64(0)
 	return p
 }
 
@@ -79,9 +97,6 @@ func packetSummonAttack(ownerID int32, summonID int32, anim byte, targets byte, 
 			p.WriteInt32(d)
 		}
 	}
-	p.WriteInt64(0)
-	p.WriteInt64(0)
-	p.WriteInt64(0)
 	return p
 }
 
@@ -93,8 +108,5 @@ func packetSummonDamage(ownerID int32, summonID int32, damage int32, mobID int32
 	p.WriteInt32(damage)
 	p.WriteInt32(mobID)
 	p.WriteByte(0)
-	p.WriteInt64(0)
-	p.WriteInt64(0)
-	p.WriteInt64(0)
 	return p
 }

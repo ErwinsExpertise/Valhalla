@@ -3022,7 +3022,8 @@ func (p *Player) broadcastShowSummon(su *summon) {
 		return
 	}
 
-	p.inst.send(packetShowSummon(p.ID, su))
+	p.Send(packetShowSummon(p.ID, su, false))
+	p.inst.sendExcept(packetShowSummon(p.ID, su, true), p.Conn)
 }
 
 func (p *Player) shouldKeepSummonOnTransfer(su *summon) bool {
@@ -3148,7 +3149,7 @@ func packetPlayerGiveBuff(mask []byte, values []byte, delay int16, extra byte) m
 	writeExtra := buffMaskNeedsExtraByte(mask)
 	p.WriteBytes(mask)
 
-	// Per-stat value triples (short value, int32 source, int32 duration)
+	// Local v48 forced-stat entries: short value, int32 source, short duration500.
 	p.WriteBytes(values)
 
 	// Self path: 2-byte delay

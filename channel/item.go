@@ -99,6 +99,16 @@ type Item struct {
 const neverExpire int64 = 150842304000000000
 
 var setFieldItemMagic = []byte{0x80, 0x05}
+var rechargeableItemFooter = []byte{0xA1, 0x6D, 0x05, 0x01, 0x00, 0x00, 0x00, 0x7D}
+
+func isRechargeableItem(itemID int32) bool {
+	switch itemID / 10000 {
+	case 207, 233:
+		return true
+	default:
+		return false
+	}
+}
 
 // GenerateCashID generates a unique cash ID using crypto/rand
 func GenerateCashID() int64 {
@@ -593,6 +603,9 @@ func (v Item) bytes(shortSlot, storage bool) []byte {
 		p.WriteInt16(v.amount)
 		p.WriteString(v.creatorName)
 		p.WriteInt16(v.flag) // even (normal), odd (sealed) ?
+		if isRechargeableItem(v.ID) {
+			p.WriteBytes(rechargeableItemFooter)
+		}
 	}
 
 	return p
@@ -673,6 +686,9 @@ func (v Item) writeClientItemBody(p *mpacket.Packet) {
 	p.WriteInt16(v.amount)
 	p.WriteString(v.creatorName)
 	p.WriteInt16(0)
+	if isRechargeableItem(v.ID) {
+		p.WriteBytes(rechargeableItemFooter)
+	}
 }
 
 func (v Item) writeClientPetBody(p *mpacket.Packet) {

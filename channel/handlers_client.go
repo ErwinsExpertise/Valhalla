@@ -159,12 +159,15 @@ func (server *Server) HandleClientPacket(conn mnet.Client, reader mpacket.Reader
 		server.playerCancelBuff(conn, reader)
 	case opcode.RecvChannelQuestOperation:
 		server.playerQuestOperation(conn, reader)
+	case opcode.RecvChannelSummonAck:
+		// Observed as a zero-body client ack around summon activity in v48.
+		// Ignore until the full recv table is remapped.
 	case opcode.RecvChannelSummonMove:
 		server.playerSummonMove(conn, reader)
-	case opcode.RecvChannelSummonDamage:
-		server.playerSummonDamage(conn, reader)
 	case opcode.RecvChannelSummonAttack:
 		server.playerSummonAttack(conn, reader)
+	case opcode.RecvChannelSummonDamage:
+		server.playerSummonDamage(conn, reader)
 	case opcode.RecvChannelReactorHit:
 		server.playerHitReactor(conn, reader)
 	case opcode.RecvChannelNpcStorage:
@@ -4602,7 +4605,7 @@ func (server Server) playerSummonMove(conn mnet.Client, reader mpacket.Reader) {
 		return
 	}
 
-	inst.sendExcept(packetSummonMove(plr.ID, summonID, moveBytes), conn)
+	inst.sendExcept(packetSummonMove(plr.ID, summonID, summ.Pos, moveBytes), conn)
 	if !valid {
 		log.Println("unknown playerSummonMove data")
 		inst.sendExcept(packetPlayerNoChange(), conn)
@@ -4629,7 +4632,7 @@ func (server *Server) playerSummonDamage(conn mnet.Client, reader mpacket.Reader
 	field, ok := server.fields[plr.mapID]
 	if ok {
 		if inst, e := field.getInstance(plr.inst.id); e == nil {
-			inst.send(packetSummonDamage(plr.ID, summonID, damage, mobID))
+			inst.sendExcept(packetSummonDamage(plr.ID, summonID, damage, mobID), conn)
 		}
 	}
 
