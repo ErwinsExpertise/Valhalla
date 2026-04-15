@@ -215,10 +215,7 @@ func packetQuestRemove(questID int16) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelMessage)
 	p.WriteByte(0x01)
 	p.WriteInt16(questID)
-	p.WriteInt16(0)
 	p.WriteByte(0)
-	p.WriteInt32(0)
-	p.WriteInt32(0)
 	return p
 }
 
@@ -228,8 +225,6 @@ func packetQuestUpdateMobKills(questID int16, killStr string) mpacket.Packet {
 	p.WriteInt16(questID)
 	p.WriteByte(0x01)
 	p.WriteString(killStr)
-	p.WriteInt32(0)
-	p.WriteInt32(0)
 	return p
 }
 

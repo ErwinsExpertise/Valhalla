@@ -3135,11 +3135,12 @@ func packetPlayerEmoticon(charID int32, emotion int32) mpacket.Packet {
 
 func packetPlayerSkillBookUpdate(skillID int32, level int32) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelSkillRecordUpdate)
-	p.WriteByte(0x01)  // time check?
-	p.WriteInt16(0x01) // number of skills to update
+	p.WriteByte(0x00)
+	p.WriteInt16(1)
 	p.WriteInt32(skillID)
 	p.WriteInt32(level)
-	p.WriteByte(0x01)
+	p.WriteInt32(0)
+	p.WriteByte(1)
 
 	return p
 }
@@ -3416,12 +3417,15 @@ func packetInventoryAddItem(item Item, newItem bool) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelInventoryOperation)
 	p.WriteByte(0x01)
 	p.WriteByte(0x01)
-	p.WriteBool(!newItem)
-	p.WriteByte(item.invID)
 
 	if newItem {
-		p.WriteBytes(item.ShortBytes())
+		p.WriteByte(0x00)
+		p.WriteByte(item.invID)
+		p.WriteInt16(item.slotID)
+		p.WriteBytes(item.inventoryOperationBody())
 	} else {
+		p.WriteByte(0x01)
+		p.WriteByte(item.invID)
 		p.WriteInt16(item.slotID)
 		p.WriteInt16(item.amount)
 	}
@@ -3453,12 +3457,14 @@ func packetInventoryAddItems(items []Item, newItem []bool) mpacket.Packet {
 	p.WriteByte(byte(len(items)))
 
 	for i, v := range items {
-		p.WriteBool(!newItem[i])
-		p.WriteByte(v.invID)
-
 		if newItem[i] {
-			p.WriteBytes(v.ShortBytes())
+			p.WriteByte(0x00)
+			p.WriteByte(v.invID)
+			p.WriteInt16(v.slotID)
+			p.WriteBytes(v.inventoryOperationBody())
 		} else {
+			p.WriteByte(0x01)
+			p.WriteByte(v.invID)
 			p.WriteInt16(v.slotID)
 			p.WriteInt16(v.amount)
 		}
@@ -3475,7 +3481,9 @@ func packetInventoryChangeItemSlot(invTabID byte, origPos, newPos int16) mpacket
 	p.WriteByte(invTabID)
 	p.WriteInt16(origPos)
 	p.WriteInt16(newPos)
-	p.WriteByte(0x00) // ?
+	if invTabID == 1 && (origPos < 0 || newPos < 0) {
+		p.WriteByte(0)
+	}
 
 	return p
 }
@@ -3487,7 +3495,6 @@ func packetInventoryRemoveItem(item Item) mpacket.Packet {
 	p.WriteByte(0x03)
 	p.WriteByte(item.invID)
 	p.WriteInt16(item.slotID)
-	p.WriteUint64(0) //?
 
 	return p
 }
@@ -3512,7 +3519,6 @@ func packetInventoryChangeEquip(chr Player) mpacket.Packet {
 func packetInventoryNoChange() mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelInventoryOperation)
 	p.WriteByte(0x01)
-	p.WriteByte(0x00)
 	p.WriteByte(0x00)
 
 	return p

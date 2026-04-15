@@ -1076,8 +1076,11 @@ func packetMapPlayerEnter(plr *Player) mpacket.Packet {
 		p.WriteInt32(0)
 		p.WriteInt32(0)
 	} else {
-		p.WriteInt32(0)
-		p.WriteInt32(0)
+		p.WriteString("")
+		p.WriteInt16(0)
+		p.WriteByte(0)
+		p.WriteInt16(0)
+		p.WriteByte(0)
 		p.WriteInt32(0)
 		p.WriteInt32(0)
 	}
@@ -1099,9 +1102,9 @@ func packetMapPlayerEnter(plr *Player) mpacket.Packet {
 		p.WriteBool(false)
 	}
 
+	p.WriteBool(plr.petCashID != 0)
 	if plr.petCashID != 0 {
 		plr.pet.pos = plr.pos
-		p.WriteBool(true)
 		p.WriteInt32(plr.pet.itemID)
 		p.WriteString(plr.pet.name)
 		p.WriteUint64(uint64(plr.pet.sn))

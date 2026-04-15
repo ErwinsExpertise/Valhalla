@@ -108,7 +108,7 @@ func (m *fieldMist) isInMist(p pos) bool {
 func packetMistSpawn(mist *fieldMist) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelAffectedAreaCreate)
 	p.WriteInt32(mist.ID)
-	p.WriteBool(false)
+	p.WriteInt32(mist.ownerID)
 	p.WriteInt32(mist.skillID)
 	p.WriteByte(mist.skillLevel)
 	p.WriteInt16(0) // delay

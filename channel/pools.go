@@ -322,6 +322,7 @@ func (pool *lifePool) performSkill(mob *monster, skillID, skillLevel byte, skill
 func (pool *lifePool) mobDamaged(poolID int32, damager *Player, dmg ...int32) {
 	for i, v := range pool.mobs {
 		if v.spawnID == poolID {
+			beforeHP := pool.mobs[i].hp
 
 			if damager != nil {
 				pool.mobs[i].removeController()
@@ -359,6 +360,12 @@ func (pool *lifePool) mobDamaged(poolID int32, damager *Player, dmg ...int32) {
 			} else {
 				pool.mobs[i].giveDamage(nil, dmg...)
 			}
+
+			var damagerName string
+			if damager != nil {
+				damagerName = damager.Name
+			}
+			log.Printf("lifePool.mobDamaged: mobID=%d spawnID=%d damager=%s hits=%v beforeHP=%d afterHP=%d", v.id, v.spawnID, damagerName, dmg, beforeHP, pool.mobs[i].hp)
 
 			pool.showMobBossHPBar(v, nil)
 

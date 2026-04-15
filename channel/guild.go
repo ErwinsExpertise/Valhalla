@@ -581,6 +581,7 @@ func packetGuildDisbandMessage(guildID int32) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelGuildInfo)
 	p.WriteByte(0x032)
 	p.WriteInt32(guildID)
+	p.WriteByte(0)
 
 	return p
 }
@@ -650,9 +651,9 @@ func packetGuildUpdateEmblem(guildID int32, logoBg, logo int16, logoBgColour, lo
 	p.WriteByte(0x42)
 	p.WriteInt32(guildID)
 	p.WriteInt16(logoBg)
-	p.WriteByte(logoBgColour)
+	p.WriteInt16(int16(logoBgColour))
 	p.WriteInt16(logo)
-	p.WriteByte(logoColour)
+	p.WriteInt16(int16(logoColour))
 
 	return p
 }

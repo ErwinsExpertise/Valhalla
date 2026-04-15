@@ -55,6 +55,6 @@ func packetFameNotifySource(victimName string, up bool, newFame int16) mpacket.P
 	p.WriteByte(constant.FameNotifySource)
 	p.WriteString(victimName)
 	p.WriteBool(up)
-	p.WriteInt32(int32(newFame))
+	p.WriteInt16(newFame)
 	return p
 }

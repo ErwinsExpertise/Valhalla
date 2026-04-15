@@ -106,10 +106,10 @@ const (
 	SendChannelReactorEnterField       int16 = 0xD4
 	SendChannelReactorLeaveField       int16 = 0xD5
 	SendChannelNpcDialogueBox          int16 = 0xE2
-	SendChannelNpcShop                 int16 = 0xC9 // unverified in v48 named IDB; kept from previous table for now
-	SendChannelNpcShopResult           int16 = 0xCA // unverified in v48 named IDB; kept from previous table for now
-	SendChannelNpcStorage              int16 = 0xEA // verified via CStoreBankDlg::OnPacket
-	SendChannelNpcStorageResult        int16 = 0xEB // verified via CStoreBankDlg::OnPacket
+	SendChannelNpcShop                 int16 = 0xE5
+	SendChannelNpcShopResult           int16 = 0xE6
+	SendChannelNpcStorage              int16 = 0xE8
+	SendChannelNpcStorageResult        int16 = 0xE9
 	SendChannelMessenger               int16 = 0xEE
 	SendChannelRoom                    int16 = 0xEF
 	SendChannelCSRecharge              int16 = 0xE8

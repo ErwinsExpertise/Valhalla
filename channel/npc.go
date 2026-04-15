@@ -94,7 +94,7 @@ func packetNpcChatUserString(npcID int32, msg string, defaultInput string, minLe
 	p := mpacket.CreateWithOpcode(opcode.SendChannelNpcDialogueBox)
 	p.WriteByte(4)
 	p.WriteInt32(npcID)
-	p.WriteByte(2)
+	p.WriteByte(3)
 	p.WriteString(msg)
 	p.WriteString(defaultInput)
 	p.WriteInt16(minLength)
@@ -107,11 +107,12 @@ func packetNpcChatUserNumber(npcID int32, msg string, defaultInput, minLength, m
 	p := mpacket.CreateWithOpcode(opcode.SendChannelNpcDialogueBox)
 	p.WriteByte(4)
 	p.WriteInt32(npcID)
-	p.WriteByte(3)
+	p.WriteByte(4)
 	p.WriteString(msg)
 	p.WriteInt32(defaultInput)
 	p.WriteInt32(minLength)
 	p.WriteInt32(maxLength)
+	p.WriteInt32(0)
 
 	return p
 }
@@ -120,7 +121,7 @@ func packetNpcChatSelection(npcID int32, msg string) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelNpcDialogueBox)
 	p.WriteByte(4)
 	p.WriteInt32(npcID)
-	p.WriteByte(4)
+	p.WriteByte(5)
 	p.WriteString(msg)
 
 	return p
@@ -130,7 +131,7 @@ func packetNpcChatStyleWindow(npcID int32, msg string, styles []int32) mpacket.P
 	p := mpacket.CreateWithOpcode(opcode.SendChannelNpcDialogueBox)
 	p.WriteByte(4)
 	p.WriteInt32(npcID)
-	p.WriteByte(5)
+	p.WriteByte(7)
 	p.WriteString(msg)
 	p.WriteByte(byte(len(styles)))
 
@@ -265,8 +266,24 @@ func storageFlagForInv(inv byte) uint16 {
 }
 
 func packetNpcStorageResult(op byte) mpacket.Packet {
-	p := mpacket.CreateWithOpcode(opcode.SendChannelNpcStorageResult)
+	p := mpacket.CreateWithOpcode(opcode.SendChannelNpcStorage)
 	p.WriteByte(op)
+	return p
+}
+
+func packetNpcStorageRefresh(op byte, npcID, storageMesos int32, storageSlots byte, items []Item) mpacket.Packet {
+	p := mpacket.CreateWithOpcode(opcode.SendChannelNpcStorage)
+	p.WriteByte(op)
+	encodeStorageBody(&p, storageSlots, 0x007E, storageMesos, func(inv byte) []Item {
+		section := make([]Item, 0, 16)
+		for _, it := range items {
+			if it.invID == inv && it.ID != 0 {
+				section = append(section, it)
+			}
+		}
+		return section
+	})
+
 	return p
 }
 
@@ -295,7 +312,7 @@ func encodeStorageBody(p *mpacket.Packet, slots byte, flags uint16, mesos int32,
 }
 
 func packetNpcStorageItemsChanged(enc byte, slots byte, inv byte, mesos int32, itemsInTab []Item) mpacket.Packet {
-	p := mpacket.CreateWithOpcode(opcode.SendChannelNpcStorageResult)
+	p := mpacket.CreateWithOpcode(opcode.SendChannelNpcStorage)
 	p.WriteByte(enc)
 
 	flag := storageFlagForInv(inv)
@@ -309,7 +326,7 @@ func packetNpcStorageItemsChanged(enc byte, slots byte, inv byte, mesos int32, i
 }
 
 func packetNpcStorageMesosChanged(op byte, mesos int32, slots byte) mpacket.Packet {
-	p := mpacket.CreateWithOpcode(opcode.SendChannelNpcStorageResult)
+	p := mpacket.CreateWithOpcode(opcode.SendChannelNpcStorage)
 	p.WriteByte(op)
 	encodeStorageBody(&p, slots, 0x0002, mesos, func(inv byte) []Item { return nil })
 	return p
@@ -317,6 +334,7 @@ func packetNpcStorageMesosChanged(op byte, mesos int32, slots byte) mpacket.Pack
 
 func packetNpcStorageShow(npcID, storageMesos int32, storageSlots byte, items []Item) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelNpcStorage)
+	p.WriteByte(19)
 	p.WriteInt32(npcID)
 
 	encodeStorageBody(&p, storageSlots, 0x007E, storageMesos, func(inv byte) []Item {

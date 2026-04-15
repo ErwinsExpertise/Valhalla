@@ -4,7 +4,6 @@ import (
 	"strconv"
 
 	"github.com/Hucaru/Valhalla/common/opcode"
-	"github.com/Hucaru/Valhalla/constant"
 	"github.com/Hucaru/Valhalla/internal"
 	"github.com/Hucaru/Valhalla/mpacket"
 )
@@ -36,10 +35,9 @@ func packetLoginResponse(result byte, userID int32, gender byte, isAdmin bool, u
 func packetLoginBanned(endTime int64, reason byte) mpacket.Packet {
 	pac := mpacket.CreateWithOpcode(opcode.SendLoginResponse)
 	pac.WriteByte(0x02)
-	pac.WriteByte(0x00)
-	pac.WriteInt32(0)
+	pac.WriteBytes([]byte{0x00, 0x00, 0x00, 0x00, 0x00})
 	pac.WriteByte(reason)
-	pac.WriteBytes([]byte{0x01, 0x01, 0x01, 0x01, 0x00})
+	pac.WriteInt64(endTime)
 
 	return pac
 }
@@ -51,22 +49,6 @@ func packetLoginTempBanned(endTime int64, reason byte) mpacket.Packet {
 	pac.WriteByte(reason)
 	pac.WriteInt64(endTime)
 
-	return pac
-}
-
-func packetLoginSuccess(username string) mpacket.Packet {
-	pac := mpacket.CreateWithOpcode(opcode.SendLoginResponse)
-	pac.WriteBytes([]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0x6A, 0x01, 0x00, 0x00, 0x00, 0x4E})
-	pac.WriteString(username)
-	pac.WriteBytes([]byte{0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xDC, 0x3D, 0x0B, 0x28, 0x64, 0xC5, 0x01, 0x08, 0x00, 0x00, 0x00})
-
-	return pac
-}
-
-func packetTest() mpacket.Packet {
-	pac := mpacket.CreateWithOpcode(opcode.SendLoginResponse)
-	pac.WriteInt(int(constant.LoginResultInvalidPassword))
-	pac.WriteInt16(0)
 	return pac
 }
 
@@ -103,19 +85,6 @@ func packetLoginMigrateClient(ip []byte, port int16, charID int32) mpacket.Packe
 	pac.WriteBytes(ip)
 	pac.WriteInt16(port)
 	pac.WriteInt32(charID)
-	pac.WriteByte(byte(0) | byte(1<<0))
-	pac.WriteInt32(1)
-
-	return pac
-}
-
-func packetLoginSendBadMigrate() mpacket.Packet {
-	pac := mpacket.CreateWithOpcode(opcode.SendLoginCharacterMigrate)
-	pac.WriteByte(0x00) // flipping these 2 bytes makes the character select screen do nothing it appears
-	pac.WriteByte(0x00)
-	pac.WriteBytes([]byte{0, 0, 0, 0})
-	pac.WriteInt16(0)
-	pac.WriteInt32(8)
 	pac.WriteByte(byte(0) | byte(1<<0))
 	pac.WriteInt32(1)
 
@@ -276,8 +245,7 @@ func packetLoginWorldListing(worldIndex byte, w internal.World) mpacket.Packet {
 			pac.WriteInt32(int32(1200.0 * (float64(v.Pop) / float64(v.MaxPop))))
 		}
 		pac.WriteByte(worldIndex)
-		pac.WriteByte(byte(i + 1))
-		pac.WriteByte(0)
+		pac.WriteInt16(int16(i))
 	}
 
 	return pac

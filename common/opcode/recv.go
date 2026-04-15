@@ -15,7 +15,7 @@ const (
 	RecvPing                       int16 = 19
 	RecvClientMigrate              int16 = 16
 	RecvChannelUserPortal          int16 = 0x1E
-	RecvCHannelChangeChannel       int16 = 0x1F
+	RecvChannelChangeChannel       int16 = 0x1F
 	RecvChannelEnterCashShop       int16 = 0x20
 	RecvChannelPlayerMovement      int16 = 0x21
 	RecvChannelPlayerStand         int16 = 0x22
@@ -36,7 +36,7 @@ const (
 	RecvChannelUseSack             int16 = 0x3D
 	RecvChannelInvUseCashItem      int16 = 0x3E
 	RecvChannelNearestTown         int16 = 0x40
-	RecvChannelUseScroll           int16 = 0x41
+	RecvChannelUseScroll           int16 = 0x42
 	RecvChannelAddStatPoint        int16 = 0x43
 	RecvChannelPassiveRegen        int16 = 0x44
 	RecvChannelAddSkillPoint       int16 = 0x45
@@ -47,11 +47,11 @@ const (
 	RecvChannelCharacterInfo       int16 = 0x4C
 	RecvChannelPetSpawn            int16 = 0x4D
 	RecvChannelCancelBuff          int16 = 0x5D
-	RecvChannelScriptedPortal      int16 = 0x50
+	RecvChannelScriptedPortal      int16 = 0x4F
 	RecvChannelTeleportRock        int16 = 0x51
 	RecvChannelLieDetectorResult   int16 = 0x54
 	RecvChannelQuestOperation      int16 = 0x55
-	RecvChannelAcknowledgeBuff     int16 = 0x56
+	RecvChannelAcknowledgeBuff     int16 = 0x8A
 	RecvChannelCharacterReport     int16 = 0x57
 	RecvChannelGroupChat           int16 = 0x58
 	RecvChannelSlashCommands       int16 = 0x59
@@ -66,6 +66,7 @@ const (
 	RecvChannelPetAction           int16 = 0x69
 	RecvChannelPetInteraction      int16 = 0x6A
 	RecvChannelPetLoot             int16 = 0x6B
+	RecvChannelQuickSlot           int16 = 0x6E
 	RecvChannelSummonMove          int16 = 0x6F
 	RecvChannelSummonAttack        int16 = 0x70
 	RecvChannelSummonDamage        int16 = 0x71

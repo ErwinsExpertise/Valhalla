@@ -76,9 +76,11 @@ func packetMessageDropPickUp(isMesos bool, itemID, ammount int32) mpacket.Packet
 	p.WriteByte(0)
 
 	if isMesos {
+		p.WriteByte(1)
 		p.WriteInt32(ammount)
-		p.WriteInt32(0)
+		p.WriteInt16(0)
 	} else {
+		p.WriteByte(0)
 		p.WriteInt32(itemID)
 		p.WriteInt32(ammount)
 	}
@@ -92,6 +94,8 @@ func packetMessageExpGained(whiteText, appearInChat bool, ammount int32) mpacket
 	p.WriteBool(whiteText)
 	p.WriteInt32(ammount)
 	p.WriteBool(appearInChat)
+	p.WriteByte(0)
+	p.WriteByte(0)
 
 	return p
 }
@@ -393,7 +397,7 @@ func packetMessengerAvatar(slot, gender, skin byte, face, hair, cashW, petAcc in
 func packetTeleportRockUpdate(mode byte, rocks []int32, isVIP bool) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelMapTransferResult)
 	p.WriteByte(mode)
-	
+
 	numSlots := constant.TeleportRockRegSlots
 	if isVIP {
 		p.WriteByte(constant.TeleportRockVIPFlag)
@@ -401,7 +405,7 @@ func packetTeleportRockUpdate(mode byte, rocks []int32, isVIP bool) mpacket.Pack
 	} else {
 		p.WriteByte(constant.TeleportRockRegFlag)
 	}
-	
+
 	for i := 0; i < numSlots; i++ {
 		if i < len(rocks) {
 			p.WriteInt32(rocks[i])
@@ -409,6 +413,6 @@ func packetTeleportRockUpdate(mode byte, rocks []int32, isVIP bool) mpacket.Pack
 			p.WriteInt32(constant.InvalidMap)
 		}
 	}
-	
+
 	return p
 }

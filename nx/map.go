@@ -383,6 +383,8 @@ func getMapPortals(node *gonx.Node, nodes []gonx.Node, textLookup []string) []Po
 				portal.Y = gonx.DataToInt16(option.Data)
 			case "script":
 				portal.Script = textLookup[gonx.DataToUint32(option.Data)]
+			case "hideTooltip":
+			case "delay":
 			default:
 				fmt.Println("Unsupported NX portal option:", optionName, "->", option.Data)
 			}

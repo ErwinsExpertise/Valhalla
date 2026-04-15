@@ -21,7 +21,6 @@ import (
 // HandleClientPacket data
 func (server *Server) HandleClientPacket(conn mnet.Client, reader mpacket.Reader) {
 	op := reader.ReadInt16()
-	log.Printf("Packet opcode: 0x%04X", op)
 
 	switch op {
 	case opcode.RecvLoginRequest:

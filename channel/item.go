@@ -514,7 +514,7 @@ func (v Item) InventoryBytes() []byte {
 }
 
 func (v Item) StorageBytes() []byte {
-	return v.bytes(false, true)
+	return v.inventoryOperationBody()
 }
 
 // ShortBytes e.g. inventory operation, storage window
@@ -601,7 +601,13 @@ func (v Item) bytes(shortSlot, storage bool) []byte {
 func (v Item) setFieldBytes() []byte {
 	p := mpacket.NewPacket()
 	v.writeSetFieldSlot(&p)
-	v.writeSetFieldBody(&p)
+	v.writeClientItemBody(&p)
+	return p
+}
+
+func (v Item) inventoryOperationBody() []byte {
+	p := mpacket.NewPacket()
+	v.writeClientItemBody(&p)
 	return p
 }
 
@@ -620,9 +626,9 @@ func (v Item) writeSetFieldSlot(p *mpacket.Packet) {
 	p.WriteByte(byte(v.slotID))
 }
 
-func (v Item) writeSetFieldBody(p *mpacket.Packet) {
+func (v Item) writeClientItemBody(p *mpacket.Packet) {
 	if v.pet {
-		v.writeSetFieldPetBody(p)
+		v.writeClientPetBody(p)
 		return
 	}
 
@@ -669,7 +675,7 @@ func (v Item) writeSetFieldBody(p *mpacket.Packet) {
 	p.WriteInt16(0)
 }
 
-func (v Item) writeSetFieldPetBody(p *mpacket.Packet) {
+func (v Item) writeClientPetBody(p *mpacket.Packet) {
 	p.WriteByte(0x03)
 	p.WriteInt32(v.ID)
 	p.WriteByte(1)

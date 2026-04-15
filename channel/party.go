@@ -263,83 +263,42 @@ func packetPartyUpdateJobLevel(playerID, job, level int32) mpacket.Packet {
 }
 
 func updateParty(p *mpacket.Packet, party *party) {
-	validOffsets := make([]int, 0, constant.MaxPartySize)
-
-	for i, v := range party.Level {
-		if v != 0 {
-			validOffsets = append(validOffsets, i)
-		}
+	for i := 0; i < constant.MaxPartySize; i++ {
+		p.WriteInt32(party.PlayerID[i])
 	}
 
-	paddAmount := constant.MaxPartySize - len(validOffsets)
-
-	for _, v := range validOffsets {
-		p.WriteInt32(party.PlayerID[v])
+	for i := 0; i < constant.MaxPartySize; i++ {
+		p.WritePaddedString(party.Name[i], 13)
 	}
 
-	for i := 0; i < paddAmount; i++ {
-		p.WriteInt32(0)
+	for i := 0; i < constant.MaxPartySize; i++ {
+		p.WriteInt32(party.Job[i])
 	}
 
-	for _, v := range validOffsets {
-		p.WritePaddedString(party.Name[v], 13)
+	for i := 0; i < constant.MaxPartySize; i++ {
+		p.WriteInt32(party.Level[i])
 	}
 
-	for i := 0; i < paddAmount; i++ {
-		p.WritePaddedString("", 13)
+	for i := 0; i < constant.MaxPartySize; i++ {
+		p.WriteInt32(party.ChannelID[i]) // -1 cash shop, -2 offline
 	}
 
-	for _, v := range validOffsets {
-		p.WriteInt32(party.Job[v])
-	}
-
-	for i := 0; i < paddAmount; i++ {
-		p.WriteInt32(0)
-	}
-
-	for _, v := range validOffsets {
-		p.WriteInt32(party.Level[v])
-	}
-
-	for i := 0; i < paddAmount; i++ {
-		p.WriteInt32(0)
-	}
-
-	for _, v := range validOffsets {
-		p.WriteInt32(party.ChannelID[v]) // -1 - cashshop, -2 - offline
-	}
-
-	for i := 0; i < paddAmount; i++ {
-		p.WriteInt32(0)
-	}
-
-	for _, v := range validOffsets {
-		if party.ChannelID[v] != party.serverChannelID {
+	for i := 0; i < constant.MaxPartySize; i++ {
+		if party.ChannelID[i] != party.serverChannelID {
 			p.WriteInt32(-1)
 		} else {
-			p.WriteInt32(party.players[v].mapID)
+			p.WriteInt32(party.MapID[i])
 		}
-
-	}
-
-	for i := 0; i < paddAmount; i++ {
-		p.WriteInt32(0)
 	}
 
 	p.WriteInt32(party.PlayerID[0])
 
 	// Mystic door
-	for range validOffsets {
+	for i := 0; i < constant.MaxPartySize; i++ {
 		p.WriteInt32(-1)
 		p.WriteInt32(-1)
 		p.WriteInt32(0) // x
 		p.WriteInt32(0) // y
-	}
-
-	for i := 0; i < paddAmount; i++ {
-		p.WriteInt32(0)
-		p.WriteInt32(0)
-		p.WriteInt64(0) // int64?
 	}
 }
 
