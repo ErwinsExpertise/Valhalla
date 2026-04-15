@@ -1,5 +1,21 @@
 package constant
 
+type FuncKeyMapped struct {
+	Type   byte
+	Action int32
+}
+
+func DefaultFuncKeyMap() [89]FuncKeyMapped {
+	var keys [89]FuncKeyMapped
+	indexArray := []int{2, 3, 4, 5, 6, 7, 8, 16, 17, 18, 19, 20, 23, 24, 25, 26, 27, 29, 31, 33, 34, 35, 37, 38, 39, 40, 41, 43, 44, 45, 46, 50, 56, 57, 59, 60, 61, 62, 63, 64, 65}
+	typeArray := []byte{4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 4, 4, 5, 5, 6, 6, 6, 6, 6, 6, 6}
+	idArray := []int32{10, 12, 13, 18, 24, 21, 29, 8, 5, 0, 4, 28, 1, 25, 19, 14, 15, 52, 2, 26, 17, 11, 3, 20, 27, 16, 23, 9, 50, 51, 6, 7, 53, 54, 100, 101, 102, 103, 104, 105, 106}
+	for i, idx := range indexArray {
+		keys[idx] = FuncKeyMapped{Type: typeArray[i], Action: idArray[i]}
+	}
+	return keys
+}
+
 var WORLD_NAMES = [...]string{"Scania", "Bera", "Broa", "Windia", "Khaini", "Bellocan", "Mardia", "Kradia", "Yellonde", "Demethos", "Galicia", "El Nido", "Zenith", "Arcania", "Chaos", "Nova", "Renegates"}
 
 // Generic Constants

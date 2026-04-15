@@ -212,6 +212,30 @@ CREATE TABLE `skills` (
   CONSTRAINT `skills_ibfk_2` FOREIGN KEY (`characterID`) REFERENCES `characters` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
+
+DROP TABLE IF EXISTS `keymap`;
+CREATE TABLE `keymap` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `characterid` int(11) NOT NULL,
+  `tkey` int(11) NOT NULL,
+  `type` int(11) NOT NULL DEFAULT '0',
+  `action` int(11) NOT NULL DEFAULT '0',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `keymap_character_key_unique` (`characterid`,`tkey`),
+  KEY `keymap_characterid_idx` (`characterid`),
+  CONSTRAINT `keymap_ibfk_1` FOREIGN KEY (`characterid`) REFERENCES `characters` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+
+DROP TABLE IF EXISTS `quickslot_keymap`;
+CREATE TABLE `quickslot_keymap` (
+  `characterID` int(11) NOT NULL,
+  `key1` int(11) NOT NULL DEFAULT '0',
+  `key2` int(11) NOT NULL DEFAULT '0',
+  PRIMARY KEY (`characterID`),
+  CONSTRAINT `quickslot_keymap_ibfk_1` FOREIGN KEY (`characterID`) REFERENCES `characters` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
 DROP TABLE IF EXISTS `character_quests`;
 CREATE TABLE `character_quests` (
   `characterID` INT(11) NOT NULL,

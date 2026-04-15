@@ -248,6 +248,7 @@ func (server *Server) playerConnect(conn mnet.Client, reader mpacket.Reader) {
 	server.players.Add(&plr)
 
 	conn.Send(packetPlayerEnterGame(plr, int32(server.id)))
+	conn.Send(packetFuncKeyMappedInit(plr.funcKeyMap))
 	conn.Send(packetMessageScrollingHeader(server.header))
 
 	field, ok := server.fields[plr.mapID]
@@ -5264,8 +5265,35 @@ func (server *Server) playerPetLoot(conn mnet.Client, reader mpacket.Reader) {
 }
 
 func (server *Server) playerQuickslotKeyMappedModified(conn mnet.Client, reader mpacket.Reader) {
-	// player.updateQuickslotKeyMap()
-	//  UNKNOWN CLIENT PACKET( 110 ): [Packet] (19) : 6E 00 00 00 00 00 01 00 00 00 2A 00 00 00 01 EA 0C 3D 00
+	plr, err := server.players.GetFromConn(conn)
+	if err != nil {
+		return
+	}
+
+	updateType := reader.ReadInt32()
+	switch updateType {
+	case 0: // key modified
+		count := reader.ReadInt32()
+		for i := int32(0); i < count; i++ {
+			index := reader.ReadInt32()
+			mappedType := reader.ReadByte()
+			action := reader.ReadInt32()
+			if index < 0 || index >= int32(len(plr.funcKeyMap.Entries)) {
+				continue
+			}
+			plr.funcKeyMap.Entries[index] = constant.FuncKeyMapped{Type: mappedType, Action: action}
+			plr.funcKeyMap.Loaded = true
+			saveFuncKeyMapEntry(plr.ID, index, plr.funcKeyMap.Entries[index])
+		}
+	case 1: // pet consume HP item modified
+		plr.petConsumeItemID = reader.ReadInt32()
+	case 2: // pet consume MP item modified
+		plr.petConsumeMPItemID = reader.ReadInt32()
+	default:
+		for len(reader.GetRestAsBytes()) > 0 {
+			_ = reader.ReadByte()
+		}
+	}
 }
 
 func (server *Server) playerPing(conn mnet.Client, reader mpacket.Reader) {

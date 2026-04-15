@@ -35,7 +35,7 @@ const (
 	RecvChannelChairHeal           int16 = 0x3C
 	RecvChannelUseSack             int16 = 0x3D
 	RecvChannelInvUseCashItem      int16 = 0x3E
-	RecvChannelNearestTown         int16 = 0x40
+	RecvChannelNearestTown         int16 = 0x41
 	RecvChannelUseScroll           int16 = 0x42
 	RecvChannelAddStatPoint        int16 = 0x43
 	RecvChannelPassiveRegen        int16 = 0x44

@@ -38,6 +38,11 @@ type playerSkill struct {
 	TimeLastUsed   int64
 }
 
+type funcKeyMapState struct {
+	Entries [89]constant.FuncKeyMapped
+	Loaded  bool
+}
+
 func createPlayerSkillFromData(ID int32, level byte) (playerSkill, error) {
 	skill, err := nx.GetPlayerSkill(ID)
 	if err != nil {
@@ -258,8 +263,12 @@ type Player struct {
 
 	lastAttackPacketTime int64
 
-	buddyListSize byte
-	buddyList     []buddy
+	buddyListSize      byte
+	buddyList          []buddy
+	funcKeyMap         funcKeyMapState
+	quickslotKeys      [2]int32
+	petConsumeItemID   int32
+	petConsumeMPItemID int32
 
 	regTeleportRocks []int32 // 5 regular teleport rocks
 	vipTeleportRocks []int32 // 10 VIP teleport rocks
@@ -2221,6 +2230,7 @@ func LoadPlayerFromID(id int32, conn mnet.Client) Player {
 	}
 	c.regTeleportRocks = parseTeleportRocks(regRocksStr, constant.TeleportRockRegSlots)
 	c.vipTeleportRocks = parseTeleportRocks(vipRocksStr, constant.TeleportRockVIPSlots)
+	c.funcKeyMap = loadFuncKeyMap(c.ID)
 
 	c.quests = loadQuestsFromDB(c.ID)
 	c.quests.init()
@@ -2235,9 +2245,84 @@ func LoadPlayerFromID(id int32, conn mnet.Client) Player {
 		log.Printf("loadPlayerFromID: failed to load storage inventory for accountID=%d: %v", c.accountID, err)
 	}
 
+	c.quickslotKeys = loadQuickslotKeys(c.ID)
+
 	c.Conn = conn
 
 	return c
+}
+
+func loadFuncKeyMap(characterID int32) funcKeyMapState {
+	state := funcKeyMapState{Entries: constant.DefaultFuncKeyMap(), Loaded: true}
+
+	rows, err := common.DB.Query("SELECT tkey, type, action FROM keymap WHERE characterid=?", characterID)
+	if err != nil {
+		log.Printf("loadFuncKeyMap: characterID=%d err=%v", characterID, err)
+		return state
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var key int32
+		var ty int32
+		var action int32
+		if err := rows.Scan(&key, &ty, &action); err != nil {
+			log.Printf("loadFuncKeyMap scan: characterID=%d err=%v", characterID, err)
+			continue
+		}
+		if key < 0 || key >= int32(len(state.Entries)) {
+			continue
+		}
+		state.Entries[key] = constant.FuncKeyMapped{Type: byte(ty), Action: action}
+	}
+
+	state.Loaded = true
+	return state
+}
+
+func saveFuncKeyMapEntry(characterID int32, index int32, mapped constant.FuncKeyMapped) {
+	if _, err := common.DB.Exec(`
+		INSERT INTO keymap (characterid, tkey, type, action)
+		VALUES (?, ?, ?, ?)
+		ON DUPLICATE KEY UPDATE type=VALUES(type), action=VALUES(action)
+	`, characterID, index, mapped.Type, mapped.Action); err != nil {
+		log.Printf("saveFuncKeyMapEntry: characterID=%d index=%d err=%v", characterID, index, err)
+	}
+}
+
+func packetFuncKeyMappedInit(state funcKeyMapState) mpacket.Packet {
+	p := mpacket.CreateWithOpcode(opcode.SendChannelFuncKeyMappedInit)
+	if !state.Loaded {
+		p.WriteByte(1)
+		return p
+	}
+
+	p.WriteByte(0)
+	for _, key := range state.Entries {
+		p.WriteByte(key.Type)
+		p.WriteInt32(key.Action)
+	}
+	return p
+}
+
+func loadQuickslotKeys(characterID int32) [2]int32 {
+	var keys [2]int32
+	if err := common.DB.QueryRow("SELECT key1, key2 FROM quickslot_keymap WHERE characterID=?", characterID).Scan(&keys[0], &keys[1]); err != nil {
+		if err != sql.ErrNoRows {
+			log.Printf("loadQuickslotKeys: characterID=%d err=%v", characterID, err)
+		}
+	}
+	return keys
+}
+
+func saveQuickslotKeys(characterID int32, keys [2]int32) {
+	if _, err := common.DB.Exec(`
+		INSERT INTO quickslot_keymap (characterID, key1, key2)
+		VALUES (?, ?, ?)
+		ON DUPLICATE KEY UPDATE key1=VALUES(key1), key2=VALUES(key2)
+	`, characterID, keys[0], keys[1]); err != nil {
+		log.Printf("saveQuickslotKeys: characterID=%d err=%v", characterID, err)
+	}
 }
 
 func getBuddyList(playerID int32, buddySize byte) []buddy {

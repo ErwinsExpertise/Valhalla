@@ -109,9 +109,10 @@ const (
 	SendChannelNpcShop                 int16 = 0xE5
 	SendChannelNpcShopResult           int16 = 0xE6
 	SendChannelNpcStorage              int16 = 0xE8
-	SendChannelNpcStorageResult        int16 = 0xE9
 	SendChannelMessenger               int16 = 0xEE
 	SendChannelRoom                    int16 = 0xEF
+	SendChannelFuncKeyMappedInit       int16 = 264
+	SendChannelPetKeyMappedInit        int16 = 265
 	SendChannelCSRecharge              int16 = 0xE8
 	SendChannelCSUpdateAmounts         int16 = 0xE9 // unverified in v48 named IDB; retained pending cash shop audit
 	SendChannelCSAction                int16 = 0xEA // unverified in v48 named IDB; retained pending cash shop audit
