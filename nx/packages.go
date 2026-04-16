@@ -13,6 +13,25 @@ func GetPackages() map[int32][]int32 {
 	return packages
 }
 
+func GetCashPackageEntries(packageSN int32) ([]int32, bool) {
+	commodity, ok := GetCommodity(packageSN)
+	if !ok {
+		return nil, false
+	}
+
+	if entries, ok := packages[commodity.ItemID]; ok && len(entries) > 0 {
+		return entries, true
+	}
+	if entries, ok := packages[commodity.Index]; ok && len(entries) > 0 {
+		return entries, true
+	}
+	if entries, ok := packages[packageSN]; ok && len(entries) > 0 {
+		return entries, true
+	}
+
+	return nil, false
+}
+
 func extractPackages(nodes []gonx.Node, text []string) map[int32][]int32 {
 	const root = "/Etc/CashPackage.img"
 	out := make(map[int32][]int32)

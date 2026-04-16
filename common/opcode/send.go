@@ -12,9 +12,8 @@ const (
 	SendLoginNewCharacterGood int16 = 14
 	SendLoginDeleteCharacter  int16 = 15
 
-	SendLoginRelogResponse             int16 = 22
-	SendChannelChange                  int16 = 0x0F
-	SendLoginRestarter                 int16 = 0x15
+	SendChannelChange                  int16 = 0x10
+	SendLoginRestarter                 int16 = 0x16
 	SendChannelInventoryOperation      int16 = 0x19
 	SendChannelInventoryGrow           int16 = 0x1A
 	SendChannelStatChange              int16 = 0x1B
@@ -113,7 +112,7 @@ const (
 	SendChannelRoom                    int16 = 0xEF
 	SendChannelFuncKeyMappedInit       int16 = 264
 	SendChannelPetKeyMappedInit        int16 = 265
-	SendChannelCSRecharge              int16 = 0xE8
-	SendChannelCSUpdateAmounts         int16 = 0xE9 // unverified in v48 named IDB; retained pending cash shop audit
-	SendChannelCSAction                int16 = 0xEA // unverified in v48 named IDB; retained pending cash shop audit
+	SendChannelCSRecharge              int16 = 0xFE
+	SendChannelCSUpdateAmounts         int16 = 0xFF
+	SendChannelCSAction                int16 = 0xEA
 )

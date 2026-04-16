@@ -53,6 +53,14 @@ func GetCommodity(sn int32) (Commodity, bool) {
 	return v, ok
 }
 
+func GetCommodityByItemID(itemID int32) (Commodity, bool) {
+	sn, ok := itemIDToSN[itemID]
+	if !ok {
+		return Commodity{}, false
+	}
+	return GetCommodity(sn)
+}
+
 func GetCommoditySNByItemID(itemID int32) (int32, bool) {
 	sn, ok := itemIDToSN[itemID]
 	return sn, ok
