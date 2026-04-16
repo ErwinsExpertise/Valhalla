@@ -62,12 +62,12 @@ const (
 	RecvChannelGuildReject         int16 = 0x60
 	RecvChannelBuddyOperation      int16 = 0x63
 	RecvChannelUseMysticDoor       int16 = 0x66
-	RecvChannelPetMove             int16 = 0x68
-	RecvChannelPetAction           int16 = 0x69
-	RecvChannelPetInteraction      int16 = 0x6A
-	RecvChannelPetLoot             int16 = 0x6B
 	RecvChannelQuickSlot           int16 = 0x6E
-	RecvChannelSummonAck           int16 = 0x56
+	RecvChannelPetMove             int16 = 0x71
+	RecvChannelPetAction           int16 = 0x72
+	RecvChannelPetInteraction      int16 = 0x73
+	RecvChannelPetLoot             int16 = 0x74
+	RecvChannelSummonAck           int16 = 0x77
 	RecvChannelSummonMove          int16 = 0x78
 	RecvChannelSummonAttack        int16 = 0x79
 	RecvChannelSummonDamage        int16 = 0x7A
