@@ -388,7 +388,7 @@ func (server *Server) handleCashShopOperation(conn mnet.Client, reader mpacket.R
 	case opcode.RecvCashShopMoveLtoS:
 		cashItemID := reader.ReadInt64()
 		_ = reader.ReadByte()
-		targetSlot := reader.ReadInt16()
+		_ = reader.ReadInt16()
 
 		storage, storageErr := server.GetOrLoadStorage(conn)
 		if storageErr != nil {
@@ -439,7 +439,7 @@ func (server *Server) handleCashShopOperation(conn mnet.Client, reader mpacket.R
 			return
 		}
 
-		plr.Send(packetCashShopMoveLtoSDone(givenItem, targetSlot))
+		plr.Send(packetCashShopMoveLtoSDone(givenItem, givenItem.GetSlotID()))
 
 	case opcode.RecvCashShopMoveStoL:
 		// Move from slot (inventory) to locker (storage)

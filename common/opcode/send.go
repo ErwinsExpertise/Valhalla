@@ -53,11 +53,12 @@ const (
 	SendChannelAllChatMsg              int16 = 0x67
 	SendChannelRoomBox                 int16 = 0x69
 	SendChannelUseScroll               int16 = 0x6B
-	SendChannelPetSpawn                int16 = 0x6C
-	SendChannelPetMove                 int16 = 0x6D
-	SendChannelPetAction               int16 = 0x6E
-	SendChannelPetNameChange           int16 = 0x6F
-	SendChannelPetInteraction          int16 = 0x70
+	SendChannelPetRemove               int16 = 0x6D
+	SendChannelPetSpawn                int16 = 0x6E
+	SendChannelPetMove                 int16 = 0x6F
+	SendChannelPetAction               int16 = 0x70
+	SendChannelPetNameChange           int16 = 0x71
+	SendChannelPetInteraction          int16 = 0x72
 	SendChannelSpecialMapObjectSpawn   int16 = 0x75
 	SendChannelSpecialMapObjectRemove  int16 = 0x76
 	SendChannelSummonMove              int16 = 0x77
