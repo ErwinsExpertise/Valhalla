@@ -34,10 +34,11 @@ func packetCashShopSet(plr *channel.Player) mpacket.Packet {
 	return p
 }
 
-func packetCashShopUpdateAmounts(nxCredit, maplePoints int32) mpacket.Packet {
+func packetCashShopUpdateAmounts(nxCredit, maplePoints, prepaidNX int32) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelCSUpdateAmounts)
 	p.WriteInt32(nxCredit)
 	p.WriteInt32(maplePoints)
+	p.WriteInt32(prepaidNX)
 	return p
 }
 
@@ -156,7 +157,8 @@ func packetCashShopLoadLocker(storage *CashShopStorage, accountID, characterID i
 func packetCashShopMoveLtoSDone(item channel.Item, slot int16) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelCSAction)
 	p.WriteByte(opcode.SendCashShopMoveLtoSDone)
-	p.WriteBytes(item.ShortBytes())
+	p.WriteInt16(slot)
+	p.WriteBytes(item.CashShopInventoryBody())
 	return p
 }
 

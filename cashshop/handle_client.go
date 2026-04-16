@@ -77,24 +77,22 @@ func (server *Server) handlePlayerConnect(conn mnet.Client, reader mpacket.Reade
 	server.players.Add(&plr)
 
 	// Load cash shop storage
-	//storage, err := server.GetOrLoadStorage(conn)
-	//if err != nil {
-	//	log.Println("Failed to load cash shop storage for account", accountID, ":", err)
-	//}
+	storage, err := server.GetOrLoadStorage(conn)
+	if err != nil {
+		log.Println("Failed to load cash shop storage for account", accountID, ":", err)
+	}
 
 	server.world.Send(internal.PacketChannelPlayerConnected(plr.ID, plr.Name, server.id, false, 0, 0))
 
 	plr.Send(packetCashShopSet(&plr))
 
-	/*
-		// Send cash shop storage items to player (before wishlist and amounts, matching OpenMG order)
-		if storage != nil {
-			plr.Send(packetCashShopLoadLocker(storage, accountID, plr.ID))
-		}
+	// Send cash shop storage items to player (before wishlist and amounts, matching OpenMG order)
+	if storage != nil {
+		plr.Send(packetCashShopLoadLocker(storage, accountID, plr.ID))
+	}
 
-		//plr.Send(packetCashShopWishList(nil, false))
-		plr.Send(packetCashShopUpdateAmounts(plr.GetNX(), plr.GetMaplePoints()))
-	*/
+	plr.Send(packetCashShopWishList(nil, false))
+	plr.Send(packetCashShopUpdateAmounts(plr.GetNX(), plr.GetMaplePoints(), 0))
 }
 
 func (server *Server) leaveCashShopToChannel(conn mnet.Client, reader mpacket.Reader) {
@@ -250,7 +248,7 @@ func (server *Server) handleCashShopOperation(conn mnet.Client, reader mpacket.R
 			return
 		}
 
-		plr.Send(packetCashShopUpdateAmounts(plrNX, plrMaplePoints))
+		plr.Send(packetCashShopUpdateAmounts(plrNX, plrMaplePoints, 0))
 
 		// Send buy success packet with the specific item that was just added
 		addedItem, ok := storage.getItemBySlot(int16(slotIdx + 1))
@@ -345,7 +343,7 @@ func (server *Server) handleCashShopOperation(conn mnet.Client, reader mpacket.R
 			plr.SetMaplePoints(plrMaplePoints)
 		}
 
-		plr.Send(packetCashShopUpdateAmounts(plrNX, plrMaplePoints))
+		plr.Send(packetCashShopUpdateAmounts(plrNX, plrMaplePoints, 0))
 
 	case opcode.RecvCashShopGiftItem:
 	case opcode.RecvCashShopUpdateWishlist:
@@ -385,7 +383,7 @@ func (server *Server) handleCashShopOperation(conn mnet.Client, reader mpacket.R
 		}
 
 		plr.Send(packetCashShopIncreaseInv(invType, plr.GetSlotSize(invType)))
-		plr.Send(packetCashShopUpdateAmounts(plrNX, plrMaplePoints))
+		plr.Send(packetCashShopUpdateAmounts(plrNX, plrMaplePoints, 0))
 
 	case opcode.RecvCashShopMoveLtoS:
 		cashItemID := reader.ReadInt64()

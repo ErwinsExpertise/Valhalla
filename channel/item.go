@@ -527,6 +527,10 @@ func (v Item) StorageBytes() []byte {
 	return v.inventoryOperationBody()
 }
 
+func (v Item) CashShopInventoryBody() []byte {
+	return v.inventoryOperationBody()
+}
+
 // ShortBytes e.g. inventory operation, storage window
 func (v Item) ShortBytes() []byte {
 	return v.bytes(true, false)

@@ -12,26 +12,26 @@ const (
 	RecvCashShopGiftPackage    byte = 0x1A
 	RecvCashShopBuyQuestItem   byte = 0x1B
 
-	SendCashShopLoadLockerDone      byte = 31
-	SendCashShopLoadLockerFailed    byte = 32
-	SendCashShopLoadWishDone        byte = 33
-	SendCashShopLoadWishFailed      byte = 34
-	SendCashShopUpdateWishDone      byte = 35
-	SendCashShopUpdateWishFailed    byte = 36
-	SendCashShopBuyDone             byte = 37
-	SendCashShopBuyFailed           byte = 38
-	SendCashShopGiftDone            byte = 39
-	SendCashShopGiftFailed          byte = 41
-	SendCashShopUseCouponDone       byte = 42
-	SendCashShopUseCouponFailed     byte = 44
-	SendCashShopUseGiftCouponDone   byte = 45
-	SendCashShopIncSlotCountDone    byte = 46
-	SendCashShopIncSlotCountFailed  byte = 47
-	SendCashShopIncTrunkCountDone   byte = 48
-	SendCashShopIncTrunkCountFailed byte = 49
-
-	SendCashShopMoveLtoSDone   byte = 50
-	SendCashShopMoveLtoSFailed byte = 51
-	SendCashShopMoveStoLDone   byte = 52
-	SendCashShopMoveStoLFailed byte = 53
+	// SendChannelCSAction subcodes from CCashShop::OnCashItemResult.
+	SendCashShopLoadLockerDone      byte = 42
+	SendCashShopLoadLockerFailed    byte = 43
+	SendCashShopLoadWishDone        byte = 44
+	SendCashShopLoadWishFailed      byte = 45
+	SendCashShopUpdateWishDone      byte = 50
+	SendCashShopUpdateWishFailed    byte = 51
+	SendCashShopBuyDone             byte = 52
+	SendCashShopBuyFailed           byte = 53
+	SendCashShopUseCouponDone       byte = 54
+	SendCashShopUseGiftCouponDone   byte = 56
+	SendCashShopUseCouponFailed     byte = 57
+	SendCashShopGiftDone            byte = 59
+	SendCashShopGiftFailed          byte = 60
+	SendCashShopIncSlotCountDone    byte = 61
+	SendCashShopIncSlotCountFailed  byte = 62
+	SendCashShopIncTrunkCountDone   byte = 63
+	SendCashShopIncTrunkCountFailed byte = 64
+	SendCashShopMoveLtoSDone        byte = 65
+	SendCashShopMoveLtoSFailed      byte = 66
+	SendCashShopMoveStoLDone        byte = 67
+	SendCashShopMoveStoLFailed      byte = 68
 )

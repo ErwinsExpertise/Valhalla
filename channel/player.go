@@ -3384,8 +3384,7 @@ func writeSetFieldCharacterStats(p *mpacket.Packet, plr Player) {
 	p.WriteByte(plr.skin)
 	p.WriteInt32(plr.face)
 	p.WriteInt32(plr.hair)
-	p.WriteBytes(make([]byte, 8))
-
+	p.WriteInt64(plr.petCashID)
 	p.WriteByte(plr.level)
 	p.WriteInt16(plr.job)
 	p.WriteInt16(plr.str)
