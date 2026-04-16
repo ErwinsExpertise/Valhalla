@@ -430,6 +430,8 @@ func (v Item) GetAmount() int16 { return v.amount }
 
 func (v Item) GetExpireTime() int64 { return v.expireTime }
 
+func (v Item) GetSlotID() int16 { return v.slotID }
+
 func (v Item) isRechargeable() bool {
 	return float64(v.ID/10000) == 207 // Taken from client
 }
@@ -632,7 +634,6 @@ func (v Item) writeSetFieldSlot(p *mpacket.Packet) {
 	if v.slotID < 0 {
 		pos := int16(-v.slotID)
 		if pos > 100 {
-			p.WriteByte(0)
 			p.WriteByte(byte(pos - 100))
 			return
 		}
