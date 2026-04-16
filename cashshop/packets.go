@@ -11,7 +11,8 @@ func packetCashShopSet(plr *channel.Player) mpacket.Packet {
 	channel.AppendCashShopCharacterData(&p, plr)
 
 	// CCashShop::LoadData
-	p.WriteByte(0)
+	p.WriteByte(1)
+	p.WriteString(plr.GetAccountName())
 
 	// sub_71E3E4
 	p.WriteInt32(0)
