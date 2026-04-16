@@ -77,22 +77,24 @@ func (server *Server) handlePlayerConnect(conn mnet.Client, reader mpacket.Reade
 	server.players.Add(&plr)
 
 	// Load cash shop storage
-	storage, err := server.GetOrLoadStorage(conn)
-	if err != nil {
-		log.Println("Failed to load cash shop storage for account", accountID, ":", err)
-	}
+	//storage, err := server.GetOrLoadStorage(conn)
+	//if err != nil {
+	//	log.Println("Failed to load cash shop storage for account", accountID, ":", err)
+	//}
 
 	server.world.Send(internal.PacketChannelPlayerConnected(plr.ID, plr.Name, server.id, false, 0, 0))
 
 	plr.Send(packetCashShopSet(&plr))
 
-	// Send cash shop storage items to player (before wishlist and amounts, matching OpenMG order)
-	if storage != nil {
-		plr.Send(packetCashShopLoadLocker(storage, accountID, plr.ID))
-	}
+	/*
+		// Send cash shop storage items to player (before wishlist and amounts, matching OpenMG order)
+		if storage != nil {
+			plr.Send(packetCashShopLoadLocker(storage, accountID, plr.ID))
+		}
 
-	//plr.Send(packetCashShopWishList(nil, false))
-	plr.Send(packetCashShopUpdateAmounts(plr.GetNX(), plr.GetMaplePoints()))
+		//plr.Send(packetCashShopWishList(nil, false))
+		plr.Send(packetCashShopUpdateAmounts(plr.GetNX(), plr.GetMaplePoints()))
+	*/
 }
 
 func (server *Server) leaveCashShopToChannel(conn mnet.Client, reader mpacket.Reader) {
@@ -266,17 +268,7 @@ func (server *Server) handleCashShopOperation(conn mnet.Client, reader mpacket.R
 			return
 		}
 
-		pkgMap := nx.GetPackages()
-		pkgItems, ok := pkgMap[pkgSN]
-		if !ok || len(pkgItems) == 0 {
-			// Fallbacks: some data sets key packages by ItemID or Commodity index instead of SN
-			if commodity.ItemID != 0 {
-				pkgItems, ok = pkgMap[commodity.ItemID]
-			}
-			if (!ok || len(pkgItems) == 0) && commodity.Index != 0 {
-				pkgItems, ok = pkgMap[commodity.Index]
-			}
-		}
+		pkgItems, ok := nx.GetCashPackageEntries(pkgSN)
 		if !ok || len(pkgItems) == 0 {
 			plr.Send(packetCashShopError(opcode.SendCashShopBuyFailed, constant.CashShopErrorOutOfStock))
 			return

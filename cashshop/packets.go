@@ -4,34 +4,30 @@ import (
 	"github.com/Hucaru/Valhalla/channel"
 	"github.com/Hucaru/Valhalla/common/opcode"
 	"github.com/Hucaru/Valhalla/mpacket"
-	"github.com/Hucaru/Valhalla/nx"
 )
 
 func packetCashShopSet(plr *channel.Player) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelSetCashShop)
+	channel.AppendCashShopCharacterData(&p, plr)
 
-	plr.WriteCharacterInfoPacket(&p)
+	// CCashShop::LoadData
+	p.WriteByte(0)
 
-	p.WriteByte(1)
-	p.WriteString(plr.GetAccountName())
-
-	p.WriteInt16(0) // Wishlist
-
-	p.WriteBytes(make([]byte, 121))
-
-	// Featured/Best items: Category (1..8, excluding Quest=9), Gender (0..1), then SN
-	for i := 1; i <= 8; i++ { // categories excluding Quest
-		for j := 0; j <= 1; j++ { // gender
-			for k := 0; k < 5; k++ { // top 5
-				p.WriteInt32(int32(i)) // Category
-				p.WriteInt32(int32(j)) // Gender
-				sn := nx.GetBestSN(i, j, k)
-				p.WriteInt32(sn) // 0 if none
-			}
-		}
-	}
-
+	// sub_71E3E4
 	p.WriteInt32(0)
+	p.WriteInt16(0)
+	p.WriteByte(0)
+
+	// Raw 0x438-byte Cash Shop data block consumed by CCashShop::LoadData.
+	// Field meanings inside this block are not fully resolved yet, so preserve
+	// the size and ordering with an explicit zeroed placeholder.
+	p.WriteBytes(make([]byte, 0x438))
+
+	// CCashShop::DecodeStock / CCashShop::DecodeLimitGoods
+	p.WriteInt16(0)
+	p.WriteInt16(0)
+
+	// Trailing byte read by CCashShop::CCashShop after LoadData.
 	p.WriteByte(0)
 
 	return p
@@ -77,7 +73,7 @@ func packetCashShopShowBoughtItem(charID int32, cashItemSNHash int64, itemID int
 
 	p.WriteInt16(count)
 	p.WriteString(itemName)
-	p.WriteInt64(0) // expiration: 0 for non-expiring
+	p.WriteInt64(0)
 	for i := 0; i < 4; i++ {
 		p.WriteByte(0x01)
 	}
@@ -86,7 +82,7 @@ func packetCashShopShowBoughtItem(charID int32, cashItemSNHash int64, itemID int
 
 func packetCashShopShowBoughtQuestItem(position byte, itemID int32) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelCSAction)
-	p.WriteInt32(365) // sub-op code per reference
+	p.WriteInt32(365)
 	p.WriteByte(0)
 	p.WriteInt16(1)
 	p.WriteByte(position)
@@ -112,7 +108,6 @@ func packetCashShopSendCSItemInventory(slotType byte, it channel.Item) mpacket.P
 	p.WriteByte(0x2F)
 	p.WriteInt16(int16(slotType))
 	p.WriteByte(slotType)
-
 	p.WriteBytes(it.InventoryBytes())
 	return p
 }
@@ -124,8 +119,7 @@ func packetCashShopWishList(sns []int32, update bool) mpacket.Packet {
 	} else {
 		p.WriteByte(opcode.SendCashShopLoadWishDone)
 	}
-	count := 10
-	for i := 0; i < count; i++ {
+	for i := 0; i < 10; i++ {
 		var v int32
 		if i < len(sns) {
 			v = sns[i]
@@ -140,7 +134,6 @@ func packetCashShopLoadLocker(storage *CashShopStorage, accountID, characterID i
 	p.WriteByte(opcode.SendCashShopLoadLockerDone)
 
 	items := storage.getAllItems()
-
 	p.WriteInt16(int16(len(items)))
 	for _, csItem := range items {
 		p.WriteInt64(csItem.GetCashID())
@@ -151,10 +144,10 @@ func packetCashShopLoadLocker(storage *CashShopStorage, accountID, characterID i
 		p.WriteInt16(csItem.GetAmount())
 		p.WritePaddedString("", 13)
 		p.WriteInt64(csItem.GetExpireTime())
-		p.WriteInt64(0) // Padding
+		p.WriteInt64(0)
 	}
 
-	p.WriteInt16(0) // Gift count
+	p.WriteInt16(0)
 	p.WriteInt16(int16(storage.maxSlots))
 	return p
 }
@@ -175,7 +168,7 @@ func packetCashShopMoveStoLDone(csItem channel.Item, accountID int32) mpacket.Pa
 	p.WriteInt32(csItem.ID)
 	p.WriteInt32(csItem.GetCashSN())
 	p.WriteInt16(csItem.GetAmount())
-	p.WritePaddedString("", 13) // GiftName
+	p.WritePaddedString("", 13)
 	p.WriteInt64(csItem.GetExpireTime())
 	p.WriteInt64(0)
 	return p
@@ -190,7 +183,7 @@ func packetCashShopBuyDone(csItem channel.Item, accountID, characterID int32) mp
 	p.WriteInt32(csItem.ID)
 	p.WriteInt32(csItem.GetCashSN())
 	p.WriteInt16(csItem.GetAmount())
-	p.WritePaddedString("", 13) // GiftName
+	p.WritePaddedString("", 13)
 	p.WriteInt64(csItem.GetExpireTime())
 	p.WriteInt64(0)
 	return p

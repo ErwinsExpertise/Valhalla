@@ -3309,7 +3309,21 @@ const (
 	setFieldCharSectionMinimal             = setFieldCharSectionStats | setFieldCharSectionTeleportRocks
 	setFieldCharSectionInventory           = setFieldCharSectionEquip | setFieldCharSectionUse | setFieldCharSectionSetup | setFieldCharSectionEtc | setFieldCharSectionCash
 	setFieldCharSectionSafeZero            = setFieldCharSectionSkills | setFieldCharSectionCooldowns | setFieldCharSectionActiveQuests | setFieldCharSectionCompletedQ | setFieldCharSectionMiniGames
+	cashShopCharacterDataMask              = setFieldCharSectionStats | setFieldCharSectionMeta | setFieldCharSectionSlotSizes | setFieldCharSectionInventory
 )
+
+// AppendCashShopCharacterData mirrors the verified CharacterData::Decode read order
+// used by CStage::OnSetCashShop. It intentionally emits only the sections we have
+// confirmed and need for Cash Shop entry: stats, the post-stat byte, mesos, slot
+// sizes, and inventory lists.
+func AppendCashShopCharacterData(p *mpacket.Packet, plr *Player) {
+	p.WriteInt16(cashShopCharacterDataMask)
+	writeSetFieldCharacterStats(p, *plr)
+	writeSetFieldPostStatByte(p, *plr)
+	writeSetFieldMesos(p, plr.mesos)
+	writeSetFieldSlotSizes(p, plr)
+	writeSetFieldInventory(p, *plr)
+}
 
 func packetPlayerEnterGame(plr Player, channelID int32) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelWarpToMap)
