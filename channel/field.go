@@ -675,6 +675,18 @@ func (inst *fieldInstance) addPlayer(plr *Player) error {
 	for _, other := range inst.players {
 		other.Send(packetMapPlayerEnter(plr))
 		plr.Send(packetMapPlayerEnter(other))
+
+		if plr.petCashID != 0 && plr.pet != nil && plr.pet.spawned {
+			plr.pet.pos = plr.pos
+			plr.pet.pos.y -= 15
+			other.Send(packetPetSpawn(plr.ID, plr.pet))
+		}
+
+		if other.petCashID != 0 && other.pet != nil && other.pet.spawned {
+			other.pet.pos = other.pos
+			other.pet.pos.y -= 15
+			plr.Send(packetPetSpawn(other.ID, other.pet))
+		}
 	}
 
 	inst.lifePool.addPlayer(plr)
@@ -1073,41 +1085,36 @@ func packetMapPlayerEnter(plr *Player) mpacket.Packet {
 		p.WriteByte(plr.guild.logoBgColour)
 		p.WriteInt16(plr.guild.logo)
 		p.WriteByte(plr.guild.logoColour)
-		p.WriteInt32(0)
-		p.WriteInt32(0)
 	} else {
 		p.WriteString("")
 		p.WriteInt16(0)
 		p.WriteByte(0)
 		p.WriteInt16(0)
 		p.WriteByte(0)
-		p.WriteInt32(0)
-		p.WriteInt32(0)
 	}
 
+	p.WriteUint64(plr.remoteSpawnTempStatMask())
 	plr.encodeDisplayBytes(&p)
 
-	p.WriteInt32(0) // Active Item ID
-	p.WriteInt32(0) // Choco count(what is choco lol)
+	p.WriteInt32(0) // consume item effect
+	p.WriteInt32(0) // active effect item id
 	p.WriteInt32(plr.chairID)
 
 	p.WriteInt16(plr.pos.x)
 	p.WriteInt16(plr.pos.y)
 	p.WriteByte(plr.stance)
 	p.WriteInt16(plr.pos.foothold)
-
-	if plr.buffs.HasGMHide() {
-		p.WriteBool(true)
-	} else {
-		p.WriteBool(false)
-	}
-
-	p.WriteBool(plr.petCashID != 0)
-	if plr.petCashID != 0 {
-		plr.pet.pos = plr.pos
-		writePetInitData(&p, plr.pet)
-	}
-	p.WriteInt32(0) // ?
+	p.WriteByte(0)
+	p.WriteInt32(0)
+	p.WriteInt32(0)
+	p.WriteInt32(0)
+	plr.encodeRemoteMiniRoomBalloon(&p)
+	p.WriteByte(0)
+	p.WriteByte(0)
+	p.WriteByte(0)
+	p.WriteByte(0)
+	p.WriteByte(0)
+	p.WriteByte(0)
 
 	return p
 }

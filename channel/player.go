@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"math"
 	mathrand "math/rand"
 	"sort"
 	"strings"
@@ -1813,33 +1812,90 @@ func (d Player) encodeDisplayBytes(pkt *mpacket.Packet) {
 	pkt.WriteByte(d.gender)
 	pkt.WriteByte(d.skin)
 	pkt.WriteInt32(d.face)
-	pkt.WriteByte(0x00) // Messenger
+	pkt.WriteByte(0)
 	pkt.WriteInt32(d.hair)
 
+	visible := make(map[byte]int32)
+	masked := make(map[byte]int32)
 	cashWeapon := int32(0)
 
 	for _, b := range d.equip {
-		if b.slotID < 0 && b.slotID > -20 {
-			pkt.WriteByte(byte(math.Abs(float64(b.slotID))))
-			pkt.WriteInt32(b.ID)
+		if b.slotID >= 0 {
+			continue
+		}
+
+		slot := -b.slotID
+		switch {
+		case slot >= 1 && slot <= 29:
+			visible[byte(slot)] = b.ID
+		case slot == 111:
+			cashWeapon = b.ID
+		case slot >= 101 && slot <= 129:
+			cashSlot := byte(slot - 100)
+			if equipped, ok := visible[cashSlot]; ok {
+				masked[cashSlot] = equipped
+			}
+			visible[cashSlot] = b.ID
 		}
 	}
 
-	for _, b := range d.equip {
-		if b.slotID < -100 {
-			if b.slotID == -111 {
-				cashWeapon = b.ID
-			} else {
-				pkt.WriteByte(byte(math.Abs(float64(b.slotID + 100))))
-				pkt.WriteInt32(b.ID)
-			}
+	for slot := byte(1); slot <= 29; slot++ {
+		if itemID, ok := visible[slot]; ok {
+			pkt.WriteByte(slot)
+			pkt.WriteInt32(itemID)
 		}
 	}
 
 	pkt.WriteByte(0xFF)
+
+	for slot := byte(1); slot <= 29; slot++ {
+		if itemID, ok := masked[slot]; ok {
+			pkt.WriteByte(slot)
+			pkt.WriteInt32(itemID)
+		}
+	}
+
 	pkt.WriteByte(0xFF)
 	pkt.WriteInt32(cashWeapon)
-	pkt.WriteInt32(0) // Pet acc
+	pkt.WriteInt32(0)
+}
+
+func (d Player) remoteSpawnTempStatMask() uint64 {
+	var mask uint64
+
+	if d.buffs != nil && d.buffs.HasGMHide() {
+		mask |= BuffDarkSight
+	}
+
+	return mask
+}
+
+func (d Player) encodeRemoteMiniRoomBalloon(pkt *mpacket.Packet) {
+	if d.inst == nil {
+		pkt.WriteByte(0)
+		return
+	}
+
+	r, err := d.inst.roomPool.getPlayerRoom(d.ID)
+	if err != nil {
+		pkt.WriteByte(0)
+		return
+	}
+
+	b, ok := r.(boxDisplayer)
+	if !ok {
+		pkt.WriteByte(0)
+		return
+	}
+
+	display := b.displayBytes()
+	if len(display) < 5 {
+		pkt.WriteByte(0)
+		return
+	}
+
+	// UserEnterField carries the room balloon without the leading owner character id.
+	pkt.WriteBytes(display[4:])
 }
 
 // Logout flushes coalesced state and does a full checkpoint save.
