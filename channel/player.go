@@ -688,6 +688,28 @@ func (d *Player) GetAccountName() string {
 	return d.accountName
 }
 
+func (d *Player) GetGender() byte { return d.gender }
+func (d *Player) GetSkin() byte   { return d.skin }
+func (d *Player) GetFace() int32  { return d.face }
+func (d *Player) GetHair() int32  { return d.hair }
+func (d *Player) GetLevel() byte  { return d.level }
+func (d *Player) GetJob() int16   { return d.job }
+func (d *Player) GetStr() int16   { return d.str }
+func (d *Player) GetDex() int16   { return d.dex }
+func (d *Player) GetInt() int16   { return d.intt }
+func (d *Player) GetLuk() int16   { return d.luk }
+func (d *Player) GetHP() int16    { return d.hp }
+func (d *Player) GetMaxHP() int16 { return d.maxHP }
+func (d *Player) GetMP() int16    { return d.mp }
+func (d *Player) GetMaxMP() int16 { return d.maxMP }
+func (d *Player) GetAP() int16    { return d.ap }
+func (d *Player) GetSP() int16    { return d.sp }
+func (d *Player) GetEXP() int32   { return d.exp }
+func (d *Player) GetFame() int16  { return d.fame }
+func (d *Player) GetMapID() int32 { return d.mapID }
+func (d *Player) GetMapPos() byte { return d.mapPos }
+func (d *Player) GetMesos() int32 { return d.mesos }
+
 func (d *Player) setLevel(amount byte) {
 	d.level = amount
 	d.Send(packetPlayerStatChange(false, constant.LevelID, int32(amount)))
@@ -715,7 +737,7 @@ func (d *Player) giveAP(amount int16) {
 
 func (d *Player) setSP(amount int16) {
 	d.sp = amount
-	d.Send(packetPlayerStatChange(false, constant.SpID, int32(amount)))
+	d.Send(packetPlayerStatChange(true, constant.SpID, int32(amount)))
 	d.MarkDirty(DirtySP, 300*time.Millisecond)
 }
 
@@ -3216,7 +3238,7 @@ func packetPlayerEmoticon(charID int32, emotion int32) mpacket.Packet {
 
 func packetPlayerSkillBookUpdate(skillID int32, level int32) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelSkillRecordUpdate)
-	p.WriteByte(0x00)
+	p.WriteByte(1)
 	p.WriteInt16(1)
 	p.WriteInt32(skillID)
 	p.WriteInt32(level)
@@ -3291,7 +3313,7 @@ const (
 
 func packetPlayerEnterGame(plr Player, channelID int32) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelWarpToMap)
-	p.WriteInt32(channelID - 1)
+	p.WriteInt32(channelID)
 	p.WriteByte(0)
 	p.WriteByte(1)
 
@@ -3777,147 +3799,6 @@ func packetMapChange(mapID int32, channelID int32, mapPos byte, hp int16) mpacke
 	return p
 }
 
-func (plr *Player) WriteCharacterInfoPacket(p *mpacket.Packet) {
-	p.WriteInt16(-1)
-
-	// Stats
-	p.WriteInt32(plr.ID)
-	p.WritePaddedString(plr.Name, 13)
-	p.WriteByte(plr.gender)
-	p.WriteByte(plr.skin)
-	p.WriteInt32(plr.face)
-	p.WriteInt32(plr.hair)
-	p.WriteInt64(plr.petCashID) // Pet Cash ID
-
-	p.WriteByte(plr.level)
-	p.WriteInt16(plr.job)
-	p.WriteInt16(plr.str)
-	p.WriteInt16(plr.dex)
-	p.WriteInt16(plr.intt)
-	p.WriteInt16(plr.luk)
-	p.WriteInt16(plr.hp)
-	p.WriteInt16(plr.maxHP)
-	p.WriteInt16(plr.mp)
-	p.WriteInt16(plr.maxMP)
-	p.WriteInt16(plr.ap)
-	p.WriteInt16(plr.sp)
-	p.WriteInt32(plr.exp)
-	p.WriteInt16(plr.fame)
-
-	p.WriteInt32(plr.mapID)
-	p.WriteByte(plr.mapPos)
-
-	p.WriteByte(plr.buddyListSize)
-
-	// Money
-	p.WriteInt32(plr.mesos)
-
-	if plr.equipSlotSize == 0 {
-		plr.equipSlotSize = 24
-	}
-	if plr.useSlotSize == 0 {
-		plr.useSlotSize = 24
-	}
-	if plr.setupSlotSize == 0 {
-		plr.setupSlotSize = 24
-	}
-	if plr.etcSlotSize == 0 {
-		plr.etcSlotSize = 24
-	}
-	if plr.cashSlotSize == 0 {
-		plr.cashSlotSize = 24
-	}
-
-	p.WriteByte(plr.equipSlotSize)
-	p.WriteByte(plr.useSlotSize)
-	p.WriteByte(plr.setupSlotSize)
-	p.WriteByte(plr.etcSlotSize)
-	p.WriteByte(plr.cashSlotSize)
-
-	// Equipped (normal then cash)
-	for _, it := range plr.equip {
-		if it.slotID < 0 && !it.cash {
-			p.WriteBytes(it.InventoryBytes())
-		}
-	}
-	p.WriteByte(0)
-	for _, it := range plr.equip {
-		if it.slotID < 0 && it.cash {
-			p.WriteBytes(it.InventoryBytes())
-		}
-	}
-	p.WriteByte(0)
-
-	// Inventory tabs
-	writeInv := func(items []Item) {
-		cp := make([]Item, 0, len(items))
-		for _, it := range items {
-			if it.slotID > 0 {
-				cp = append(cp, it)
-			}
-		}
-		sort.Slice(cp, func(i, j int) bool { return cp[i].slotID < cp[j].slotID })
-		for _, it := range cp {
-			p.WriteBytes(it.InventoryBytes())
-		}
-		p.WriteByte(0)
-	}
-	writeInv(plr.equip)
-	writeInv(plr.use)
-	writeInv(plr.setUp)
-	writeInv(plr.etc)
-	writeInv(plr.cash)
-
-	// Skills
-	p.WriteInt16(int16(len(plr.skills)))
-	skillCooldowns := make(map[int32]int16)
-
-	for _, skill := range plr.skills {
-		p.WriteInt32(skill.ID)
-		p.WriteInt32(int32(skill.Level))
-
-		if skill.Cooldown > 0 {
-			skillCooldowns[skill.ID] = skill.Cooldown
-		}
-	}
-
-	p.WriteInt16(int16(len(skillCooldowns)))
-
-	for id, cooldown := range skillCooldowns {
-		p.WriteInt32(id)
-		p.WriteInt16(cooldown)
-	}
-
-	// Quests
-	writeActiveQuests(p, plr.quests.inProgressList())
-	writeCompletedQuests(p, plr.quests.completedList())
-
-	p.WriteInt16(0) // MiniGames
-	/*
-	   - uint16 count
-	   - repeat count times:
-	       - int32 a
-	       - int32 b
-	       - int32 c
-	       - int32 d
-	       - int32 e
-	*/
-	p.WriteInt16(0) // Rings
-	/*
-	   - uint16 count
-	   - repeat count times:
-	       - decode ring object
-	*/
-
-	// Teleport rocks (5 normal, 10 VIP) INT32 = Saved MapID
-	for i := 0; i < 5; i++ {
-		p.WriteInt32(999999999) // Reg Tele rocks
-	}
-	for i := 0; i < 10; i++ {
-		p.WriteInt32(999999999) // VIP Tele rocks
-	}
-}
-
 func packetPlayerPetUpdate(sn int32) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelStatChange)
 	p.WriteBool(false)
@@ -4108,36 +3989,6 @@ func packetPlayerHpChange(plrID, hp, maxHp int32) mpacket.Packet {
 	p.WriteInt32(plrID)
 	p.WriteInt32(hp)
 	p.WriteInt32(maxHp)
-
-	return p
-}
-
-func packetCashShopSet(plr *Player) mpacket.Packet {
-	p := mpacket.CreateWithOpcode(opcode.SendChannelSetCashShop)
-
-	plr.WriteCharacterInfoPacket(&p)
-
-	p.WriteByte(1)
-	p.WriteString(plr.GetAccountName())
-
-	p.WriteInt16(0) // Wishlist
-
-	p.WriteBytes(make([]byte, 121))
-
-	// Featured/Best items: Category (1..8, excluding Quest=9), Gender (0..1), then SN
-	for i := 1; i <= 8; i++ { // categories excluding Quest
-		for j := 0; j <= 1; j++ { // gender
-			for k := 0; k < 5; k++ { // top 5
-				p.WriteInt32(int32(i)) // Category
-				p.WriteInt32(int32(j)) // Gender
-				sn := nx.GetBestSN(i, j, k)
-				p.WriteInt32(sn) // 0 if none
-			}
-		}
-	}
-
-	p.WriteInt32(0)
-	p.WriteByte(0)
 
 	return p
 }
