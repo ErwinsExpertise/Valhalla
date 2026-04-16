@@ -110,9 +110,8 @@ const (
 	SendChannelNpcStorage              int16 = 0xE8
 	SendChannelMessenger               int16 = 0xEE
 	SendChannelRoom                    int16 = 0xEF
+	SendChannelCSUpdateAmounts         int16 = 255
+	SendChannelCSAction                int16 = 256
 	SendChannelFuncKeyMappedInit       int16 = 264
 	SendChannelPetKeyMappedInit        int16 = 265
-	SendChannelCSRecharge              int16 = 0xFE
-	SendChannelCSUpdateAmounts         int16 = 0xFF
-	SendChannelCSAction                int16 = 0xEA
 )
