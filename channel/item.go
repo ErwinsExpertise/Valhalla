@@ -210,6 +210,7 @@ func loadInventoryFromDb(charID int32) ([]Item, []Item, []Item, []Item, []Item) 
 				petData := pet{
 					itemID:   item.ID,
 					itemDBID: item.dbID,
+					lockerSN: item.cashID,
 				}
 
 				if err := petRow.Scan(
@@ -225,7 +226,7 @@ func loadInventoryFromDb(charID int32) ([]Item, []Item, []Item, []Item, []Item) 
 					item.petData = &petData
 				} else if err == sql.ErrNoRows {
 					sn, _ := nx.GetCommoditySNByItemID(item.ID)
-					item.petData = newPet(item.ID, sn, item.dbID)
+					item.petData = newPet(item.ID, sn, item.dbID, item.cashID)
 				} else {
 					log.Println("error loading pet:", err)
 				}
@@ -580,8 +581,7 @@ func (v Item) bytes(shortSlot, storage bool) []byte {
 		// Write the unique cash ID (not the SN) for cash shop tracking
 		p.WriteUint64(uint64(v.cashID))
 	} else if v.cash && v.pet {
-		// Pets use the SN for identification
-		p.WriteUint64(uint64(v.cashSN))
+		p.WriteUint64(uint64(v.cashID))
 	}
 
 	p.WriteInt64(v.expireTime)
@@ -708,7 +708,7 @@ func (v Item) writeClientPetBody(p *mpacket.Packet) {
 	p.WriteByte(0x03)
 	p.WriteInt32(v.ID)
 	p.WriteBool(v.cash)
-	p.WriteUint64(uint64(v.cashSN))
+	p.WriteUint64(uint64(v.cashID))
 
 	p.WriteInt64(v.expireTime)
 

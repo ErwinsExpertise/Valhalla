@@ -3062,7 +3062,7 @@ func (p *Player) hasActiveBuff(skillID int32) bool {
 
 func (p *Player) updatePet() {
 	p.MarkDirty(DirtyPet, time.Millisecond*300)
-	p.inst.send(packetPlayerPetUpdate(p.pet.sn))
+	p.inst.send(packetPlayerPetUpdate(p.pet.lockerSN))
 }
 
 func (p *Player) petCanTakeDrop(drop fieldDrop) bool {
@@ -3834,11 +3834,12 @@ func packetMapChange(mapID int32, channelID int32, mapPos byte, hp int16) mpacke
 	return p
 }
 
-func packetPlayerPetUpdate(sn int32) mpacket.Packet {
+func packetPlayerPetUpdate(sn int64) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelStatChange)
 	p.WriteBool(false)
 	p.WriteInt32(constant.PetID)
 	p.WriteUint64(uint64(sn))
+	p.WriteByte(0)
 	p.WriteByte(0)
 
 	return p

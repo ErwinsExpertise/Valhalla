@@ -5145,12 +5145,13 @@ func (server *Server) playerPetSpawn(conn mnet.Client, reader mpacket.Reader) {
 
 	if petItem.petData == nil {
 		sn, _ := nx.GetCommoditySNByItemID(petItem.ID)
-		petItem.petData = newPet(petItem.ID, sn, petItem.dbID)
+		petItem.petData = newPet(petItem.ID, sn, petItem.dbID, petItem.cashID)
 		savePet(&petItem)
 	}
+	petItem.petData.lockerSN = petItem.cashID
 
 	petEquipped := plr.petCashID != 0
-	changePet := petEquipped && plr.petCashID == int64(petItem.petData.sn)
+	changePet := petEquipped && plr.petCashID == petItem.petData.lockerSN
 
 	if petEquipped {
 		plr.inst.send(packetPetRemove(plr.ID, constant.PetRemoveNone))
@@ -5158,7 +5159,7 @@ func (server *Server) playerPetSpawn(conn mnet.Client, reader mpacket.Reader) {
 	}
 
 	if !changePet {
-		plr.petCashID = int64(petItem.petData.sn)
+		plr.petCashID = petItem.petData.lockerSN
 
 		if plr.pet == nil || plr.pet.sn != petItem.petData.sn {
 			plr.pet = petItem.petData
@@ -5168,7 +5169,7 @@ func (server *Server) playerPetSpawn(conn mnet.Client, reader mpacket.Reader) {
 		plr.inst.send(packetPetSpawn(plr.ID, plr.pet))
 
 		if plr.pet.spawnDate == 0 {
-			plr.Send(packetPlayerPetUpdate(plr.pet.sn))
+			plr.Send(packetPlayerPetUpdate(plr.pet.lockerSN))
 		}
 		plr.pet.spawnDate = time.Now().Unix()
 		plr.pet.spawned = true

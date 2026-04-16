@@ -14,6 +14,7 @@ import (
 type pet struct {
 	name            string
 	itemID          int32
+	lockerSN        int64
 	sn              int32
 	itemDBID        int64
 	level           byte
@@ -29,7 +30,7 @@ type pet struct {
 	spawned bool
 }
 
-func newPet(itemID, sn int32, dbID int64) *pet {
+func newPet(itemID, sn int32, dbID int64, lockerSN int64) *pet {
 	itemInfo, err := nx.GetItem(itemID)
 	if err != nil {
 		log.Println(err)
@@ -38,6 +39,7 @@ func newPet(itemID, sn int32, dbID int64) *pet {
 	return &pet{
 		name:            itemInfo.Name,
 		itemID:          itemID,
+		lockerSN:        lockerSN,
 		sn:              sn,
 		itemDBID:        dbID,
 		stance:          0,
@@ -58,7 +60,7 @@ func savePet(item *Item) error {
 	// Initialize pet data if it doesn't exist
 	if item.petData == nil {
 		sn, _ := nx.GetCommoditySNByItemID(item.ID)
-		item.petData = newPet(item.ID, sn, item.dbID)
+		item.petData = newPet(item.ID, sn, item.dbID, item.cashID)
 		if item.expireTime != 0 && item.expireTime != neverExpire {
 			item.petData.deadDate = item.expireTime
 		}
@@ -191,7 +193,7 @@ func packetPetMove(charID int32, move []byte) mpacket.Packet {
 func writePetInitData(p *mpacket.Packet, petData *pet) {
 	p.WriteInt32(petData.itemID)
 	p.WriteString(petData.name)
-	p.WriteUint64(uint64(petData.sn))
+	p.WriteUint64(uint64(petData.lockerSN))
 	p.WriteInt16(petData.pos.x)
 	p.WriteInt16(petData.pos.y)
 	p.WriteByte(petData.stance)
@@ -208,10 +210,11 @@ func packetPetSpawn(charID int32, petData *pet) mpacket.Packet {
 	return p
 }
 
-func packetPetRemove(charID int32, _ byte) mpacket.Packet {
+func packetPetRemove(charID int32, reason byte) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelPetRemove)
 	p.WriteInt32(charID)
 	p.WriteBool(false)
+	p.WriteByte(reason)
 
 	return p
 }
