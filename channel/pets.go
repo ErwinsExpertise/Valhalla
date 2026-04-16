@@ -44,10 +44,14 @@ func newPet(itemID, sn int32, dbID int64) *pet {
 		level:           1,
 		closeness:       0,
 		fullness:        100,
-		deadDate:        (time.Now().UnixMilli()*10000 + 116444592000000000 + (time.Hour.Milliseconds() * 24 * 90)),
+		deadDate:        petExpiryTime(),
 		spawnDate:       0,
 		lastInteraction: 0,
 	}
+}
+
+func petExpiryTime() int64 {
+	return time.Now().Add(90*24*time.Hour).UnixMilli()*10000 + 116444592000000000
 }
 
 func savePet(item *Item) error {
@@ -55,6 +59,13 @@ func savePet(item *Item) error {
 	if item.petData == nil {
 		sn, _ := nx.GetCommoditySNByItemID(item.ID)
 		item.petData = newPet(item.ID, sn, item.dbID)
+		if item.expireTime != 0 && item.expireTime != neverExpire {
+			item.petData.deadDate = item.expireTime
+		}
+	}
+
+	if item.petData.deadDate != 0 {
+		item.expireTime = item.petData.deadDate
 	}
 
 	p := item.petData
@@ -177,10 +188,7 @@ func packetPetMove(charID int32, move []byte) mpacket.Packet {
 	return p
 }
 
-func packetPetSpawn(charID int32, petData *pet) mpacket.Packet {
-	p := mpacket.CreateWithOpcode(opcode.SendChannelPetSpawn)
-	p.WriteInt32(charID)
-	p.WriteBool(true)
+func writePetInitData(p *mpacket.Packet, petData *pet) {
 	p.WriteInt32(petData.itemID)
 	p.WriteString(petData.name)
 	p.WriteUint64(uint64(petData.sn))
@@ -188,14 +196,22 @@ func packetPetSpawn(charID int32, petData *pet) mpacket.Packet {
 	p.WriteInt16(petData.pos.y)
 	p.WriteByte(petData.stance)
 	p.WriteInt16(petData.pos.foothold)
+	p.WriteBool(false) // bNameTag
+	p.WriteBool(false) // bChatBalloon
+}
+
+func packetPetSpawn(charID int32, petData *pet) mpacket.Packet {
+	p := mpacket.CreateWithOpcode(opcode.SendChannelPetSpawn)
+	p.WriteInt32(charID)
+	writePetInitData(&p, petData)
+
 	return p
 }
 
-func packetPetRemove(charID int32, reason byte) mpacket.Packet {
-	p := mpacket.CreateWithOpcode(opcode.SendChannelPetSpawn)
+func packetPetRemove(charID int32, _ byte) mpacket.Packet {
+	p := mpacket.CreateWithOpcode(opcode.SendChannelPetRemove)
 	p.WriteInt32(charID)
 	p.WriteBool(false)
-	p.WriteByte(reason)
 
 	return p
 }

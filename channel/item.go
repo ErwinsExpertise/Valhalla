@@ -343,7 +343,11 @@ func createBiasItemFromID(id int32, amount int16, bias int8, average bool) (Item
 	newItem.stand = byte(nxInfo.Stand)
 	newItem.calculateWeaponType()
 
-	newItem.expireTime = neverExpire
+	if newItem.pet {
+		newItem.expireTime = petExpiryTime()
+	} else {
+		newItem.expireTime = neverExpire
+	}
 
 	return newItem, nil
 }
@@ -429,6 +433,10 @@ func (v Item) GetCashSN() int32 { return v.cashSN }
 func (v Item) GetAmount() int16 { return v.amount }
 
 func (v Item) GetExpireTime() int64 { return v.expireTime }
+
+func (v *Item) SetExpireTime(expireTime int64) { v.expireTime = expireTime }
+
+func (v Item) Pet() bool { return v.pet }
 
 func (v Item) GetSlotID() int16 { return v.slotID }
 
@@ -699,30 +707,18 @@ func (v Item) writeClientItemBody(p *mpacket.Packet) {
 func (v Item) writeClientPetBody(p *mpacket.Packet) {
 	p.WriteByte(0x03)
 	p.WriteInt32(v.ID)
-	p.WriteByte(1)
+	p.WriteBool(v.cash)
+	p.WriteUint64(uint64(v.cashSN))
 
-	petID := int32(0)
-	if v.petData != nil {
-		petID = v.petData.itemID
-	}
-	p.WriteInt32(petID)
+	p.WriteInt64(v.expireTime)
+
+	p.WritePaddedString(v.petData.name, 13)
+	p.WriteByte(v.petData.level)
+	p.WriteInt16(v.petData.closeness)
+	p.WriteByte(v.petData.fullness)
+	p.WriteInt64(v.petData.deadDate)
 	p.WriteInt32(0)
-	p.WriteBytes([]byte{0x00, 0x80, 0x05, 0xBB, 0x46, 0xE6, 0x17, 0x02})
 
-	if v.petData != nil {
-		p.WritePaddedString(v.petData.name, 13)
-		p.WriteByte(v.petData.level)
-		p.WriteInt16(v.petData.closeness)
-		p.WriteByte(v.petData.fullness)
-	} else {
-		p.WritePaddedString("", 13)
-		p.WriteByte(1)
-		p.WriteInt16(0)
-		p.WriteByte(100)
-	}
-
-	p.WriteInt64(neverExpire)
-	p.WriteInt32(0)
 }
 
 func getSetFieldItemTimestamp(expireTime int64) int32 {

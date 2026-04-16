@@ -177,13 +177,13 @@ func (server *Server) HandleClientPacket(conn mnet.Client, reader mpacket.Reader
 	case opcode.RecvChannelPetSpawn:
 		server.playerPetSpawn(conn, reader)
 	case opcode.RecvChannelPetMove:
-		server.playerPetMove(conn, reader)
+		//server.playerPetMove(conn, reader)
 	case opcode.RecvChannelPetAction:
-		server.playerPetAction(conn, reader)
+		//server.playerPetAction(conn, reader)
 	case opcode.RecvChannelPetInteraction:
-		server.playerPetInteraction(conn, reader)
+		//server.playerPetInteraction(conn, reader)
 	case opcode.RecvChannelPetLoot:
-		server.playerPetLoot(conn, reader)
+		//server.playerPetLoot(conn, reader)
 	case opcode.RecvChannelUseSack:
 		server.playerUseSack(conn, reader)
 	case opcode.RecvChannelQuickSlot:
@@ -5134,6 +5134,7 @@ func (server *Server) playerPetSpawn(conn mnet.Client, reader mpacket.Reader) {
 		return
 	}
 
+	_ = reader.ReadInt32() // updateTime?
 	slot := reader.ReadInt16()
 
 	petItem, err := plr.getItem(5, slot)

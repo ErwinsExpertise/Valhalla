@@ -1105,13 +1105,7 @@ func packetMapPlayerEnter(plr *Player) mpacket.Packet {
 	p.WriteBool(plr.petCashID != 0)
 	if plr.petCashID != 0 {
 		plr.pet.pos = plr.pos
-		p.WriteInt32(plr.pet.itemID)
-		p.WriteString(plr.pet.name)
-		p.WriteUint64(uint64(plr.pet.sn))
-		p.WriteInt16(plr.pet.pos.x)
-		p.WriteInt16(plr.pet.pos.y)
-		p.WriteByte(plr.pet.stance)
-		p.WriteInt16(plr.pet.pos.foothold)
+		writePetInitData(&p, plr.pet)
 	}
 	p.WriteInt32(0) // ?
 
