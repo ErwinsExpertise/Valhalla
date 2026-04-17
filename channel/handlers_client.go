@@ -1873,6 +1873,10 @@ func (server Server) playerBumpDamage(conn mnet.Client, reader mpacket.Reader) {
 		return
 	}
 
+	if plr.inst != nil && plr.inst.mistPool.playerInPoisonMist(plr.pos) {
+		return
+	}
+
 	plr.damagePlayer(int16(damage))
 
 }

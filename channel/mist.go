@@ -105,6 +105,20 @@ func (m *fieldMist) isInMist(p pos) bool {
 	return p.x >= m.box.x1 && p.x <= m.box.x2 && p.y >= m.box.y1 && p.y <= m.box.y2
 }
 
+func (pool *mistPool) playerInPoisonMist(p pos) bool {
+	if pool == nil {
+		return false
+	}
+
+	for _, mist := range pool.mists {
+		if mist != nil && mist.isPoisonMist && mist.isInMist(p) {
+			return true
+		}
+	}
+
+	return false
+}
+
 func packetMistSpawn(mist *fieldMist) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelAffectedAreaCreate)
 	p.WriteInt32(mist.ID)
