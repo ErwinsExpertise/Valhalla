@@ -71,14 +71,15 @@ const (
 	SendChannelPlayerPrepareSkill      int16 = 0x82
 	SendChannelPlayerStopSkill         int16 = 0x83
 	SendChannelPlayerTakeDmg           int16 = 0x84
-	SendChannelPlayerAnimation         int16 = 0x85
+	SendChannelPlayerEmoticon          int16 = 0x85
 	SendChannelPlayerActiveEffect      int16 = 0x86
 	SendChannelPlayerSit               int16 = 0x87
 	SendChannelPlayerChangeAvatar      int16 = 0x88
-	SendChannelPlayerEmoticon          int16 = 0x89
+	SendChannelPlayerAnimation         int16 = 0x89
 	SendChannelPlayerGiveForeignBuff   int16 = 0x8A
 	SendChannelPlayerResetForeignBuff  int16 = 0x8B
 	SendChannelPlayerSitResult         int16 = 0x91
+	SendChannelPlayerRemoteAnimation   int16 = 0x92
 	SendChannelPlayerEffect            int16 = 0x93
 	SendChannelQuestActionResult       int16 = 0x97
 	SendChannelSkillCooldown           int16 = 0x9A
