@@ -243,11 +243,12 @@ const (
 	MiniRoomTradePutMesos byte = 14
 	MiniRoomTradeAccept   byte = 15
 
-	MiniRoomAddShopItem          byte = 18
-	MiniRoomBuyShopItem          byte = 19
-	MiniRoomPlayerShopItemResult byte = 0x14
-	MiniRoomPlayerShopSoldItem   byte = 0x16
-	MiniRoomMoveItemShopToInv    byte = 23
+	MiniRoomPlayerShopItemResult byte = 0x15
+	MiniRoomPlayerShopSoldItem   byte = 0x17
+	MiniRoomAddShopItem          byte = 0x13
+	MiniRoomBuyShopItem          byte = 0x14
+	MiniRoomMoveItemShopToInv    byte = 0x18
+	MiniRoomShopOpenToPublic     byte = 0x1B
 )
 
 const (
@@ -387,8 +388,8 @@ const (
 	RoomPacketEndList          = 0xFF
 
 	RoomShopItemListUnknown = 0x10
-	RoomShopRefresh         = 0x15
-	RoomShopMoveItemToInv   = 0x17
+	RoomShopRefresh         = 0x16
+	RoomShopMoveItemToInv   = 0x18
 
 	RoomRequestTie            byte = 42
 	RoomRequestTieResult      byte = 43

@@ -633,9 +633,7 @@ func (v Item) setFieldBytes() []byte {
 }
 
 func (v Item) inventoryOperationBody() []byte {
-	p := mpacket.NewPacket()
-	v.writeClientItemBody(&p)
-	return p
+	return v.bytes(false, true)
 }
 
 func (v Item) writeSetFieldSlot(p *mpacket.Packet) {

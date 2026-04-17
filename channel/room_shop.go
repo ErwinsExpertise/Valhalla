@@ -52,11 +52,10 @@ func (r *shopRoom) addPlayer(plr *Player) bool {
 		return false
 	}
 
-	plr.Send(packetRoomShowWindow(r.roomType, constant.MiniRoomTypePlayerShop, byte(constant.ShopMaxPlayers), byte(len(r.players)-1), r.name, r.players))
+	plr.Send(packetRoomShowPlayerShop(r, byte(len(r.players)-1)))
 
 	if len(r.players) > 1 {
 		r.sendExcept(packetRoomJoin(r.roomType, byte(len(r.players)-1), r.players[len(r.players)-1]), plr)
-		r.send(packetRoomShopRefresh(r))
 	}
 
 	return true
@@ -203,7 +202,7 @@ func (r *shopRoom) addItem(item Item, bundles, bundleAmount int16, price int32) 
 		return false
 	}
 
-	if bundles <= 0 || bundleAmount <= 0 {
+	if bundles <= 0 || bundleAmount <= 0 || price < 0 {
 		return false
 	}
 
@@ -408,17 +407,42 @@ func (r *shopRoom) displayBytes() []byte {
 	return p
 }
 
-func packetRoomShopRefresh(shop *shopRoom) mpacket.Packet {
+func packetRoomShowPlayerShop(shop *shopRoom, roomSlot byte) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelRoom)
-	p.WriteByte(constant.RoomShopRefresh)
-	p.WriteByte(byte(len(shop.items)))
+	p.WriteByte(constant.RoomPacketShowWindow)
+	p.WriteByte(shop.roomType)
+	p.WriteByte(byte(constant.ShopMaxPlayers))
+	p.WriteByte(roomSlot)
 
-	for _, shopItem := range shop.items {
+	for i, v := range shop.players {
+		p.WriteByte(byte(i))
+		v.encodeDisplayBytes(&p)
+		p.WriteString(v.Name)
+	}
+
+	p.WriteByte(constant.RoomPacketEndList)
+	p.WriteString(shop.name)
+	p.WriteByte(constant.RoomShopItemListUnknown)
+	encodeShopItems(&p, shop.items)
+
+	return p
+}
+
+func encodeShopItems(p *mpacket.Packet, items []*shopItem) {
+	p.WriteByte(byte(len(items)))
+
+	for _, shopItem := range items {
 		p.WriteInt16(shopItem.bundles)
 		p.WriteInt16(shopItem.bundleAmount)
 		p.WriteInt32(shopItem.price)
 		p.Append(shopItem.item.StorageBytes())
 	}
+}
+
+func packetRoomShopRefresh(shop *shopRoom) mpacket.Packet {
+	p := mpacket.CreateWithOpcode(opcode.SendChannelRoom)
+	p.WriteByte(constant.RoomShopRefresh)
+	encodeShopItems(&p, shop.items)
 
 	return p
 }

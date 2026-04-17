@@ -3898,11 +3898,13 @@ func (server Server) roomWindow(conn mnet.Client, reader mpacket.Reader) {
 
 		if shop.addItem(item, bundles, bundleAmount, price) {
 			shop.send(packetRoomShopRefresh(shop))
+		} else {
+			plr.Send(packetShopItemResult(constant.PlayerShopNotEnoughInStock))
 		}
 
 		plr.Send(packetPlayerNoChange())
 	case constant.MiniRoomBuyShopItem:
-		shopSlot := reader.ReadByte()
+		shopSlot := byte(reader.ReadInt16())
 		quantity := reader.ReadInt16()
 
 		r, err := pool.getPlayerRoom(plr.ID)
@@ -3943,7 +3945,7 @@ func (server Server) roomWindow(conn mnet.Client, reader mpacket.Reader) {
 		}
 
 	case constant.MiniRoomMoveItemShopToInv:
-		shopSlot := reader.ReadByte()
+		shopSlot := byte(reader.ReadInt16())
 
 		r, err := pool.getPlayerRoom(plr.ID)
 		if err != nil {
@@ -3955,8 +3957,9 @@ func (server Server) roomWindow(conn mnet.Client, reader mpacket.Reader) {
 		}
 
 		if remove := shop.removeItem(shopSlot); remove {
-			shop.send(packetRoomShopRemoveItem(0, int16(shopSlot)))
-			shop.send(packetRoomShopRefresh(shop))
+			shop.send(packetRoomShopRemoveItem(byte(len(shop.items)), int16(shopSlot)))
+		} else {
+			plr.Send(packetShopItemResult(constant.PlayerShopNotEnoughInStock))
 		}
 
 	default:

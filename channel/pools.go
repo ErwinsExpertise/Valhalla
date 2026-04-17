@@ -824,8 +824,12 @@ func (pool *roomPool) nextID() (int32, error) {
 func (pool *roomPool) playerShowRooms(plr *Player) {
 	for _, r := range pool.rooms {
 		if b, ok := r.(boxDisplayer); ok {
-			plr.Send(packetMapShowGameBox(b.displayBytes()))
-			return
+			display := b.displayBytes()
+			if len(display) < 5 {
+				continue
+			}
+
+			plr.Send(packetMapShowGameBox(display))
 		}
 	}
 }
@@ -900,7 +904,12 @@ func (pool roomPool) getPlayerRoom(id int32) (roomer, error) {
 
 func (pool roomPool) updateGameBox(r roomer) {
 	if b, ok := r.(boxDisplayer); ok {
-		pool.instance.send(packetMapShowGameBox(b.displayBytes()))
+		display := b.displayBytes()
+		if len(display) < 5 {
+			return
+		}
+
+		pool.instance.send(packetMapShowGameBox(display))
 		return
 	}
 }
