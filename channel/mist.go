@@ -108,14 +108,21 @@ func (m *fieldMist) isInMist(p pos) bool {
 func packetMistSpawn(mist *fieldMist) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelAffectedAreaCreate)
 	p.WriteInt32(mist.ID)
+
+	// v48 client-side area categories affect who the area harms.
+	// Use the non-hostile player area type for player-created mist and let the
+	// server handle mob poisoning ticks separately.
+	areaType := byte(2)
+	p.WriteByte(areaType)
 	p.WriteInt32(mist.ownerID)
 	p.WriteInt32(mist.skillID)
 	p.WriteByte(mist.skillLevel)
-	p.WriteInt16(0) // delay
+	p.WriteInt16(8) // skill delay
 	p.WriteInt32(int32(mist.box.x1))
 	p.WriteInt32(int32(mist.box.y1))
 	p.WriteInt32(int32(mist.box.x2))
 	p.WriteInt32(int32(mist.box.y2))
+	p.WriteByte(0)
 
 	return p
 }

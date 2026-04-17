@@ -4308,7 +4308,7 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 	case skill.Haste, skill.BanditHaste, skill.Bless, skill.IronWill, skill.Rage,
 		skill.Meditation, skill.ILMeditation, skill.MesoUp, skill.HolySymbol, skill.HyperBody, skill.NimbleBody:
 		plr.addBuff(skillID, skillLevel, delay)
-		sendSkillAnimation(plr, skillID, skillLevel)
+		sendPrimarySkillAnimation(plr, skillID, skillLevel)
 
 		// Apply to eligible party members in same map/instance per mask
 		if plr.party != nil {
@@ -4324,7 +4324,7 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 		}
 	case skill.SuperGMHaste, skill.SuperGMBless, skill.SuperGMHolySymbol:
 		plr.addBuff(skillID, skillLevel, delay)
-		sendSkillAnimation(plr, skillID, skillLevel)
+		sendPrimarySkillAnimation(plr, skillID, skillLevel)
 
 		// Apply buff to the entire map
 		for _, member := range plr.inst.players {
@@ -4335,7 +4335,7 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 			sendSecondarySkillAnimation(member, skillID, skillLevel)
 		}
 	case skill.SuperGMResurrection:
-		sendSkillAnimation(plr, skillID, skillLevel)
+		sendPrimarySkillAnimation(plr, skillID, skillLevel)
 
 		for _, member := range plr.inst.players {
 			if member.ID == plr.ID {
@@ -4348,7 +4348,7 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 		}
 
 	case skill.SuperGMHealDispell:
-		sendSkillAnimation(plr, skillID, skillLevel)
+		sendPrimarySkillAnimation(plr, skillID, skillLevel)
 
 		for _, member := range plr.inst.players {
 			if member.ID == plr.ID {
@@ -4361,7 +4361,7 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 		}
 
 	case skill.Dispel:
-		sendSkillAnimation(plr, skillID, skillLevel)
+		sendPrimarySkillAnimation(plr, skillID, skillLevel)
 
 		if plr.party != nil {
 			affected := getAffectedPartyMembers(plr.party, plr, partyMask)
@@ -4376,7 +4376,7 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 		}
 
 	case skill.Heal:
-		sendSkillAnimation(plr, skillID, skillLevel)
+		sendPrimarySkillAnimation(plr, skillID, skillLevel)
 
 		// Get skill data for recovery rate percentage
 		skillData, err := nx.GetPlayerSkill(skillID)
@@ -4447,7 +4447,7 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 		}
 
 	case skill.Resurrection:
-		sendSkillAnimation(plr, skillID, skillLevel)
+		sendPrimarySkillAnimation(plr, skillID, skillLevel)
 
 		if plr.party != nil {
 			affected := getAffectedPartyMembers(plr.party, plr, partyMask)
@@ -4466,7 +4466,7 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 	// Nimble feet and recovery beginner skills with cooldown
 	case skill.NimbleFeet, skill.Recovery:
 		plr.addBuff(skillID, skillLevel, delay)
-		sendSkillAnimation(plr, skillID, skillLevel)
+		sendPrimarySkillAnimation(plr, skillID, skillLevel)
 		// Send cooldown packet for beginner skills
 		if skillData, ok := plr.skills[skillID]; ok {
 			plr.Send(packetPlayerSkillCooldown(skillID, skillData.CooldownTime))
@@ -4496,7 +4496,7 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 		// GM Hide (mapped to invincible bit)
 		skill.SuperGMHide:
 		plr.addBuff(skillID, skillLevel, delay)
-		sendSkillAnimation(plr, skillID, skillLevel)
+		sendPrimarySkillAnimation(plr, skillID, skillLevel)
 
 	case skill.Threaten,
 		skill.Slow, skill.ILSlow,
@@ -4507,7 +4507,7 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 		skill.ShadowWeb,
 		skill.Doom:
 
-		sendSkillAnimation(plr, skillID, skillLevel)
+		sendPrimarySkillAnimation(plr, skillID, skillLevel)
 
 		var statMask int32
 		switch skill.Skill(skillID) {
@@ -4583,11 +4583,11 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 
 		plr.addSummon(summ)
 		plr.addBuff(skillID, skillLevel, delay)
-		sendSkillAnimation(plr, skillID, skillLevel)
+		sendPrimarySkillAnimation(plr, skillID, skillLevel)
 
 	default:
 		plr.addBuff(skillID, skillLevel, delay)
-		sendSkillAnimation(plr, skillID, skillLevel)
+		sendPrimarySkillAnimation(plr, skillID, skillLevel)
 	}
 
 	// Apply MP cost/cooldown, if any (reuses the same flow as attack skills).

@@ -25,7 +25,7 @@ func createMysticDoor(plr *Player, skillID int32, skillLevel byte) {
 
 	returnMapID := plr.inst.returnMapID
 	if returnMapID != constant.InvalidMap {
-		sendSkillAnimation(plr, skillID, skillLevel)
+		sendPrimarySkillAnimation(plr, skillID, skillLevel)
 
 		expiresAt := time.Now().Add(time.Duration(duration) * time.Second)
 		createSourceDoor(plr, doorPos, expiresAt)

@@ -3209,7 +3209,7 @@ func packetPlayerRemoteSkillAnimationWithType(charID int32, animationType byte, 
 	return p
 }
 
-func packetPlayerRemoteSkillAnimation(charID int32, skillID int32, level byte) mpacket.Packet {
+func packetPlayerRemotePrimarySkillAnimation(charID int32, skillID int32, level byte) mpacket.Packet {
 	return packetPlayerRemoteSkillAnimationWithType(charID, constant.PlayerEffectSkillOnSelf, skillID, level)
 }
 
@@ -3221,18 +3221,18 @@ func packetPlayerLocalSkillAnimationWithType(animationType byte, skillID int32, 
 	return p
 }
 
-func packetPlayerLocalSkillAnimation(skillID int32, level byte) mpacket.Packet {
+func packetPlayerLocalPrimarySkillAnimation(skillID int32, level byte) mpacket.Packet {
 	return packetPlayerLocalSkillAnimationWithType(constant.PlayerEffectSkillOnSelf, skillID, level)
 }
 
-func sendSkillAnimation(plr *Player, skillID int32, level byte) {
+func sendPrimarySkillAnimation(plr *Player, skillID int32, level byte) {
 	if plr == nil {
 		return
 	}
 
-	plr.Send(packetPlayerLocalSkillAnimation(skillID, level))
+	plr.Send(packetPlayerLocalPrimarySkillAnimation(skillID, level))
 	if plr.inst != nil && plr.Conn != nil {
-		plr.inst.sendExcept(packetPlayerRemoteSkillAnimation(plr.ID, skillID, level), plr.Conn)
+		plr.inst.sendExcept(packetPlayerRemotePrimarySkillAnimation(plr.ID, skillID, level), plr.Conn)
 	}
 }
 
