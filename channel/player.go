@@ -3200,17 +3200,57 @@ func packetPlayerEffectSkill(onOther bool, skillID int32, level byte) mpacket.Pa
 	return p
 }
 
-func packetPlayerSkillAnimation(charID int32, party bool, skillID int32, level byte) mpacket.Packet {
+func packetPlayerRemoteSkillAnimationWithType(charID int32, animationType byte, skillID int32, level byte) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelPlayerAnimation)
 	p.WriteInt32(charID)
-	if party {
-		p.WriteByte(constant.PlayerEffectSkillOnOther)
-	} else {
-		p.WriteByte(constant.PlayerEffectSkillOnSelf)
-	}
+	p.WriteByte(animationType)
 	p.WriteInt32(skillID)
 	p.WriteByte(level)
 	return p
+}
+
+func packetPlayerRemoteSkillAnimation(charID int32, skillID int32, level byte) mpacket.Packet {
+	return packetPlayerRemoteSkillAnimationWithType(charID, constant.PlayerEffectSkillOnSelf, skillID, level)
+}
+
+func packetPlayerLocalSkillAnimationWithType(animationType byte, skillID int32, level byte) mpacket.Packet {
+	p := mpacket.CreateWithOpcode(opcode.SendChannelPlayerRemoteAnimation)
+	p.WriteByte(animationType)
+	p.WriteInt32(skillID)
+	p.WriteByte(level)
+	return p
+}
+
+func packetPlayerLocalSkillAnimation(skillID int32, level byte) mpacket.Packet {
+	return packetPlayerLocalSkillAnimationWithType(constant.PlayerEffectSkillOnSelf, skillID, level)
+}
+
+func sendSkillAnimation(plr *Player, skillID int32, level byte) {
+	if plr == nil {
+		return
+	}
+
+	plr.Send(packetPlayerLocalSkillAnimation(skillID, level))
+	if plr.inst != nil && plr.Conn != nil {
+		plr.inst.sendExcept(packetPlayerRemoteSkillAnimation(plr.ID, skillID, level), plr.Conn)
+	}
+}
+
+func sendSecondaryRemoteSkillAnimation(plr *Player, skillID int32, level byte) {
+	if plr == nil || plr.inst == nil || plr.Conn == nil {
+		return
+	}
+
+	plr.inst.sendExcept(packetPlayerRemoteSkillAnimationWithType(plr.ID, constant.PlayerEffectSkillOnOther, skillID, level), plr.Conn)
+}
+
+func sendSecondarySkillAnimation(plr *Player, skillID int32, level byte) {
+	if plr == nil {
+		return
+	}
+
+	plr.Send(packetPlayerLocalSkillAnimationWithType(constant.PlayerEffectSkillOnOther, skillID, level))
+	sendSecondaryRemoteSkillAnimation(plr, skillID, level)
 }
 
 func packetPlayerGiveBuff(mask []byte, values []byte, delay int16, extra byte) mpacket.Packet {
