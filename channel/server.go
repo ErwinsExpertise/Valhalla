@@ -273,18 +273,15 @@ func (server *Server) ClientDisconnected(conn mnet.Client) {
 		removeMysticDoor(plr)
 	}
 
-	/*
-		if field, ok := server.fields[plr.mapID]; ok {
-			if inst, ierr := field.getInstance(plr.inst.id); ierr == nil {
-				if remErr := inst.removePlayer(plr, true); remErr != nil {
-					log.Println(remErr)
-				}
-			} else {
-				log.Println("Unable to find instance for player on disconnect:", ierr)
+	if field, ok := server.fields[plr.mapID]; ok && plr.inst != nil {
+		if inst, ierr := field.getInstance(plr.inst.id); ierr == nil {
+			if remErr := inst.removePlayer(plr, true); remErr != nil {
+				log.Println(remErr)
 			}
+		} else {
+			log.Println("Unable to find instance for player on disconnect:", ierr)
 		}
-
-	*/
+	}
 
 	plr.Logout()
 

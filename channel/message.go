@@ -187,6 +187,7 @@ func packetMessageWhisper(sender string, message string, channel byte) mpacket.P
 	p.WriteByte(0x12)
 	p.WriteString(sender)
 	p.WriteByte(channel)
+	p.WriteByte(0)
 	p.WriteString(message)
 
 	return p

@@ -673,6 +673,15 @@ func (inst *fieldInstance) addPlayer(plr *Player) error {
 	plr.inst = inst
 
 	for _, other := range inst.players {
+		if other == nil {
+			continue
+		}
+		if other.ID == plr.ID || (other.Conn != nil && plr.Conn != nil && other.Conn == plr.Conn) {
+			return nil
+		}
+	}
+
+	for _, other := range inst.players {
 		other.Send(packetMapPlayerEnter(plr))
 		plr.Send(packetMapPlayerEnter(other))
 
@@ -799,20 +808,25 @@ func (inst *fieldInstance) sendPartyDoorBindings(viewer *Player) {
 }
 
 func (inst *fieldInstance) removePlayer(plr *Player, usedPortal bool) error {
-	index := -1
+	filtered := inst.players[:0]
+	removed := false
 
-	for i, v := range inst.players {
-		if v.Conn == plr.Conn {
-			index = i
-			break
+	for _, v := range inst.players {
+		if v == nil {
+			continue
 		}
+		if v.ID == plr.ID || (v.Conn != nil && plr.Conn != nil && v.Conn == plr.Conn) {
+			removed = true
+			continue
+		}
+		filtered = append(filtered, v)
 	}
 
-	if index == -1 {
+	if !removed {
 		return fmt.Errorf("Player does not exist in instance")
 	}
 
-	inst.players = append(inst.players[:index], inst.players[index+1:]...)
+	inst.players = filtered
 
 	for _, v := range inst.players {
 		v.Send(packetMapPlayerLeft(plr.ID))

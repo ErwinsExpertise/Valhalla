@@ -958,7 +958,7 @@ func (server *Server) playerUsePortal(conn mnet.Client, reader mpacket.Reader) {
 	if err != nil {
 		if inst0, e2 := curField.getInstance(0); e2 == nil {
 			if _, has := inst0.getPlayerFromID(plr.ID); has != nil {
-				_ = inst0.addPlayer(plr)
+				return
 			}
 			plr.inst = inst0
 			srcInst = inst0
@@ -2100,9 +2100,15 @@ func (server *Server) playerPartyInfo(conn mnet.Client, reader mpacket.Reader) {
 
 		server.world.Send(internal.PacketChannelPartyAccept(partyID, plr.ID, int32(server.id), plr.mapID, int32(plr.job), int32(plr.level), plr.Name))
 	case 4: // invite
-		id := reader.ReadInt32()
-
-		recipient, err := server.players.GetFromID(id)
+		var recipient *Player
+		var err error
+		if len(reader.GetRestAsBytes()) == 4 {
+			id := reader.ReadInt32()
+			recipient, err = server.players.GetFromID(id)
+		} else {
+			name := reader.ReadString(reader.ReadInt16())
+			recipient, err = server.players.GetFromName(name)
+		}
 
 		if err != nil {
 			conn.Send(packetPartyUnableToFindPlayer())
@@ -2214,8 +2220,58 @@ func (server Server) chatSlashCommand(conn mnet.Client, reader mpacket.Reader) {
 			plr.Send(packetMessageFindResult(name, true, inCashShop, byte(channelID) == server.id, mapID))
 		}
 	case 6: // whispher
-		recepientName := reader.ReadString(reader.ReadInt16())
-		msg := reader.ReadString(reader.ReadInt16())
+		decodeWhisper := func(raw []byte) (string, string, bool) {
+			tryDecode := func(skipLeading bool, skipAfterName bool) (string, string, bool) {
+				pkt := mpacket.Packet(append([]byte(nil), raw...))
+				r := mpacket.NewReader(&pkt, reader.Time)
+				if skipLeading {
+					if len(r.GetRestAsBytes()) < 1 {
+						return "", "", false
+					}
+					r.ReadByte()
+				}
+				if len(r.GetRestAsBytes()) < 2 {
+					return "", "", false
+				}
+				nameLen := r.ReadInt16()
+				if nameLen <= 0 || len(r.GetRestAsBytes()) < int(nameLen) {
+					return "", "", false
+				}
+				name := r.ReadString(nameLen)
+				if skipAfterName {
+					if len(r.GetRestAsBytes()) < 1 {
+						return "", "", false
+					}
+					r.ReadByte()
+				}
+				if len(r.GetRestAsBytes()) < 2 {
+					return "", "", false
+				}
+				msgLen := r.ReadInt16()
+				if msgLen < 0 || len(r.GetRestAsBytes()) < int(msgLen) {
+					return "", "", false
+				}
+				msg := r.ReadString(msgLen)
+				return name, msg, len(r.GetRestAsBytes()) == 0
+			}
+
+			if name, msg, ok := tryDecode(false, false); ok {
+				return name, msg, true
+			}
+			if name, msg, ok := tryDecode(true, false); ok {
+				return name, msg, true
+			}
+			if name, msg, ok := tryDecode(false, true); ok {
+				return name, msg, true
+			}
+			return "", "", false
+		}
+
+		recepientName, msg, ok := decodeWhisper(reader.GetRestAsBytes())
+		if !ok {
+			log.Println("Unable to decode whisper request:", reader)
+			return
+		}
 
 		if receiver, err := server.players.GetFromName(recepientName); err != nil {
 			var online bool
@@ -3331,6 +3387,11 @@ func (server Server) roomWindow(conn mnet.Client, reader mpacket.Reader) {
 				}
 			}
 		case constant.MiniRoomTypeTrade:
+			var inviteTargetID int32
+			if len(reader.GetRestAsBytes()) >= 4 {
+				inviteTargetID = reader.ReadInt32()
+			}
+
 			r := newTradeRoom(inst.nextID())
 
 			if r.addPlayer(plr) {
@@ -3338,6 +3399,15 @@ func (server Server) roomWindow(conn mnet.Client, reader mpacket.Reader) {
 
 				if err != nil {
 					log.Println(err)
+					return
+				}
+
+				if inviteTargetID != 0 {
+					if target, inviteErr := inst.getPlayerFromID(inviteTargetID); inviteErr == nil {
+						r.sendInvite(target)
+					} else {
+						plr.Send(packetRoomTradeRequireSameMap())
+					}
 				}
 			}
 		case constant.MiniRoomTypePlayerShop:
@@ -4523,7 +4593,6 @@ func (server *Server) playerSpecialSkill(conn mnet.Client, reader mpacket.Reader
 		plr.inst.send(packetPlayerSkillAnimation(plr.ID, false, skillID, skillLevel))
 
 	default:
-		// Always Send a self animation so client shows casting even for non-buffs.
 		plr.addBuff(skillID, skillLevel, delay)
 		plr.inst.send(packetPlayerSkillAnimation(plr.ID, false, skillID, skillLevel))
 	}
