@@ -1091,14 +1091,66 @@ func (server Server) playerUseScriptedPortal(conn mnet.Client, reader mpacket.Re
 		return
 	}
 
-	nameLen := reader.ReadInt16()
+	tryPortalName := func(r mpacket.Reader, withCount, withTick bool, lenSize int) string {
+		if withCount {
+			portalCount := r.ReadByte()
+			if plr.portalCount != portalCount {
+				plr.portalCount = portalCount
+			}
+		}
 
-	if nameLen <= 0 {
+		if withTick {
+			_ = r.ReadInt32()
+		}
+
+		var nameLen int16
+		if lenSize == 1 {
+			nameLen = int16(r.ReadByte())
+		} else {
+			nameLen = r.ReadInt16()
+		}
+
+		if nameLen <= 0 {
+			return ""
+		}
+
+		name := r.ReadString(nameLen)
+		if name == "" {
+			return ""
+		}
+
+		if _, err := plr.inst.getPortalFromName(name); err == nil {
+			return name
+		}
+
+		return ""
+	}
+
+	portalName := ""
+	for _, c := range []struct {
+		withCount bool
+		withTick  bool
+		lenSize   int
+	}{
+		{true, true, 2},
+		{false, true, 2},
+		{true, false, 2},
+		{false, false, 2},
+		{true, true, 1},
+		{false, true, 1},
+		{true, false, 1},
+		{false, false, 1},
+	} {
+		if name := tryPortalName(reader, c.withCount, c.withTick, c.lenSize); name != "" {
+			portalName = name
+			break
+		}
+	}
+
+	if portalName == "" {
 		plr.Send(packetPlayerNoChange())
 		return
 	}
-
-	portalName := reader.ReadString(nameLen)
 
 	srcPortal, err := plr.inst.getPortalFromName(portalName)
 
@@ -1873,6 +1925,8 @@ func (server Server) playerBumpDamage(conn mnet.Client, reader mpacket.Reader) {
 		return
 	}
 
+	// The client reports Poison Mist contact as bump damage; ignore that and let
+	// the server-owned mist tick handle mob poisoning instead.
 	if plr.inst != nil && plr.inst.mistPool.playerInPoisonMist(plr.pos) {
 		return
 	}
