@@ -3904,7 +3904,7 @@ func (server Server) roomWindow(conn mnet.Client, reader mpacket.Reader) {
 
 		plr.Send(packetPlayerNoChange())
 	case constant.MiniRoomBuyShopItem:
-		shopSlot := byte(reader.ReadInt16())
+		shopSlot := reader.ReadByte()
 		quantity := reader.ReadInt16()
 
 		r, err := pool.getPlayerRoom(plr.ID)
