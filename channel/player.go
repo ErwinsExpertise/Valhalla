@@ -3424,14 +3424,14 @@ func AppendCashShopCharacterData(p *mpacket.Packet, plr *Player) {
 func writeCashShopInventory(p *mpacket.Packet, plr Player) {
 	for _, it := range plr.equip {
 		if it.slotID < 0 && !it.cash {
-			p.WriteBytes(it.setFieldBytes())
+			p.WriteBytes(it.InventoryBytes())
 		}
 	}
 	p.WriteByte(0)
 
 	for _, it := range plr.equip {
 		if it.slotID < 0 && it.cash {
-			p.WriteBytes(it.setFieldBytes())
+			p.WriteBytes(it.InventoryBytes())
 		}
 	}
 	p.WriteByte(0)
@@ -3549,14 +3549,14 @@ func writeSetFieldSlotSizes(p *mpacket.Packet, plr *Player) {
 func writeSetFieldInventory(p *mpacket.Packet, plr Player) {
 	for _, it := range plr.equip {
 		if it.slotID < 0 && !it.cash {
-			p.WriteBytes(it.setFieldBytes())
+			p.WriteBytes(it.InventoryBytes())
 		}
 	}
 	p.WriteByte(0)
 
 	for _, it := range plr.equip {
 		if it.slotID < 0 && it.cash {
-			p.WriteBytes(it.setFieldBytes())
+			p.WriteBytes(it.InventoryBytes())
 		}
 	}
 	p.WriteByte(0)
@@ -3581,7 +3581,7 @@ func writeSetFieldInventoryTab(p *mpacket.Packet, items []Item) {
 	})
 
 	for _, it := range cp {
-		p.WriteBytes(it.setFieldBytes())
+		p.WriteBytes(it.InventoryBytes())
 	}
 	p.WriteByte(0)
 }
@@ -3656,7 +3656,7 @@ func packetInventoryAddItem(item Item, newItem bool) mpacket.Packet {
 		p.WriteByte(0x00)
 		p.WriteByte(item.invID)
 		p.WriteInt16(item.slotID)
-		p.WriteBytes(item.inventoryOperationBody())
+		p.WriteBytes(item.StorageBytes())
 	} else {
 		p.WriteByte(0x01)
 		p.WriteByte(item.invID)
@@ -3695,7 +3695,7 @@ func packetInventoryAddItems(items []Item, newItem []bool) mpacket.Packet {
 			p.WriteByte(0x00)
 			p.WriteByte(v.invID)
 			p.WriteInt16(v.slotID)
-			p.WriteBytes(v.inventoryOperationBody())
+			p.WriteBytes(v.StorageBytes())
 		} else {
 			p.WriteByte(0x01)
 			p.WriteByte(v.invID)

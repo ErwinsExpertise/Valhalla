@@ -98,12 +98,11 @@ type Item struct {
 
 const neverExpire int64 = 150842304000000000
 
-var setFieldItemMagic = []byte{0x80, 0x05}
 var rechargeableItemFooter = []byte{0xA1, 0x6D, 0x05, 0x01, 0x00, 0x00, 0x00, 0x7D}
 
 func isRechargeableItem(itemID int32) bool {
 	switch itemID / 10000 {
-	case 207, 233:
+	case 207:
 		return true
 	default:
 		return false
@@ -535,11 +534,11 @@ func (v Item) InventoryBytes() []byte {
 }
 
 func (v Item) StorageBytes() []byte {
-	return v.inventoryOperationBody()
+	return v.bytes(false, true)
 }
 
 func (v Item) CashShopInventoryBody() []byte {
-	return v.inventoryOperationBody()
+	return v.bytes(false, true)
 }
 
 // ShortBytes e.g. inventory operation, storage window
@@ -606,6 +605,9 @@ func (v Item) bytes(shortSlot, storage bool) []byte {
 		p.WriteInt16(v.jump)
 		p.WriteString(v.creatorName)
 		p.WriteInt16(v.flag) // lock/seal, show, spikes, cape, cold protection etc ?
+		if !v.cash {
+			p.WriteInt64(0)
+		}
 	} else if v.pet {
 		p.WritePaddedString(v.petData.name, 13)
 		p.WriteByte(v.petData.level)
@@ -623,111 +625,6 @@ func (v Item) bytes(shortSlot, storage bool) []byte {
 	}
 
 	return p
-}
-
-func (v Item) setFieldBytes() []byte {
-	p := mpacket.NewPacket()
-	v.writeSetFieldSlot(&p)
-	v.writeClientItemBody(&p)
-	return p
-}
-
-func (v Item) inventoryOperationBody() []byte {
-	return v.bytes(false, true)
-}
-
-func (v Item) writeSetFieldSlot(p *mpacket.Packet) {
-	if v.slotID < 0 {
-		pos := int16(-v.slotID)
-		if pos > 100 {
-			p.WriteByte(byte(pos - 100))
-			return
-		}
-		p.WriteByte(byte(pos))
-		return
-	}
-
-	p.WriteByte(byte(v.slotID))
-}
-
-func (v Item) writeClientItemBody(p *mpacket.Packet) {
-	if v.pet {
-		v.writeClientPetBody(p)
-		return
-	}
-
-	if v.invID == 1 {
-		p.WriteByte(0x01)
-	} else {
-		p.WriteByte(0x02)
-	}
-
-	p.WriteInt32(v.ID)
-	p.WriteInt16(0)
-	p.WriteBytes(setFieldItemMagic)
-	p.WriteInt32(getSetFieldItemTimestamp(v.expireTime))
-	p.WriteByte(2)
-
-	if v.invID == 1 {
-		p.WriteByte(v.upgradeSlots)
-		p.WriteByte(v.scrollLevel)
-		p.WriteInt16(v.str)
-		p.WriteInt16(v.dex)
-		p.WriteInt16(v.intt)
-		p.WriteInt16(v.luk)
-		p.WriteInt16(v.hp)
-		p.WriteInt16(v.mp)
-		p.WriteInt16(v.watk)
-		p.WriteInt16(v.matk)
-		p.WriteInt16(v.wdef)
-		p.WriteInt16(v.mdef)
-		p.WriteInt16(v.accuracy)
-		p.WriteInt16(v.avoid)
-		p.WriteInt16(v.hands)
-		p.WriteInt16(v.speed)
-		p.WriteInt16(v.jump)
-		p.WriteString(v.creatorName)
-		p.WriteByte(byte(v.flag))
-		p.WriteByte(0)
-		p.WriteInt32(0)
-		p.WriteInt32(0)
-		return
-	}
-
-	p.WriteInt16(v.amount)
-	p.WriteString(v.creatorName)
-	p.WriteInt16(0)
-	if isRechargeableItem(v.ID) {
-		p.WriteBytes(rechargeableItemFooter)
-	}
-}
-
-func (v Item) writeClientPetBody(p *mpacket.Packet) {
-	p.WriteByte(0x03)
-	p.WriteInt32(v.ID)
-	p.WriteBool(v.cash)
-	p.WriteUint64(uint64(v.cashID))
-
-	p.WriteInt64(v.expireTime)
-
-	p.WritePaddedString(v.petData.name, 13)
-	p.WriteByte(v.petData.level)
-	p.WriteInt16(v.petData.closeness)
-	p.WriteByte(v.petData.fullness)
-	p.WriteInt64(v.petData.deadDate)
-	p.WriteInt32(0)
-
-}
-
-func getSetFieldItemTimestamp(expireTime int64) int32 {
-	if expireTime == 0 || expireTime == neverExpire {
-		return 0
-	}
-
-	const itemYear2000 = -1085019342
-	const realYear2000 = int64(946681229830)
-	timeMinutes := (expireTime - realYear2000) / 1000 / 60
-	return int32(float64(timeMinutes)*35.762787) + itemYear2000
 }
 
 // Use applies stat changes for items
