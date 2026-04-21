@@ -96,6 +96,7 @@ func (r *shopRoom) closeShop(reason byte) {
 			continue
 		}
 		plr.Send(packetRoomLeave(byte(i), reason))
+		plr.Send(packetPlayerNoChange())
 	}
 
 	owner := r.ownerPlayer()
