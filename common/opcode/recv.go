@@ -46,7 +46,7 @@ const (
 	RecvChannelPlayerFame          int16 = 0x4A
 	RecvChannelCharacterInfo       int16 = 0x4C
 	RecvChannelPetSpawn            int16 = 0x4D
-	RecvChannelCancelBuff          int16 = 0x5C
+	RecvChannelCancelBuff          int16 = 0x5B
 	RecvChannelScriptedPortal      int16 = 0x4F
 	RecvChannelTeleportRock        int16 = 0x51
 	RecvChannelLieDetectorResult   int16 = 0x54
@@ -55,7 +55,7 @@ const (
 	RecvChannelCharacterReport     int16 = 0x57
 	RecvChannelGroupChat           int16 = 0x59
 	RecvChannelSlashCommands       int16 = 0x5A
-	RecvChannelMessenger           int16 = 0x5B
+	RecvChannelMessenger           int16 = 0x5C
 	RecvChannelCharacterUIWindow   int16 = 0x5D
 	RecvChannelPartyInfo           int16 = 0x5E
 	RecvChannelGuildManagement     int16 = 0x60
