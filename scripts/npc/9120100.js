@@ -1,40 +1,24 @@
-// Welcome message
-npc.sendSelection("Welcome, welcome, welcome to the showa Hair-Salon! Do you, by any chance, have #b#t5150053##k or #b#t5151036##k? If so, how about letting me take care of your hair? Please choose what you want to do with it.\r\n#L0##bChange hair style (VIP coupon)#l\r\n#L1##bDye your hair (VIP coupon)#l");
-var select = npc.selection();
+var couponCut = 5150009;
+var couponDye = 5151009;
+var maleHair = [30230, 30030, 30260, 30280, 30240, 30290, 30020, 30270, 30340, 30710, 30810];
+var femaleHair = [31310, 31300, 31050, 31040, 31160, 31100, 31410, 31030, 31790, 31550];
 
-if (select === 0) {
-  let hair;
-  if (plr.job() < 1000) {
-    hair = [30030, 33240, 30780, 30810, 30820, 30260, 30280, 30710, 30920, 30340];
-  } else {
-    hair = [31550, 31850, 31350, 31460, 31100, 31030, 31790, 31000, 31770, 34260];
-  }
+npc.sendSelection("Welcome to the Showa hair shop. If you have a #b#t" + couponCut + "##k, or a #b#t" + couponDye + "##k, allow me to take care of your hairdo. Please choose the one you want.\r\n#L0#Haircut: #i" + couponCut + "##t" + couponCut + "##l\r\n#L1#Dye your hair: #i" + couponDye + "##t" + couponDye + "##l");
+var selection = npc.selection();
 
-  for (let i = 0; i < hair.length; i++) {
-    hair[i] = hair[i] + (plr.getHair() % 10);
-  }
-
-  var choice = npc.askAvatar("I can change your hairstyle to something totally new. Aren't you sick of your current hairdo? With #b#t5150053##k, I can make that happen for you. Choose the hairstyle you'd like to sport.", hair);
-
-  if (plr.itemCount(5150053) > 0) {
-    plr.giveItem(5150053, -1);
-    plr.setHair(hair[choice]);
-    npc.sendOk("Enjoy your new and improved hairstyle!");
-  } else {
-    npc.sendOk("Hmmm...it looks like you don't have our designated coupon...I'm afraid I can't give you a haircut without it. I'm sorry...");
-  }
-
-} else if (select === 1) {
-  let base = Math.floor(plr.getHair() / 10) * 10;
-  let hairColor = [base + 0, base + 1, base + 2, base + 3, base + 4, base + 5, base + 6];
-
-  var choice = npc.askAvatar("I can change your hair color to something totally new. Aren't you sick of your current hairdo? With #b#t5151036##k, I can make that happen. Choose the hair color you'd like to sport.", hairColor);
-
-  if (plr.itemCount(5151036) > 0) {
-    plr.giveItem(5151036, -1);
-    plr.setHair(hairColor[choice]);
-    npc.sendOk("Enjoy your new and improved hair colour!");
-  } else {
-    npc.sendOk("Hmmm...it looks like you don't have our designated coupon...I'm afraid I can't dye your hair without it. I'm sorry...");
-  }
+if (selection === 0) {
+    var src = plr.gender() < 1 ? maleHair : femaleHair;
+    var styles = [];
+    for (var i = 0; i < src.length; i++) styles.push(src[i] + (plr.hair() % 10));
+    var picked = npc.askAvatar.apply(npc, ["I can totally change up your hairstyle and make it look so good. Why don't you change it up a bit? With #b#t" + couponCut + "##k, I'll take care of the rest for you. Choose the style of your liking!"].concat(styles));
+    if (picked < 0 || picked >= styles.length) npc.sendOk("Changed your mind? That's fine. Come back any time.");
+    else if (!plr.haveItem(couponCut, 1)) npc.sendOk("Hmmm...it looks like you don't have our designated coupon...I'm afraid I can't give you a haircut without it. I'm sorry...");
+    else { plr.gainItem(couponCut, -1); plr.setHair(styles[picked]); npc.sendOk("Enjoy your new and improved hairstyle!"); }
+} else if (selection === 1) {
+    var base = Math.floor(plr.hair() / 10) * 10;
+    var colors = [base, base + 1, base + 2, base + 3, base + 4, base + 5, base + 6, base + 7];
+    var colorPick = npc.askAvatar.apply(npc, ["I can totally change your haircolor and make it look so good. Why don't you change it up a bit? With #b#t" + couponDye + "##k, I'll take care of the rest. Choose the color of your liking!"].concat(colors));
+    if (colorPick < 0 || colorPick >= colors.length) npc.sendOk("Changed your mind? That's fine. Come back any time.");
+    else if (!plr.haveItem(couponDye, 1)) npc.sendOk("Hmmm...it looks like you don't have our designated coupon...I'm afraid I can't dye your hair without it. I'm sorry...");
+    else { plr.gainItem(couponDye, -1); plr.setHair(colors[colorPick]); npc.sendOk("Enjoy your new and improved haircolor!"); }
 }

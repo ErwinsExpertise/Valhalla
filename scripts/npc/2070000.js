@@ -1,2 +1,1 @@
-// 倉庫 魯老闆
-npc.sendStorage()
+npc.sendStorage(2070000)

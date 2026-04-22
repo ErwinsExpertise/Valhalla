@@ -676,9 +676,17 @@ func (ctrl *scriptPlayerWrapper) Gender() byte {
 	return ctrl.plr.gender
 }
 
+func (ctrl *scriptPlayerWrapper) GetGender() byte {
+	return ctrl.Gender()
+}
+
 // Hair returns the current hair ID
 func (ctrl *scriptPlayerWrapper) Hair() int32 {
 	return ctrl.plr.hair
+}
+
+func (ctrl *scriptPlayerWrapper) GetHair() int32 {
+	return ctrl.Hair()
 }
 
 // SetHair updates the player's hair and refreshes the client appearance
@@ -694,6 +702,10 @@ func (ctrl *scriptPlayerWrapper) SetHair(id int32) {
 
 func (ctrl *scriptPlayerWrapper) Face() int32 {
 	return ctrl.plr.face
+}
+
+func (ctrl *scriptPlayerWrapper) GetFace() int32 {
+	return ctrl.Face()
 }
 
 func (ctrl *scriptPlayerWrapper) SetFace(id int32) {
@@ -720,6 +732,14 @@ func (ctrl *scriptPlayerWrapper) SetSkinColor(skin byte) {
 	if err != nil {
 		return
 	}
+}
+
+func (ctrl *scriptPlayerWrapper) SetSkin(skin byte) {
+	ctrl.SetSkinColor(skin)
+}
+
+func (ctrl *scriptPlayerWrapper) GetSkin() byte {
+	return ctrl.Skin()
 }
 
 type scriptQuestView struct {
@@ -1096,6 +1116,25 @@ func (ctrl *npcChatController) SendAvatar(text string, avatars ...int32) {
 	}
 }
 
+func (ctrl *npcChatController) AskAvatar(text string, avatars ...int32) int {
+	return ctrl.SendStyleChoice(text, avatars)
+}
+
+func (ctrl *npcChatController) SendStyleChoice(text string, avatars []int32) int {
+	if ctrl.stateTracker.performInterrupt() {
+		ctrl.stateTracker.addState(npcSelectionState)
+		ctrl.conn.Send(packetNpcChatStyleWindow(ctrl.npcID, text, avatars))
+		ctrl.vm.Interrupt("SendStyleChoice")
+		return -1
+	}
+	if len(ctrl.stateTracker.selections) > ctrl.stateTracker.selection {
+		val := ctrl.stateTracker.selections[ctrl.stateTracker.selection]
+		ctrl.stateTracker.selection++
+		return int(val)
+	}
+	return -1
+}
+
 // SendGuildCreation
 func (ctrl *npcChatController) SendGuildCreation() {
 	if ctrl.stateTracker.performInterrupt() {
@@ -1170,6 +1209,10 @@ func (ctrl *npcChatController) SendMenu(baseText string, selections ...string) i
 		return int(val)
 	}
 	return -1
+}
+
+func (ctrl *npcChatController) AskMenu(baseText string, selections ...string) int {
+	return ctrl.SendMenu(baseText, selections...)
 }
 
 func (ctrl *npcChatController) SendImage(imagePath string) {
