@@ -1,10 +1,9 @@
-// Check for 30 Dark Marbles
 if (plr.itemCount(4031013) >= 30) {
-    npc.sendNext("Ohhhhh.. you collected all 30 Dark Marbles!! It should have been difficult.. just incredible! Alright. You've passed the test and for that, I'll reward you #bThe Proof of a Hero#k. Take that and go back to Henesys.")
-    plr.warp(106010000)
-    plr.removeItemsByID(4031013, 30)
-    plr.giveItem(4031009, -1)
-    plr.giveItem(4031012, 1)
+    plr.removeAll(4031013);
+    plr.completeQuest(100001);
+    plr.startQuest(100002);
+    npc.sendOk("You brought back all 30 Dark Marbles. Not bad. Take this proof to Athena Pierce and show her your aim held up under pressure.");
+    plr.warp(106010000);
 } else {
-    npc.sendOk("You will have to collect me #b30 #t4031013##k. Good luck.")
+    npc.sendOk("Return with #b30 #t4031013##k. A bowman who loses focus halfway through a test is not ready for the next rank.");
 }

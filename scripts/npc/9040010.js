@@ -3,7 +3,7 @@ var leader = plr.getEventProperty("leader");
 if (leader == null) {
     plr.warp(990001100);
 } else if (leader !== plr.name()) {
-    npc.sendOk("Ask your party leader to talk to me.");
+    npc.sendOk("Ask your guild leader to talk to me.");
 } else if (!plr.haveItem(4001024, 1)) {
     npc.sendOk("This is your final challenge. Defeat the evil lurking within the Rubian and return it to me. That is all.");
 } else {

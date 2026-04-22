@@ -1,9 +1,9 @@
-npc.sendNext("You will have to collect me #b30 #t4031013##k. Good luck.");
-
 if (plr.itemCount(4031013) >= 30) {
-    npc.sendBackNext("Ohhhhh.. you collected all 30 Dark Marbles!! It should have been difficult.. just incredible! Alright. You've passed the test and for that, I'll reward you #bThe Proof of a Hero#k. Take that and go back to Perion.");
-    plr.warp(102020300, 0);
-    plr.removeItemsByID(4031013, 30);
-    plr.takeItem(4031008, 0, 1, 1);   // ETC inv
-    plr.giveItem(4031012, 1);
+    plr.removeAll(4031013);
+    plr.completeQuest(100004);
+    plr.startQuest(100005);
+    npc.sendOk("You've done well. Take this proof back to Dances with Balrog. He will know you earned it.");
+    plr.warp(102020300);
+} else {
+    npc.sendOk("Come back when you've collected #b30 #t4031013##k. That's the only proof I'll accept.");
 }

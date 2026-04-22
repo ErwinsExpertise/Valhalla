@@ -1,9 +1,9 @@
 if (plr.itemCount(4031013) >= 30) {
-    npc.sendNext("Ohhhhh.. you collected all 30 Dark Marbles!! It should have been difficult.. just incredible! Alright. You've passed the test and for that, I'll reward you #bThe Proof of a Hero#k. Take that and go back to Ellinia.");
+    plr.removeAll(4031013);
+    plr.completeQuest(100007);
+    plr.startQuest(100008);
+    npc.sendOk("You gathered every last Dark Marble. Good. Take this proof back to Grendel and show him your control was not a matter of luck.");
     plr.warp(101020000);
-    plr.removeItemsByID(4031013, 9999);
-    plr.giveItem(4031009, -1);
-    plr.giveItem(4031012, 1);
 } else {
-    npc.sendOk("You will have to collect me #b30 #t4031013##k. Good luck.");
+    npc.sendOk("Come back when you've collected #b30 #t4031013##k. A magician who cannot finish a trial should not be asking about the next rank.");
 }

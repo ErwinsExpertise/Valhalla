@@ -1,75 +1,55 @@
-/* 
-** NPC: Dances With Balrog
-** Location: Perion: Warriors' Sanctuary
-*/
-
-// Beginner -> Warrior (Level 10+)
 if (plr.job() === 0) {
-    if (plr.getLevel() >= 10) {
-        npc.sendNext("Do you wish to become a Warrior? It is an important and final choice. You will not be able to turn back.")
-        if (npc.sendYesNo("You definitely have the look of a Warrior. You may not be there yet, but I can see the Warrior in you. Do you want to become a #rWarrior#k?")) {
-            plr.setJob(100)
-            // Starter sword
-            plr.giveItem(1302000, 1)
-            npc.sendBackNext("Alright! You are a Warrior from here on out... Here's a little bit of my power to you... Haahhhh!")
-            npc.sendBackNext("I have added slots for your equipment and etc. inventory. You have also gotten much stronger. Train harder, and you may one day reach the very top. I'll be watching you from afar. Please work hard.")
-            npc.sendOk("I also gave you a little bit of #bSP#k. Open the #bSkill Menu#k at the bottom-left to learn skills. Some skills require others first, so choose wisely.")
-        } else {
-            npc.sendOk("Come back once you have thought about it some more.")
-        }
+    if (plr.getLevel() < 10 || plr.getStr() < 35) {
+        npc.sendOk("Train a bit more and I can show you the way of the #rWarrior#k.");
     } else {
-        npc.sendOk("You need to train more. Return to me at #bLevel 10#k, and I will teach you the way of the #rWarrior#k.")
-    }
-
-// Warrior (1st job) -> 2nd job (Level 30+): Fighter / Page / Spearman
-} else if (plr.job() === 100) {
-    if (plr.getLevel() >= 30) {
-        npc.sendNext("Whoa, you have definitely grown up! You don't look small and weak anymore... I can feel your presence as a Warrior!")
-
-        var choice = npc.sendMenu(
-            "When you are ready, choose your path.",
-            "Please explain the role of the Fighter.",
-            "Please explain the role of the Page.",
-            "Please explain the role of the Spearman.",
-            "I'll choose my occupation!"
-        )
-        if (choice === 0) {
-            npc.sendOk("Fighters focus on raw strength and direct combat, pushing through enemies with overwhelming power.")
-        } else if (choice === 1) {
-            npc.sendOk("Pages employ tactical strikes and elemental prowess to exploit enemy weaknesses.")
-        } else if (choice === 2) {
-            npc.sendOk("Spearmen wield polearms or spears, striking from reach and bolstering themselves and allies.")
+        npc.sendNext("So you decided to become a #rWarrior#k?");
+        npc.sendNext("It is an important and final choice. You will not be able to turn back.");
+        if (!npc.sendYesNo("Do you want to become a #rWarrior#k?")) {
+            npc.sendOk("Make up your mind and visit me again.");
+        } else {
+            plr.setJob(100);
+            plr.gainItem(1402001, 1);
+            npc.sendOk("So be it! Now go, and go with pride.");
         }
-
-        var branch = -1
-        while (branch === -1) {
-            var ready = npc.sendMenu(
-                "Hmmm, have you made up your mind? Choose the 2nd job advancement of your liking...",
-                "Fighter",
-                "Page",
-                "Spearman"
-            )
-            var jobName = (ready === 0) ? "Fighter" : (ready === 1) ? "Page" : "Spearman"
-            var jobId   = (ready === 0) ? 110      : (ready === 1) ? 120    : 130
-
-            if (npc.sendYesNo("So you want to advance as a #b" + jobName + "#k? Once you decide, you can't go back. Are you sure?")) {
-                plr.setJob(jobId)
-                npc.sendBackNext("Alright! You are now a #b" + jobName + "#k! Keep training and hone your skills.")
-                npc.sendOk("I have also given you a little bit of #bSP#k. Open the #bSkill Menu#k to enhance your 2nd job skills. Some skills require others first; remember that.")
-                branch = ready
+    }
+} else if (plr.job() === 100) {
+    if (plr.getLevel() < 30) {
+        npc.sendOk("You have chosen wisely.");
+    } else if (plr.questStarted(100003) || plr.questCompleted(100005)) {
+        if (plr.questCompleted(100005)) {
+            var branch = npc.sendMenu("What do you want to become?#b", "Fighter", "Page", "Spearman");
+            var jobName = branch === 0 ? "Fighter" : branch === 1 ? "Page" : "Spearman";
+            var jobId = branch === 0 ? 110 : branch === 1 ? 120 : 130;
+            if (npc.sendYesNo("Do you want to become a #r" + jobName + "#k?")) {
+                plr.setJob(jobId);
+                npc.sendOk("So be it! Now go, and go with pride.");
+            }
+        } else {
+            plr.completeQuest(100005);
+            if (plr.questCompleted(100005)) {
+                npc.sendNext("I see you have done well. I will allow you to take the next step on your long road.");
+                var selection = npc.sendMenu("What do you want to become?#b", "Fighter", "Page", "Spearman");
+                var selectedName = selection === 0 ? "Fighter" : selection === 1 ? "Page" : "Spearman";
+                var selectedJob = selection === 0 ? 110 : selection === 1 ? 120 : 130;
+                if (npc.sendYesNo("Do you want to become a #r" + selectedName + "#k?")) {
+                    plr.setJob(selectedJob);
+                    npc.sendOk("So be it! Now go, and go with pride.");
+                }
             } else {
-                npc.sendOk("Take your time. This decision is important.")
+                npc.sendOk("Go and see the #rJob Instructor#k.");
             }
         }
     } else {
-        npc.sendOk("Keep training as a Warrior. Return to me at #rLevel 30#k for your next advancement.")
+        npc.sendNext("The progress you have made is astonishing.");
+        if (npc.sendAcceptDecline("But first I must test your skills. Are you ready?")) {
+            if (plr.haveItem(4031008, 1)) {
+                npc.sendOk("Please report this bug using @bug\r\nstatus = 13");
+            } else {
+                plr.startQuest(100003);
+                npc.sendOk("Go see the #bJob Instructor#k near Perion. He will show you the way.");
+            }
+        }
     }
-
-// Already 2nd job Warrior
-} else if (plr.job() === 110 || plr.job() === 120 || plr.job() === 130) {
-    npc.sendOk("Walk the path you've chosen with pride. Keep training and growing stronger.")
-
-// Other classes
 } else {
-    npc.sendOk("For those that want to become a Warrior, come see me...")
+    npc.sendOk("You have chosen wisely.");
 }

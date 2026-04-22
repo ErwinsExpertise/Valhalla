@@ -190,6 +190,16 @@ func (e *event) RemovePlayer(plr scriptPlayerWrapper) {
 	}
 }
 
+func (e *event) AddPlayer(plr scriptPlayerWrapper) {
+	for _, id := range e.playerIDs {
+		if id == plr.plr.ID {
+			return
+		}
+	}
+	e.playerIDs = append(e.playerIDs, plr.plr.ID)
+	plr.plr.event = e
+}
+
 func (e *event) SetDuration(duration string) {
 	countdown, err := time.ParseDuration(duration)
 

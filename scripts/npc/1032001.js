@@ -1,77 +1,51 @@
-/* 
-** NPC: Grendel the Really Old
-** Location: Ellinia — Magic Library
-*/
-
 if (plr.job() === 0) {
-    if (plr.getLevel() >= 8) {
-        npc.sendBackNext(
-            "Do you want to be a Magician? It is an important and final choice. You will not be able to turn back.",
-            false, true
-        )
-        if (npc.sendYesNo("You definitely have the look of a Magician. You may not be there yet, but I can see the Magician in you. Do you want to become a #rMagician#k?")) {
-            plr.setJob(200)
-            plr.giveItem(1372000, 1)
-            npc.sendBackNext("Alright, you're a Magician from here on out, since I, Grendel the Really Old, allow you so. It isn't much, but I'll give you a little bit of what I have...")
-            npc.sendBackNext("You have just equipped yourself with much more magical power. Please keep training and make yourself much better... I'll be watching you from here and there...")
-            npc.sendOk("I also gave you a little bit of #bSP#k. Open the #bSkill Menu#k at the bottom-left to learn skills. Some skills require others first, so choose wisely.")
-        } else {
-            npc.sendOk("Come back once you have thought about it some more.")
-        }
+    if (plr.getLevel() < 8 || plr.getInt() < 20) {
+        npc.sendOk("Train a bit more and I can show you the way of the #rMagician#k.");
     } else {
-        npc.sendOk("You need to train more. Return to me at #bLevel 8#k, and I will teach you the way of the #rMagician#k.")
-    }
-
-} else if (plr.job() === 200) {
-    if (plr.getLevel() >= 30) {
-        npc.sendNext("You got back here safely. Well done. I knew you'd pass your early trials very easily... now, I can make you much stronger.")
-
-        var explain = npc.sendMenu(
-            "When you are ready, choose your path.",
-            "Please explain the role of the Wizard of Fire and Poison.",
-            "Please explain the role of the Wizard of Ice and Lightning.",
-            "Please explain the role of the Cleric.",
-            "I'll choose my occupation!"
-        )
-        if (explain === 0) {
-            npc.sendOk("Fire/Poison Wizards harness the destructive force of flame and the withering touch of toxins to decimate foes.")
-        } else if (explain === 1) {
-            npc.sendOk("Ice/Lightning Wizards command freezing blizzards and crackling lightning to control the battlefield.")
-        } else if (explain === 2) {
-            npc.sendOk("Clerics support allies with restorative magic and holy power, while smiting the undead.")
+        npc.sendNext("So you decided to become a #rMagician#k?");
+        npc.sendNext("It is an important and final choice. You will not be able to turn back.");
+        if (!npc.sendYesNo("Do you want to become a #rMagician#k?")) {
+            npc.sendOk("Make up your mind and visit me again.");
+        } else {
+            plr.setJob(200);
+            plr.gainItem(1372043, 1);
+            npc.sendOk("So be it! Now go, and go with pride.");
         }
-
-        var picked = -1
-        while (picked === -1) {
-            var branch = npc.sendMenu(
-                "Now, have you made up your mind? Choose the 2nd job advancement of your liking...",
-                "The Wizard of Fire and Poison",
-                "The Wizard of Ice and Lightning",
-                "Cleric"
-            )
-            var jobName = (branch === 0) ? "Wizard of Fire and Poison"
-                : (branch === 1) ? "Wizard of Ice and Lightning"
-                    : "Cleric"
-            var jobId   = (branch === 0) ? 210
-                : (branch === 1) ? 220
-                    : 230
-
-            if (npc.sendYesNo("So you want to advance as the #b" + jobName + "#k? Once you decide, you can't go back. Are you sure?")) {
-                plr.setJob(jobId)
-                npc.sendBackNext("From here on out, you have become the #b" + jobName + "#k. Continue your studies, and I may one day make you even more powerful.")
-                npc.sendBackNext("Your #bUse#k and #bETC#k inventories have been expanded. Your Max MP has also increased. Go check it out!")
-                npc.sendOk("I have also given you a little bit of #bSP#k. Open the #bSkill Menu#k to enhance your 2nd job skills. Some skills require others first; remember that.")
-                picked = branch
+    }
+} else if (plr.job() === 200) {
+    if (plr.getLevel() < 30) {
+        npc.sendOk("You have chosen wisely.");
+    } else if (plr.questStarted(100100) || plr.questCompleted(100102)) {
+        if (plr.questCompleted(100102)) {
+            var branch = npc.sendMenu("What do you want to become?#b", "Wizard (Fire, Poison)", "Wizard (Ice, Lightning)", "Cleric");
+            var jobName = branch === 0 ? "Wizard of Fire and Poison" : branch === 1 ? "Wizard of Ice and Lightning" : "Cleric";
+            var jobId = branch === 0 ? 210 : branch === 1 ? 220 : 230;
+            if (npc.sendYesNo("Do you want to become a #r" + jobName + "#k?")) {
+                plr.setJob(jobId);
+                npc.sendOk("So be it! Now go, and go with pride.");
+            }
+        } else if (plr.questStarted(100102)) {
+            npc.sendOk("Go and find me the #rNecklace of Wisdom#k which is hidden on the Holy Ground at the Snowfield.");
+        } else {
+            plr.completeQuest(100100);
+            if (plr.questCompleted(100100)) {
+                if (npc.sendAcceptDecline("Is your mind ready to undertake the final test?")) {
+                    plr.startQuest(100102);
+                    npc.sendOk("Go and find me the #rNecklace of Wisdom#k which is hidden on the Holy Ground at the Snowfield.");
+                }
             } else {
-                npc.sendOk("Take your time. This decision is important.")
+                npc.sendOk("Well, well. Now go and see #bGrendel the Really Old#k. He will show you the way.");
             }
         }
+    } else if (plr.getRemainingSP() <= (plr.getLevel() - 30) * 3) {
+        npc.sendNext("#rBy Odin's beard!#k You are a strong one.");
+        if (npc.sendAcceptDecline("But I can make you even stronger. Although you will have to prove not only your strength but your knowledge. Are you ready for the challenge?")) {
+            plr.startQuest(100100);
+            npc.sendOk("Well, well. Now go and see #bGrendel the Really Old#k. He will show you the way.");
+        }
     } else {
-        npc.sendOk("Keep training as a Magician. Return to me at #rLevel 30#k for your next advancement.")
+        npc.sendOk("Your time has yet to come...");
     }
-
-} else if (plr.job() === 210 || plr.job() === 220 || plr.job() === 230) {
-    npc.sendOk("Walk the path you've chosen with wisdom. Keep training and growing stronger.")
 } else {
-    npc.sendOk("To all that desire to become a magician... talk to me...")
+    npc.sendOk("You have chosen wisely.");
 }

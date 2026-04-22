@@ -651,6 +651,18 @@ func (ctrl *scriptPlayerWrapper) GiveAP(amount int16) {
 	ctrl.plr.giveAP(amount)
 }
 
+func (ctrl *scriptPlayerWrapper) GetRemainingAP() int16 {
+	return ctrl.plr.ap
+}
+
+func (ctrl *scriptPlayerWrapper) SetRemainingAP(amount int16) {
+	ctrl.plr.setAP(amount)
+}
+
+func (ctrl *scriptPlayerWrapper) GetRemainingSP() int16 {
+	return ctrl.plr.sp
+}
+
 func (ctrl *scriptPlayerWrapper) GiveSP(amount int16) {
 	ctrl.plr.giveSP(amount)
 }
@@ -670,6 +682,38 @@ func (ctrl *scriptPlayerWrapper) GiveMP(amount int16) {
 func (ctrl *scriptPlayerWrapper) HealToFull() {
 	ctrl.plr.setHP(ctrl.plr.maxHP)
 	ctrl.plr.setMP(ctrl.plr.maxMP)
+}
+
+func (ctrl *scriptPlayerWrapper) GetStr() int16 {
+	return ctrl.plr.str
+}
+
+func (ctrl *scriptPlayerWrapper) SetStr(amount int16) {
+	ctrl.plr.setStr(amount)
+}
+
+func (ctrl *scriptPlayerWrapper) GetDex() int16 {
+	return ctrl.plr.dex
+}
+
+func (ctrl *scriptPlayerWrapper) SetDex(amount int16) {
+	ctrl.plr.setDex(amount)
+}
+
+func (ctrl *scriptPlayerWrapper) GetInt() int16 {
+	return ctrl.plr.intt
+}
+
+func (ctrl *scriptPlayerWrapper) SetInt(amount int16) {
+	ctrl.plr.setInt(amount)
+}
+
+func (ctrl *scriptPlayerWrapper) GetLuk() int16 {
+	return ctrl.plr.luk
+}
+
+func (ctrl *scriptPlayerWrapper) SetLuk(amount int16) {
+	ctrl.plr.setLuk(amount)
 }
 
 func (ctrl *scriptPlayerWrapper) Gender() byte {
@@ -855,6 +899,45 @@ func (ctrl *scriptPlayerWrapper) StartPartyQuest(name string, instID int) {
 
 	ctrl.server.events[ctrl.plr.party.ID] = event
 	event.start()
+}
+
+func (ctrl *scriptPlayerWrapper) StartGuildQuest(name string, instID int) {
+	if ctrl.plr.guild == nil {
+		return
+	}
+	program, ok := ctrl.server.eventScriptStore.scripts[name]
+	if !ok {
+		return
+	}
+	ids := []int32{}
+	ctrl.server.players.observe(func(other *Player) {
+		if other == nil || other.guild == nil || other.guild.id != ctrl.plr.guild.id {
+			return
+		}
+		if other.mapID != ctrl.plr.mapID || other.inst == nil || ctrl.plr.inst == nil || other.inst.id != ctrl.plr.inst.id {
+			return
+		}
+		ids = append(ids, other.ID)
+	})
+	event, err := createEvent(int32(ctrl.plr.guild.id), instID, ids, ctrl.server, program)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	ctrl.server.events[int32(ctrl.plr.guild.id)] = event
+	event.start()
+}
+
+func (ctrl *scriptPlayerWrapper) JoinGuildQuest() bool {
+	if ctrl.plr.guild == nil {
+		return false
+	}
+	event, ok := ctrl.server.events[int32(ctrl.plr.guild.id)]
+	if !ok {
+		return false
+	}
+	event.AddPlayer(*ctrl)
+	return true
 }
 
 func (ctrl *scriptPlayerWrapper) LeavePartyQuest() {
@@ -1073,6 +1156,10 @@ func (ctrl *npcChatController) SendYesNo(msg string) bool {
 	}
 
 	return false
+}
+
+func (ctrl *npcChatController) SendAcceptDecline(msg string) bool {
+	return ctrl.SendYesNo(msg)
 }
 
 // SendInputText packet to Player

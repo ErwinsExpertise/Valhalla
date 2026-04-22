@@ -1,9 +1,9 @@
 if (plr.itemCount(4031013) >= 30) {
-    npc.sendNext("Ohhhhh.. you collected all 30 Dark Marbles!! It should have been difficult.. just incredible! Alright. You've passed the test and for that, I'll reward you #bThe Proof of a Hero#k. Take that and go back to Kerning.");
-    plr.warp(102040000, 0);
-    plr.removeItemsByID(4031013, 30);
-    plr.giveItem(4031009, -1);
-    plr.giveItem(4031012, 1);
+    plr.removeAll(4031013);
+    plr.completeQuest(100010);
+    plr.startQuest(100011);
+    npc.sendOk("So you collected all 30 Dark Marbles. Good. Take this proof back to the Dark Lord and show him your hands stayed sharp all the way through.");
+    plr.warp(102040000);
 } else {
-    npc.sendOk("You will have to collect me #b30 #t4031013##k. Good luck.");
+    npc.sendOk("Bring me #b30 #t4031013##k. If you can't finish this cleanly, you're not ready for the next step.");
 }
