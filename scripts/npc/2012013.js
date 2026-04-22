@@ -1,10 +1,26 @@
+// Orbis -> Ludi station boarding
 var TICKET_ID = 4031074;
+var BOARD_MAP = 200000122;
 
-if (!npc.sendYesNo("It seems that there is still plenty of room for this ride. Please have your ticket ready so I can let you on. The journey will be long, but you will get to your destination safely. What do you think? Do you want take this ride?")) {
-    npc.sendOk("You must have some business to take care of here, right?");
-} else if (plr.haveItem(TICKET_ID, 1)) {
-    plr.gainItem(TICKET_ID, -1);
-    plr.warp(220000100);
+var props = map.properties();
+var boardingOpen = ("canBoard" in props) && props["canBoard"];
+
+if (!boardingOpen) {
+    npc.sendOk("Boarding is not available right now. Please wait for the next boarding announcement.");
+} else if (plr.itemCount(TICKET_ID) < 1) {
+    npc.sendOk(
+        "You need an Ludibrium Ticket to board.\r\n" +
+        "Please purchase #t" + TICKET_ID + "# at the ticket counter and come back."
+    );
 } else {
-    npc.sendOk("Oh, no... It looks like you don't have a ticket with you. I can't let you on without it. Please buy the ticket at the ticket from the ticket guide.");
+    var go = npc.sendYesNo(
+        "Boarding for the airship to Ludibrium is now open.\r\n" +
+        "Your ticket will be collected upon entry. Would you like to board now?"
+    );
+    if (go) {
+        plr.removeItemsByID(TICKET_ID, 1);
+        plr.warp(BOARD_MAP);
+    } else {
+        npc.sendOk("All right. Please let me know when you are ready to board.");
+    }
 }

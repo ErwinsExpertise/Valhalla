@@ -2,7 +2,7 @@
 var TICKET_ID = 4031045;
 var BOARD_MAP = 101000301;
 
-var props = plr.instanceProperties();
+var props = map.properties();
 var boardingOpen = ("canBoard" in props) && props["canBoard"];
 
 if (!boardingOpen) {

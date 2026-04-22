@@ -326,6 +326,10 @@ func (ctrl *scriptPlayerWrapper) IsPartyLeader() bool {
 	return false
 }
 
+func (ctrl *scriptPlayerWrapper) IsLeader() bool {
+	return ctrl.IsPartyLeader()
+}
+
 func (ctrl *scriptPlayerWrapper) PartyMembersOnMapCount() int {
 	if !ctrl.InParty() {
 		return 0
@@ -365,10 +369,55 @@ func (ctrl *scriptPlayerWrapper) EventMembersOnMap(id int32) bool {
 	return ctrl.plr.event.IsParticipantsOnMap(id)
 }
 
+func (ctrl *scriptPlayerWrapper) GetEventProperty(key string) interface{} {
+	if ctrl.plr == nil || ctrl.plr.inst == nil {
+		return nil
+	}
+	if value, ok := ctrl.plr.inst.properties[key]; ok {
+		return value
+	}
+	return nil
+}
+
+func (ctrl *scriptPlayerWrapper) SetEventProperty(key string, value interface{}) interface{} {
+	if ctrl.plr == nil || ctrl.plr.inst == nil {
+		return nil
+	}
+	prev := ctrl.GetEventProperty(key)
+	ctrl.plr.inst.properties[key] = value
+	return prev
+}
+
+func (ctrl *scriptPlayerWrapper) FinishEvent() {
+	if ctrl.plr.event != nil {
+		ctrl.plr.event.Finished()
+	}
+}
+
+func (ctrl *scriptPlayerWrapper) LeaveEvent() {
+	if ctrl.plr.event != nil && ctrl.plr.event.playerLeaveEventCallback != nil {
+		ctrl.plr.event.playerLeaveEventCallback(*ctrl)
+	}
+}
+
 func (ctrl *scriptPlayerWrapper) WarpEventMembers(id int32) {
 	if ctrl.plr.event != nil {
 		ctrl.plr.event.WarpPlayers(id)
 	}
+}
+
+func (ctrl *scriptPlayerWrapper) CountMonster() int {
+	if ctrl.plr == nil || ctrl.plr.inst == nil {
+		return 0
+	}
+	return ctrl.plr.inst.lifePool.mobCount()
+}
+
+func (ctrl *scriptPlayerWrapper) SpawnMonster(id int32, x int16, y int16) {
+	if ctrl.plr == nil || ctrl.plr.inst == nil {
+		return
+	}
+	ctrl.plr.inst.lifePool.spawnMobFromID(id, newPos(x, y, 0), false, true, true, constant.MobSummonTypeInstant, 0)
 }
 
 func (ctrl *scriptPlayerWrapper) PartyGiveExp(val int32) {
@@ -389,6 +438,14 @@ func (ctrl *scriptPlayerWrapper) DisbandGuild() {
 	}
 
 	ctrl.server.world.Send(internal.PacketGuildDisband(ctrl.plr.guild.id))
+}
+
+func (ctrl *scriptPlayerWrapper) GainGuildPoints(points int32) {
+	if ctrl.plr.guild == nil {
+		return
+	}
+	ctrl.plr.Send(packetMessageGuildPointsChange(points))
+	ctrl.server.world.Send(internal.PacketGuildPointsUpdate(ctrl.plr.guild.id, ctrl.plr.guild.points+points))
 }
 
 func (ctrl *scriptPlayerWrapper) GetLevel() int {

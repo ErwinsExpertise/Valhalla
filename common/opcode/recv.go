@@ -76,6 +76,6 @@ const (
 	RecvChannelNpcMovement         int16 = 0x8A
 	RecvChannelPlayerPickup        int16 = 0x8E
 	RecvChannelReactorHit          int16 = 0x91
-	RecvChannelBoatMap             int16 = 0x9C
+	RecvChannelBoatMap             int16 = 0x9B
 	RecvCashShopOperation          int16 = 0xA0
 )

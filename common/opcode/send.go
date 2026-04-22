@@ -42,11 +42,11 @@ const (
 	SendChannelMapEffect               int16 = 0x54
 	SendChannelBlowWeather             int16 = 0x55
 	SendChannelPlayJukebox             int16 = 0x56
-	SendChannelEmployee                int16 = 0xBC
+	SendChannelEmployee                int16 = 0x57
 	SendChannelQuizQAndA               int16 = 0x58
-	SendChannelTimer                   int16 = 0x59
-	SendChannelMovingObj               int16 = 0x61
-	SendChannelBoat                    int16 = 0x5D
+	SendChannelTimer                   int16 = 0x5A
+	SendChannelMovingObj               int16 = 0x5B
+	SendChannelBoat                    int16 = 0x5C
 	SendChannelPlayerPartyHP           int16 = 0x8C
 	SendChannelCharacterEnterField     int16 = 0x64
 	SendChannelCharacterLeaveField     int16 = 0x65
