@@ -18,6 +18,10 @@ if (selection === 0) {
     } else if (!plr.joinGuildQuest()) {
         npc.sendOk("Your guild is currently not registered for an instance.");
     } else {
+        if (plr.getEventProperty("canEnter") === false || plr.getEventProperty("canEnter") === "false") {
+            npc.sendOk("I'm sorry, but the guild has gone on without you. Try again later.");
+            return;
+        }
         for (var j = 0; j < GQItems.length; j++) {
             plr.removeAll(GQItems[j]);
         }

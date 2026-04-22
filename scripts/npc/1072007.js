@@ -1,7 +1,5 @@
 if (plr.itemCount(4031013) >= 30) {
     plr.removeAll(4031013);
-    plr.completeQuest(100010);
-    plr.startQuest(100011);
     npc.sendOk("So you collected all 30 Dark Marbles. Good. Take this proof back to the Dark Lord and show him your hands stayed sharp all the way through.");
     plr.warp(102040000);
 } else {

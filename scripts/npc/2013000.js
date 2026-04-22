@@ -27,14 +27,15 @@ if (plr.mapID() === 200080101) {
     npc.sendSelection("Hello, I am Wonky the Fairy. What would you like to do today?#b\r\n#L0#Apply for entrance.#l\r\n#L1#Give Wonky something to eat.#l");
     var sel = npc.selection();
     if (sel === 0) {
-        if (!plr.inParty()) {
+        var gmSolo = plr.isGM();
+        if (!plr.inParty() && !gmSolo) {
             npc.sendOk("Talk to me after you've formed a party. And also #r#eGIVE ME FOOD!!#n");
-        } else if (!plr.isLeader()) {
+        } else if (!plr.isLeader() && !gmSolo) {
             npc.sendOk("Please ask your party leader to talk to me.");
         } else {
-            var members = plr.partyMembersOnMap();
-            var ok = members.length >= minPlayers && members.length <= maxPlayers;
-            if (ok) {
+            var members = gmSolo ? [plr] : plr.partyMembersOnMap();
+            var ok = gmSolo || (members.length >= minPlayers && members.length <= maxPlayers);
+            if (ok && !gmSolo) {
                 for (var i = 0; i < members.length; i++) {
                     var level = members[i].getLevel();
                     if (level < minLevel || level > maxLevel) {
@@ -46,8 +47,12 @@ if (plr.mapID() === 200080101) {
             if (!ok) {
                 npc.sendOk("Either your party members are not all in the map, or they are not in the right level range.");
             } else {
-                plr.startPartyQuest("orbis_pq", 0);
-                if (hasBalancedParty(members)) {
+                if (gmSolo) {
+                    plr.startPartyQuest("orbis_pq", 0);
+                } else {
+                    plr.startPartyQuest("orbis_pq", 0);
+                }
+                if (!gmSolo && hasBalancedParty(members)) {
                     for (var j = 0; j < members.length; j++) {
                         members[j].gainItem(blessingArray[Math.floor(Math.random() * blessingArray.length)], 1);
                     }

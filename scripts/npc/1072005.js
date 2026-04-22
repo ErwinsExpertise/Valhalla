@@ -1,7 +1,5 @@
 if (plr.itemCount(4031013) >= 30) {
     plr.removeAll(4031013);
-    plr.completeQuest(100007);
-    plr.startQuest(100008);
     npc.sendOk("You gathered every last Dark Marble. Good. Take this proof back to Grendel and show him your control was not a matter of luck.");
     plr.warp(101020000);
 } else {

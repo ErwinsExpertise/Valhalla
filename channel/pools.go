@@ -1421,8 +1421,19 @@ func (pool *reactorPool) tryTriggerByDrop(drop fieldDrop) bool {
 		if ev.ReqItemCnt > 0 && int16(ev.ReqItemCnt) != drop.item.amount {
 			continue
 		}
+		if !reactorEventContainsDrop(r, ev, drop.finalPos) {
+			continue
+		}
 		if next, okNext := r.nextStateFromTemplate(); okNext && next != r.state {
 			pool.changeState(r, next, 0, 0, &Server{}, nil)
+			if pool.server != nil && pool.server.reactorScriptStore != nil {
+				name := strconv.Itoa(int(r.templateID))
+				if program, ok := pool.server.reactorScriptStore.scripts[name]; ok {
+					if err := runReactorScript(program, pool.server, pool.instance, r); err != nil {
+						log.Println("reactor script error:", name, err)
+					}
+				}
+			}
 			pool.instance.dropPool.removeDrop(0, drop.ID)
 			if r.isTerminal() {
 				pool.leaveAndMaybeRespawn(r, 0)
@@ -1431,6 +1442,28 @@ func (pool *reactorPool) tryTriggerByDrop(drop fieldDrop) bool {
 		}
 	}
 	return false
+}
+
+func reactorEventContainsDrop(r *fieldReactor, ev nx.ReactorEventInfo, p pos) bool {
+	left := int16(int(r.pos.x) + int(ev.LT.X))
+	right := int16(int(r.pos.x) + int(ev.RB.X))
+	top := int16(int(r.pos.y) + int(ev.LT.Y))
+	bottom := int16(int(r.pos.y) + int(ev.RB.Y))
+
+	if left > right {
+		left, right = right, left
+	}
+	if top > bottom {
+		top, bottom = bottom, top
+	}
+
+	const margin int16 = 64
+	left -= margin
+	right += margin
+	top -= margin
+	bottom += margin
+
+	return p.x >= left && p.x <= right && p.y >= top && p.y <= bottom
 }
 
 func getInt(e reactorTableEntry, key string, def int) int {

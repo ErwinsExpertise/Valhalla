@@ -521,6 +521,7 @@ type portal struct {
 	id          byte
 	pos         pos
 	name        string
+	script      string
 	destFieldID int32
 	destName    string
 	temporary   bool
@@ -531,6 +532,7 @@ func createPortalFromData(p nx.Portal) portal {
 	return portal{id: p.ID,
 		pos:         newPos(p.X, p.Y, 0),
 		name:        p.Pn,
+		script:      p.Script,
 		destFieldID: p.Tm,
 		destName:    p.Tn,
 		temporary:   false,
@@ -542,6 +544,7 @@ func (p *portal) resetTownPortal() {
 	p.destFieldID = constant.InvalidMap
 	p.destName = ""
 	p.name = "tp"
+	p.script = ""
 	p.temporary = false
 	p.enabled = true
 }

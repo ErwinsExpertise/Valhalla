@@ -3,6 +3,7 @@ package channel
 import (
 	"log"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,6 +25,7 @@ type event struct {
 	onMapChangeCallback      func(plr scriptPlayerWrapper, dst scriptMapWrapper)
 	timeoutCallback          func(plr scriptPlayerWrapper)
 	playerLeaveEventCallback func(plr scriptPlayerWrapper)
+	scheduledCallbacks       map[string]func()
 
 	program *goja.Program
 	vm      *goja.Runtime
@@ -34,14 +36,15 @@ type event struct {
 
 func createEvent(id int32, instID int, players []int32, server *Server, program *goja.Program) (*event, error) {
 	ctrl := &event{
-		id:         id,
-		finished:   make(chan struct{}),
-		instanceID: instID,
-		playerIDs:  players,
-		server:     server,
-		program:    program,
-		vm:         goja.New(),
-		timerReset: make(chan struct{}, 1),
+		id:                 id,
+		finished:           make(chan struct{}),
+		instanceID:         instID,
+		playerIDs:          players,
+		server:             server,
+		program:            program,
+		vm:                 goja.New(),
+		timerReset:         make(chan struct{}, 1),
+		scheduledCallbacks: make(map[string]func()),
 	}
 
 	ctrl.closeFinish = sync.OnceFunc(func() {
@@ -57,44 +60,52 @@ func createEvent(id int32, instID int, players []int32, server *Server, program 
 		return nil, err
 	}
 
-	err = ctrl.vm.ExportTo(ctrl.vm.Get("start"), &ctrl.startCallback)
-
-	if err != nil {
-		return nil, err
+	if fn := ctrl.vm.Get("start"); fn != nil && !goja.IsUndefined(fn) && !goja.IsNull(fn) {
+		err = ctrl.vm.ExportTo(fn, &ctrl.startCallback)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	err = ctrl.vm.ExportTo(ctrl.vm.Get("beforePortal"), &ctrl.beforePortalCallback)
-
-	if err != nil {
-		return nil, err
+	if fn := ctrl.vm.Get("beforePortal"); fn != nil && !goja.IsUndefined(fn) && !goja.IsNull(fn) {
+		err = ctrl.vm.ExportTo(fn, &ctrl.beforePortalCallback)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	err = ctrl.vm.ExportTo(ctrl.vm.Get("afterPortal"), &ctrl.afterPortalCallback)
-
-	if err != nil {
-		return nil, err
+	if fn := ctrl.vm.Get("afterPortal"); fn != nil && !goja.IsUndefined(fn) && !goja.IsNull(fn) {
+		err = ctrl.vm.ExportTo(fn, &ctrl.afterPortalCallback)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	err = ctrl.vm.ExportTo(ctrl.vm.Get("playerLeaveEvent"), &ctrl.playerLeaveEventCallback)
-
-	if err != nil {
-		return nil, err
+	if fn := ctrl.vm.Get("playerLeaveEvent"); fn != nil && !goja.IsUndefined(fn) && !goja.IsNull(fn) {
+		err = ctrl.vm.ExportTo(fn, &ctrl.playerLeaveEventCallback)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if fn := ctrl.vm.Get("onMapChange"); fn != nil && !goja.IsUndefined(fn) {
 		_ = ctrl.vm.ExportTo(fn, &ctrl.onMapChangeCallback)
 	}
 
-	err = ctrl.vm.ExportTo(ctrl.vm.Get("playerLeaveEvent"), &ctrl.playerLeaveEventCallback)
-
-	if err != nil {
-		return nil, err
+	if fn := ctrl.vm.Get("timeout"); fn != nil && !goja.IsUndefined(fn) && !goja.IsNull(fn) {
+		err = ctrl.vm.ExportTo(fn, &ctrl.timeoutCallback)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	err = ctrl.vm.ExportTo(ctrl.vm.Get("timeout"), &ctrl.timeoutCallback)
-
-	if err != nil {
-		return nil, err
+	for _, name := range []string{"begin", "finish", "earringcheck", "broadcastClock"} {
+		if fn := ctrl.vm.Get(name); fn != nil && !goja.IsUndefined(fn) {
+			var cb func()
+			if err := ctrl.vm.ExportTo(fn, &cb); err == nil && cb != nil {
+				ctrl.scheduledCallbacks[name] = cb
+			}
+		}
 	}
 
 	return ctrl, nil
@@ -188,6 +199,7 @@ func (e *event) RemovePlayer(plr scriptPlayerWrapper) {
 			break
 		}
 	}
+	plr.plr.event = nil
 }
 
 func (e *event) AddPlayer(plr scriptPlayerWrapper) {
@@ -214,6 +226,24 @@ func (e *event) SetDuration(duration string) {
 	case e.timerReset <- struct{}{}:
 	default:
 	}
+}
+
+func (e *event) Schedule(name string, duration string) {
+	cb, ok := e.scheduledCallbacks[strings.TrimSpace(name)]
+	if !ok || cb == nil {
+		return
+	}
+	d, err := time.ParseDuration(duration)
+	if err != nil {
+		return
+	}
+	time.AfterFunc(d, func() {
+		e.server.dispatch <- func() {
+			if _, exists := e.server.events[e.id]; exists {
+				cb()
+			}
+		}
+	})
 }
 
 func (e *event) GetMap(id int32) scriptMapWrapper {

@@ -432,6 +432,11 @@ func (server Server) playerMovement(conn mnet.Client, reader mpacket.Reader) {
 		return
 	}
 
+	if plr.pos.foothold == 0 && ((plr.mapID >= 920010000 && plr.mapID <= 920011300) || (plr.mapID >= 990000000 && plr.mapID <= 990001100)) {
+		snapped := inst.fhHist.getFinalPosition(newPos(plr.pos.x, plr.pos.y, 0))
+		plr.SetPos(snapped)
+	}
+
 	inst.movePlayer(plr.ID, moveBytes, plr)
 }
 
@@ -1166,6 +1171,24 @@ func (server Server) playerUseScriptedPortal(conn mnet.Client, reader mpacket.Re
 		}
 		plr.Send(packetPlayerNoChange())
 		return
+	}
+
+	if srcPortal.script != "" {
+		if program, ok := server.portalScriptStore.scripts[srcPortal.script]; ok {
+			warped, blocked, err := runPortalScript(program, plr, &server)
+			if err != nil {
+				log.Println("portal script error:", srcPortal.script, err)
+				plr.Send(packetPlayerNoChange())
+				return
+			}
+			if warped {
+				return
+			}
+			if blocked {
+				plr.Send(packetPlayerNoChange())
+				return
+			}
+		}
 	}
 
 	warp := func(plr *Player, mapID int32, portalName string, checkActive bool, maxPlayers int, minLevel byte) {
@@ -4921,6 +4944,50 @@ func (server *Server) playerHitReactor(conn mnet.Client, reader mpacket.Reader) 
 	spawnID := reader.ReadInt32()
 	_ = reader.ReadInt32() // stance
 	_ = reader.ReadInt16() // delay
+
+	if plr.event != nil && plr.mapID == 990000300 {
+		if reactor, ok := plr.inst.reactorPool.reactors[spawnID]; ok && reactor.name != "statuegate" {
+			props := plr.inst.properties
+			status, _ := props["stage1status"].(string)
+			phase, _ := props["stage1phase"].(int)
+			if phase == 0 {
+				if v, ok := props["stage1phase"].(float64); ok {
+					phase = int(v)
+				} else {
+					phase = 1
+				}
+			}
+			expected := phase + 3
+			appendValue := func(key, value string) string {
+				current, _ := props[key].(string)
+				if current == "" {
+					return value
+				}
+				return current + "," + value
+			}
+			countVals := func(s string) int {
+				if s == "" {
+					return 0
+				}
+				return len(strings.Split(s, ","))
+			}
+
+			if status == "display" {
+				combo := appendValue("stage1combo", reactor.name)
+				props["stage1combo"] = combo
+				if countVals(combo) >= expected {
+					props["stage1status"] = "active"
+					props["stage1guess"] = ""
+					plr.inst.send(packetMessageRedText("The combination has been shown. Repeat it carefully."))
+				}
+			} else if status == "active" {
+				guess, _ := props["stage1guess"].(string)
+				if countVals(guess) < expected {
+					props["stage1guess"] = appendValue("stage1guess", reactor.name)
+				}
+			}
+		}
+	}
 
 	plr.inst.reactorPool.triggerHit(spawnID, 0, server, plr)
 

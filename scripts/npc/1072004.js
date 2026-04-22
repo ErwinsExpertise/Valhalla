@@ -1,7 +1,5 @@
 if (plr.itemCount(4031013) >= 30) {
     plr.removeAll(4031013);
-    plr.completeQuest(100004);
-    plr.startQuest(100005);
     npc.sendOk("You've done well. Take this proof back to Dances with Balrog. He will know you earned it.");
     plr.warp(102020300);
 } else {

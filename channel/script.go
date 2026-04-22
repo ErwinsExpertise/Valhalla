@@ -5,7 +5,9 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Hucaru/Valhalla/constant"
 	"github.com/Hucaru/Valhalla/internal"
@@ -684,6 +686,10 @@ func (ctrl *scriptPlayerWrapper) HealToFull() {
 	ctrl.plr.setMP(ctrl.plr.maxMP)
 }
 
+func (ctrl *scriptPlayerWrapper) SetHP(amount int16) {
+	ctrl.plr.setHP(amount)
+}
+
 func (ctrl *scriptPlayerWrapper) GetStr() int16 {
 	return ctrl.plr.str
 }
@@ -861,6 +867,14 @@ func (ctrl *scriptPlayerWrapper) ShowCountdown(seconds int32) {
 	ctrl.plr.Send(packetShowCountdown(seconds))
 }
 
+func (ctrl *scriptPlayerWrapper) HideCountdown() {
+	ctrl.plr.Send(packetHideCountdown())
+}
+
+func (ctrl *scriptPlayerWrapper) ShowNpcOk(npcID int32, msg string) {
+	ctrl.plr.Send(packetNpcChatOk(npcID, msg))
+}
+
 func (ctrl *scriptPlayerWrapper) PortalEffect(path string) {
 	ctrl.plr.Send(packetPortalEffectt(2, path))
 }
@@ -987,6 +1001,21 @@ func (ctrl *scriptMapWrapper) PortalEnabled(enable bool, name string) {
 	ctrl.inst.setPortalEnabled(name, enable)
 }
 
+func (ctrl *scriptMapWrapper) SetPortalScript(name string, script string) {
+	for i := range ctrl.inst.portals {
+		if ctrl.inst.portals[i].name == name {
+			ctrl.inst.portals[i].script = script
+			return
+		}
+	}
+}
+
+func (ctrl *scriptMapWrapper) SetPortalScriptByID(id int, script string) {
+	if id >= 0 && id < len(ctrl.inst.portals) {
+		ctrl.inst.portals[id].script = script
+	}
+}
+
 func (ctrl *scriptMapWrapper) IsPortalEnabled(name string) bool {
 	return ctrl.inst.getPortalEnabled(name)
 }
@@ -1015,6 +1044,23 @@ func (ctrl *scriptMapWrapper) PlayersInArea(id int) int {
 	return count
 }
 
+func (ctrl *scriptMapWrapper) GroundItemsInArea(id int) []int32 {
+	areas := nx.GetMaps()[ctrl.inst.fieldID].Areas
+	if id < 0 || id >= len(areas) {
+		return []int32{}
+	}
+	out := make([]int32, 0)
+	for _, drop := range ctrl.inst.dropPool.drops {
+		if drop.mesos > 0 {
+			continue
+		}
+		if areas[id].Inside(drop.finalPos.x, drop.finalPos.y) {
+			out = append(out, drop.item.ID)
+		}
+	}
+	return out
+}
+
 func (ctrl *scriptMapWrapper) MobCount() int {
 	return ctrl.inst.lifePool.mobCount()
 }
@@ -1028,6 +1074,93 @@ func (ctrl *scriptMapWrapper) Reset() {
 	ctrl.inst.lifePool.attemptMobSpawn(true)
 	ctrl.inst.dropPool.eraseDrops()
 	ctrl.inst.reactorPool.reset(false)
+}
+
+func (ctrl *scriptMapWrapper) HitReactorByName(name string) bool {
+	for _, r := range ctrl.inst.reactorPool.reactors {
+		if r.name == name {
+			ctrl.inst.reactorPool.triggerHit(r.spawnID, 0, ctrl.server, nil)
+			return true
+		}
+	}
+	return false
+}
+
+func (ctrl *scriptMapWrapper) ReactorNames() []string {
+	out := make([]string, 0, len(ctrl.inst.reactorPool.reactors))
+	for _, r := range ctrl.inst.reactorPool.reactors {
+		out = append(out, r.name)
+	}
+	return out
+}
+
+func (ctrl *scriptMapWrapper) ReactorNamesExcluding(exclude string) []string {
+	out := make([]string, 0, len(ctrl.inst.reactorPool.reactors))
+	for _, r := range ctrl.inst.reactorPool.reactors {
+		if r.name != exclude {
+			out = append(out, r.name)
+		}
+	}
+	return out
+}
+
+func (ctrl *scriptMapWrapper) ReactorStateByName(name string) int {
+	for _, r := range ctrl.inst.reactorPool.reactors {
+		if r.name == name {
+			return int(r.state)
+		}
+	}
+	return -1
+}
+
+func (ctrl *scriptMapWrapper) SpawnNpc(id int32, x int16, y int16) bool {
+	npcData := nx.Life{ID: id, Type: "n", X: x, Y: y, FaceLeft: false, Foothold: 0}
+	spawnID, err := ctrl.inst.lifePool.nextNpcID()
+	if err != nil {
+		return false
+	}
+	val := createNpcFromData(spawnID, npcData)
+	ctrl.inst.lifePool.npcs[spawnID] = &val
+	ctrl.inst.send(packetNpcShow(&val))
+	return true
+}
+
+func (ctrl *scriptMapWrapper) RemoveNpcByTemplate(id int32) {
+	removeIDs := make([]int32, 0)
+	for spawnID, n := range ctrl.inst.lifePool.npcs {
+		if n != nil && n.id == id {
+			if n.controller != nil {
+				n.removeController()
+			}
+			ctrl.inst.send(packetNpcRemove(n.spawnID))
+			removeIDs = append(removeIDs, spawnID)
+		}
+	}
+	for _, spawnID := range removeIDs {
+		delete(ctrl.inst.lifePool.npcs, spawnID)
+	}
+}
+
+func (ctrl *scriptMapWrapper) RevealReactorsByName(names []string, startDelayMs int32, stepDelayMs int32) {
+	ordered := make([]*fieldReactor, 0, len(names))
+	for _, name := range names {
+		for _, r := range ctrl.inst.reactorPool.reactors {
+			if r.name == name {
+				ordered = append(ordered, r)
+				break
+			}
+		}
+	}
+	for i, r := range ordered {
+		delay := time.Duration(startDelayMs+int32(i)*stepDelayMs) * time.Millisecond
+		time.AfterFunc(delay, func(rr *fieldReactor) func() {
+			return func() {
+				ctrl.server.dispatch <- func() {
+					ctrl.inst.reactorPool.triggerHit(rr.spawnID, 0, ctrl.server, nil)
+				}
+			}
+		}(r))
+	}
 }
 
 func (ctrl *scriptMapWrapper) GetMap(id int32, instID int) scriptMapWrapper {
@@ -1070,6 +1203,161 @@ type npcChatController struct {
 	program *goja.Program
 
 	selectionCalls int
+}
+
+type portalScriptController struct {
+	plr     *Player
+	server  *Server
+	warped  bool
+	blocked bool
+}
+
+type reactorScriptController struct {
+	server  *Server
+	inst    *fieldInstance
+	reactor *fieldReactor
+}
+
+func (ctrl *reactorScriptController) MapMessage(msgType int, msg string) {
+	ctrl.inst.send(packetMessageNotice(msg))
+}
+
+func (ctrl *reactorScriptController) ShowEffect(path string) {
+	ctrl.inst.send(packetShowScreenEffect(path))
+}
+
+func (ctrl *reactorScriptController) PlaySound(path string) {
+	ctrl.inst.send(packetPlaySound(path))
+}
+
+func (ctrl *reactorScriptController) SpawnNpc(id int32, x int16, y int16) bool {
+	npcData := nx.Life{ID: id, Type: "n", X: x, Y: y, FaceLeft: false, Foothold: 0}
+	spawnID, err := ctrl.inst.lifePool.nextNpcID()
+	if err != nil {
+		return false
+	}
+	val := createNpcFromData(spawnID, npcData)
+	ctrl.inst.lifePool.npcs[spawnID] = &val
+	ctrl.inst.send(packetNpcShow(&val))
+	return true
+}
+
+func (ctrl *reactorScriptController) SpawnNpcAtReactor(id int32) bool {
+	return ctrl.SpawnNpc(id, ctrl.reactor.pos.x, ctrl.reactor.pos.y)
+}
+
+func (ctrl *reactorScriptController) SpawnMonster(id int32, x int16, y int16) {
+	ctrl.inst.lifePool.spawnMobFromID(id, newPos(x, y, 0), false, true, true, constant.MobSummonTypeInstant, 0)
+}
+
+func (ctrl *reactorScriptController) DropItems(args ...int32) {
+	reactorID := strconv.Itoa(int(ctrl.reactor.info.ID))
+	reactorDrops := reactorDropTable[reactorID]
+	var items []Item
+	for _, val := range reactorDrops.items {
+		newItem, err := CreateItemFromID(int32(val), 1)
+		if err != nil {
+			log.Println(err)
+			continue
+		}
+		items = append(items, newItem)
+	}
+	ctrl.inst.dropPool.createDrop(dropSpawnNormal, dropFreeForAll, int32(reactorDrops.money), ctrl.reactor.pos, true, false, 0, 0, items...)
+}
+
+func runReactorScript(program *goja.Program, server *Server, inst *fieldInstance, reactor *fieldReactor) error {
+	vm := goja.New()
+	vm.SetFieldNameMapper(goja.UncapFieldNameMapper())
+	rm := &reactorScriptController{server: server, inst: inst, reactor: reactor}
+	_ = vm.Set("rm", rm)
+	_, err := vm.RunProgram(program)
+	if err != nil {
+		return err
+	}
+	if fn := vm.Get("act"); fn != nil && !goja.IsUndefined(fn) && !goja.IsNull(fn) {
+		var act func()
+		if err := vm.ExportTo(fn, &act); err != nil {
+			return err
+		}
+		if act != nil {
+			act()
+		}
+	}
+	return nil
+}
+
+func choosePortalForWarp(dstInst *fieldInstance, backToMapID int32, srcName, preferName string) (portal, error) {
+	if preferName != "" {
+		if p, e := dstInst.getPortalFromName(preferName); e == nil {
+			return p, nil
+		}
+	}
+	for _, p := range dstInst.portals {
+		if p.destFieldID == backToMapID && p.destName == srcName {
+			return p, nil
+		}
+	}
+	for _, p := range dstInst.portals {
+		if p.destFieldID == backToMapID {
+			return p, nil
+		}
+	}
+	return dstInst.getRandomSpawnPortal()
+}
+
+func (ctrl *portalScriptController) Warp(mapID int32, portalName string) bool {
+	dstField, ok := ctrl.server.fields[mapID]
+	if !ok {
+		ctrl.blocked = true
+		return false
+	}
+	inst, err := dstField.getInstance(0)
+	if err != nil {
+		ctrl.blocked = true
+		return false
+	}
+	var portal portal
+	if portalName != "" {
+		portal, err = inst.getPortalFromName(portalName)
+		if err != nil {
+			ctrl.blocked = true
+			return false
+		}
+	} else {
+		portal, err = choosePortalForWarp(inst, ctrl.plr.mapID, "", "")
+		if err != nil {
+			ctrl.blocked = true
+			return false
+		}
+	}
+	_ = ctrl.server.warpPlayer(ctrl.plr, dstField, portal, true)
+	ctrl.warped = true
+	return true
+}
+
+func (ctrl *portalScriptController) Message(msg string) {
+	ctrl.plr.Send(packetMessageRedText(msg))
+}
+
+func (ctrl *portalScriptController) Block(msg string) bool {
+	if msg != "" {
+		ctrl.Message(msg)
+	}
+	ctrl.blocked = true
+	return false
+}
+
+func runPortalScript(program *goja.Program, plr *Player, server *Server) (warped bool, blocked bool, err error) {
+	vm := goja.New()
+	vm.SetFieldNameMapper(goja.UncapFieldNameMapper())
+	plrCtrl := &scriptPlayerWrapper{plr: plr, server: server}
+	mapWrapper := &scriptMapWrapper{inst: plr.inst, server: server}
+	portalCtrl := &portalScriptController{plr: plr, server: server}
+	_ = vm.Set("plr", plrCtrl)
+	_ = vm.Set("map", mapWrapper)
+	_ = vm.Set("portal", portalCtrl)
+	_, err = vm.RunProgram(program)
+	return portalCtrl.warped, portalCtrl.blocked, err
 }
 
 func createNpcChatController(npcID int32, conn mnet.Client, program *goja.Program, plr *Player, server *Server) (*npcChatController, error) {

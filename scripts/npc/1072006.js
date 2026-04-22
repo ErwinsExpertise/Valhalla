@@ -1,7 +1,5 @@
 if (plr.itemCount(4031013) >= 30) {
     plr.removeAll(4031013);
-    plr.completeQuest(100001);
-    plr.startQuest(100002);
     npc.sendOk("You brought back all 30 Dark Marbles. Not bad. Take this proof to Athena Pierce and show her your aim held up under pressure.");
     plr.warp(106010000);
 } else {

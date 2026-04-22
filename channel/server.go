@@ -27,28 +27,30 @@ type rates struct {
 
 // Server state
 type Server struct {
-	id               byte
-	worldName        string
-	dispatch         chan func()
-	world            mnet.Server
-	ip               []byte
-	port             int16
-	maxPop           int16
-	migrating        []mnet.Client
-	players          Players
-	channels         [20]internal.Channel
-	cashShop         internal.CashShop
-	fields           map[int32]*field
-	header           string
-	npcChat          map[mnet.Client]*npcChatController
-	npcScriptStore   *scriptStore
-	eventScriptStore *scriptStore
-	parties          map[int32]*party
-	guilds           map[int32]*guild
-	events           map[int32]*event
-	rates            rates
-	autoBan          bool
-	ac               *anticheat.AntiCheat
+	id                 byte
+	worldName          string
+	dispatch           chan func()
+	world              mnet.Server
+	ip                 []byte
+	port               int16
+	maxPop             int16
+	migrating          []mnet.Client
+	players            Players
+	channels           [20]internal.Channel
+	cashShop           internal.CashShop
+	fields             map[int32]*field
+	header             string
+	npcChat            map[mnet.Client]*npcChatController
+	npcScriptStore     *scriptStore
+	portalScriptStore  *scriptStore
+	reactorScriptStore *scriptStore
+	eventScriptStore   *scriptStore
+	parties            map[int32]*party
+	guilds             map[int32]*guild
+	events             map[int32]*event
+	rates              rates
+	autoBan            bool
+	ac                 *anticheat.AntiCheat
 }
 
 // Initialise the server
@@ -190,6 +192,22 @@ func (server *Server) loadScripts() {
 	log.Println("Loaded event scripts in", elapsed)
 
 	go server.eventScriptStore.monitor(func(name string, program *goja.Program) {})
+
+	server.portalScriptStore = createScriptStore("scripts/portal", server.dispatch)
+	start = time.Now()
+	_ = server.portalScriptStore.loadScripts()
+	elapsed = time.Since(start)
+	log.Println("Loaded portal scripts in", elapsed)
+
+	go server.portalScriptStore.monitor(func(name string, program *goja.Program) {})
+
+	server.reactorScriptStore = createScriptStore("scripts/reactor", server.dispatch)
+	start = time.Now()
+	_ = server.reactorScriptStore.loadScripts()
+	elapsed = time.Since(start)
+	log.Println("Loaded reactor scripts in", elapsed)
+
+	go server.reactorScriptStore.monitor(func(name string, program *goja.Program) {})
 }
 
 // SendCountdownToPlayers - Send a countdown to players that appears as a clock
