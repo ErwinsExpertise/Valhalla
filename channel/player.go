@@ -202,6 +202,7 @@ type Player struct {
 	mapID       int32
 	mapPos      byte
 	previousMap int32
+	savedMaps   map[string]int32
 	portalCount byte
 
 	job int16

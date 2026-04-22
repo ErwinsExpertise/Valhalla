@@ -6,11 +6,9 @@ var key = 4001023;
 
 npc.sendOk("Incredible! You've completed all the stages and now you're here enjoying your victory. Wow! My sincere congratulations to each of you for a job well done. Here's a little treat for you. Before accepting, please check that you have an available slot in your use and equip inventories.");
 
-// Check inventory space
 if (plr.getUseInventoryFreeSlot() < 1 || plr.getEquipInventoryFreeSlot() < 1) {
     npc.sendOk("Your use and equip inventories must have at least one slot available. Please make the necessary adjustments and then talk to me again.");
 } else {
-    // Clean up quest items
     if (plr.itemCount(pass) > 0) {
         plr.removeItemsByIDSilent(pass, plr.itemCount(pass));
     }
@@ -18,7 +16,6 @@ if (plr.getUseInventoryFreeSlot() < 1 || plr.getEquipInventoryFreeSlot() < 1) {
         plr.removeItemsByIDSilent(key, plr.itemCount(key));
     }
 
-    // Random reward system based on OpenMG reference
     var rand = Math.floor(Math.random() * 251);
     var rewardID = 0;
     var rewardAmount = 1;
@@ -81,7 +78,7 @@ if (plr.getUseInventoryFreeSlot() < 1 || plr.getEquipInventoryFreeSlot() < 1) {
 
     if (plr.giveItem(rewardID, rewardAmount)) {
         npc.sendOk("You received " + rewardAmount + " #t" + rewardID + "#!");
-        plr.warp(221024500); // Exit map
+        plr.warp(221024500);
     } else {
         npc.sendOk("Hmmm... are you sure you have a free slot in your use and etc inventories? I cannot reward you for your effort if your inventory is full...");
     }

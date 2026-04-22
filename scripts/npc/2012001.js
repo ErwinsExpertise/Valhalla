@@ -1,26 +1,10 @@
-// Orbis -> Ellinia station boarding
 var TICKET_ID = 4031047;
-var BOARD_MAP = 200000112;
 
-var props = plr.instanceProperties();
-var boardingOpen = ("canBoard" in props) && props["canBoard"];
-
-if (!boardingOpen) {
-    npc.sendOk("Boarding is not available right now. Please wait for the next boarding announcement.");
-} else if (plr.itemCount(TICKET_ID) < 1) {
-    npc.sendOk(
-        "You need an Ellinia Ticket to board.\r\n" +
-        "Please purchase #t" + TICKET_ID + "# at the ticket counter and come back."
-    );
+if (!npc.sendYesNo("It seems like there is still room on this ride. Please have your ticket ready so you can get on. The journey may be long, but you will get to your destination safely. What do you think? Do you want to go on this trip?")) {
+    npc.sendOk("You must have some business to take care of here, right?");
+} else if (plr.haveItem(TICKET_ID, 1)) {
+    plr.gainItem(TICKET_ID, -1);
+    plr.warp(101000300);
 } else {
-    var go = npc.sendYesNo(
-        "Boarding for the airship to Ellinia is now open.\r\n" +
-        "Your ticket will be collected upon entry. Would you like to board now?"
-    );
-    if (go) {
-        plr.removeItemsByID(TICKET_ID, 1);
-        plr.warp(BOARD_MAP);
-    } else {
-        npc.sendOk("All right. Please let me know when you are ready to board.");
-    }
+    npc.sendOk("Make sure you have a Ellinia ticket to travel on this boat.");
 }

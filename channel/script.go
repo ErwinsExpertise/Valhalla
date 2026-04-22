@@ -249,11 +249,26 @@ func (ctrl *scriptPlayerWrapper) Mesos() int32 {
 	return ctrl.plr.mesos
 }
 
+func (ctrl *scriptPlayerWrapper) GetMesos() int32 {
+	return ctrl.Mesos()
+}
+
 func (ctrl *scriptPlayerWrapper) GiveMesos(amount int32) {
 	ctrl.plr.giveMesos(amount)
 }
 
+func (ctrl *scriptPlayerWrapper) GainMesos(amount int32) {
+	ctrl.GiveMesos(amount)
+}
+
 func (ctrl *scriptPlayerWrapper) GiveItem(id int32, amount int16) bool {
+	if amount == 0 {
+		return true
+	}
+	if amount < 0 {
+		return ctrl.plr.removeItemsByID(id, int32(-amount), false)
+	}
+
 	item, err := CreateItemFromID(id, amount)
 
 	if err != nil {
@@ -265,6 +280,10 @@ func (ctrl *scriptPlayerWrapper) GiveItem(id int32, amount int16) bool {
 	}
 
 	return true
+}
+
+func (ctrl *scriptPlayerWrapper) GainItem(id int32, amount int16) bool {
+	return ctrl.GiveItem(id, amount)
 }
 
 func (ctrl *scriptPlayerWrapper) Job() int16 {
@@ -395,6 +414,18 @@ func (ctrl *scriptPlayerWrapper) CheckQuestStatus(id int16, status int) bool {
 	return ctrl.GetQuestStatus(id) == status
 }
 
+func (ctrl *scriptPlayerWrapper) QuestStarted(id int16) bool {
+	return ctrl.GetQuestStatus(id) == 1
+}
+
+func (ctrl *scriptPlayerWrapper) QuestCompleted(id int16) bool {
+	return ctrl.GetQuestStatus(id) == 2
+}
+
+func (ctrl *scriptPlayerWrapper) QuestNotStarted(id int16) bool {
+	return ctrl.GetQuestStatus(id) == 0
+}
+
 func (ctrl *scriptPlayerWrapper) QuestData(id int16) string {
 	if q, ok := ctrl.plr.quests.inProgress[id]; ok {
 		return q.name
@@ -454,12 +485,85 @@ func (ctrl *scriptPlayerWrapper) RemoveItemsByIDSilent(id int32, count int32) bo
 	return ctrl.plr.removeItemsByID(id, count, true)
 }
 
+func (ctrl *scriptPlayerWrapper) RemoveAll(id int32) bool {
+	count := ctrl.plr.countItem(id)
+	if count <= 0 {
+		return true
+	}
+	return ctrl.plr.removeItemsByID(id, count, true)
+}
+
 func (ctrl *scriptPlayerWrapper) ItemCount(id int32) int32 {
 	return ctrl.plr.countItem(id)
 }
 
+func (ctrl *scriptPlayerWrapper) HaveItem(id int32, quantity int32) bool {
+	if quantity <= 0 {
+		quantity = 1
+	}
+	return ctrl.plr.countItem(id) >= quantity
+}
+
+func (ctrl *scriptPlayerWrapper) CanHold(id int32, amount int16) bool {
+	if amount <= 0 {
+		return true
+	}
+	item, err := CreateItemFromID(id, amount)
+	if err != nil {
+		return false
+	}
+	return ctrl.plr.CanReceiveItems([]Item{item})
+}
+
+func (ctrl *scriptPlayerWrapper) CanHoldAll(items [][]int32) bool {
+	converted := make([]Item, 0, len(items))
+	for _, spec := range items {
+		if len(spec) == 0 {
+			continue
+		}
+		id := spec[0]
+		amount := int16(1)
+		if len(spec) > 1 {
+			amount = int16(spec[1])
+		}
+		if amount <= 0 {
+			continue
+		}
+		item, err := CreateItemFromID(id, amount)
+		if err != nil {
+			return false
+		}
+		converted = append(converted, item)
+	}
+	return ctrl.plr.CanReceiveItems(converted)
+}
+
+func (ctrl *scriptPlayerWrapper) GetEquipInventoryFreeSlot() int16 {
+	return int16(ctrl.plr.equipSlotSize) - int16(len(ctrl.plr.equip))
+}
+
+func (ctrl *scriptPlayerWrapper) GetUseInventoryFreeSlot() int16 {
+	return int16(ctrl.plr.useSlotSize) - int16(len(ctrl.plr.use))
+}
+
+func (ctrl *scriptPlayerWrapper) GetSetupInventoryFreeSlot() int16 {
+	return int16(ctrl.plr.setupSlotSize) - int16(len(ctrl.plr.setUp))
+}
+
+func (ctrl *scriptPlayerWrapper) GetEtcInventoryFreeSlot() int16 {
+	return int16(ctrl.plr.etcSlotSize) - int16(len(ctrl.plr.etc))
+}
+
+func (ctrl *scriptPlayerWrapper) GetCashInventoryFreeSlot() int16 {
+	return int16(ctrl.plr.cashSlotSize) - int16(len(ctrl.plr.cash))
+}
+
 func (ctrl *scriptPlayerWrapper) TakeMesos(amount int32) {
 	ctrl.plr.takeMesos(amount)
+}
+
+func (ctrl *scriptPlayerWrapper) IsGM() bool {
+	return ctrl.plr.admin()
 }
 
 func (ctrl *scriptPlayerWrapper) GetNX() int32 {
@@ -576,6 +680,30 @@ func (ctrl *scriptPlayerWrapper) Quest(id int16) scriptQuestView {
 
 func (ctrl *scriptPlayerWrapper) PreviousMap() int32 {
 	return ctrl.plr.previousMap
+}
+
+func (ctrl *scriptPlayerWrapper) SaveLocation(slot string) {
+	if ctrl.plr.savedMaps == nil {
+		ctrl.plr.savedMaps = make(map[string]int32)
+	}
+	ctrl.plr.savedMaps[strings.ToUpper(slot)] = ctrl.plr.mapID
+}
+
+func (ctrl *scriptPlayerWrapper) GetSavedLocation(slot string) int32 {
+	if ctrl.plr.savedMaps == nil {
+		return -1
+	}
+	if id, ok := ctrl.plr.savedMaps[strings.ToUpper(slot)]; ok {
+		return id
+	}
+	return -1
+}
+
+func (ctrl *scriptPlayerWrapper) ClearSavedLocation(slot string) {
+	if ctrl.plr.savedMaps == nil {
+		return
+	}
+	delete(ctrl.plr.savedMaps, strings.ToUpper(slot))
 }
 
 func (ctrl *scriptPlayerWrapper) MapID() int32 {
