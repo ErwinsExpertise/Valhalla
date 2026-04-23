@@ -127,9 +127,9 @@ func GenerateCashID() int64 {
 	return cashID & 0x00FFFFFFFFFFFFFF
 }
 
-func loadInventoryFromDb(charID int32) ([]Item, []Item, []Item, []Item, []Item) {
+func loadInventoryFromDb(charID int32, equipSlots, useSlots, setupSlots, etcSlots, cashSlots byte) ([]Item, []Item, []Item, []Item, []Item) {
 	filter := "ID,inventoryID,itemID,slotNumber,amount,flag,upgradeSlots,level,str,dex,intt,luk,hp,mp,watk,matk,wdef,mdef,accuracy,avoid,hands,speed,jump,expireTime,creatorName,cashID,cashSN"
-	row, err := common.DB.Query("SELECT "+filter+" FROM items WHERE characterID=?", charID)
+	row, err := common.DB.Query("SELECT "+filter+" FROM items WHERE characterID=? ORDER BY inventoryID ASC, slotNumber ASC, ID DESC", charID)
 
 	if err != nil {
 		panic(err)
@@ -142,6 +142,37 @@ func loadInventoryFromDb(charID int32) ([]Item, []Item, []Item, []Item, []Item) 
 	cash := []Item{}
 
 	defer row.Close()
+
+	type slotKey struct {
+		invID  byte
+		slotID int16
+	}
+	invLimit := func(invID byte) byte {
+		switch invID {
+		case constant.InventoryEquip:
+			return equipSlots
+		case constant.InventoryUse:
+			return useSlots
+		case constant.InventorySetup:
+			return setupSlots
+		case constant.InventoryEtc:
+			return etcSlots
+		case constant.InventoryCash:
+			return cashSlots
+		default:
+			return constant.InventoryBaseSlotSize
+		}
+	}
+	findFreeSlot := func(invID byte, occupied map[slotKey]Item) int16 {
+		limit := invLimit(invID)
+		for slot := int16(1); slot <= int16(limit); slot++ {
+			if _, exists := occupied[slotKey{invID: invID, slotID: slot}]; !exists {
+				return slot
+			}
+		}
+		return 0
+	}
+	keptSlots := make(map[slotKey]Item)
 
 	for row.Next() {
 
@@ -179,6 +210,13 @@ func loadInventoryFromDb(charID int32) ([]Item, []Item, []Item, []Item, []Item) 
 
 		if err != nil {
 			log.Println(err)
+			continue
+		}
+
+		if item.slotID == 0 || item.amount <= 0 {
+			if delErr := item.delete(); delErr != nil {
+				log.Printf("loadInventoryFromDb: invalid-row delete failed charID=%d dbID=%d err=%v", charID, item.dbID, delErr)
+			}
 			continue
 		}
 
@@ -243,6 +281,29 @@ func loadInventoryFromDb(charID int32) ([]Item, []Item, []Item, []Item, []Item) 
 		}
 
 		item.calculateWeaponType()
+
+		key := slotKey{invID: item.invID, slotID: item.slotID}
+		if _, exists := keptSlots[key]; exists {
+			newSlot := findFreeSlot(item.invID, keptSlots)
+			if newSlot != 0 {
+				oldSlot := item.slotID
+				item.slotID = newSlot
+				if _, saveErr := item.save(charID); saveErr != nil {
+					log.Printf("loadInventoryFromDb: duplicate relocate failed charID=%d dbID=%d fromSlot=%d toSlot=%d err=%v", charID, item.dbID, oldSlot, newSlot, saveErr)
+					if delErr := item.delete(); delErr != nil {
+						log.Printf("loadInventoryFromDb: duplicate delete failed charID=%d dbID=%d err=%v", charID, item.dbID, delErr)
+					}
+					continue
+				}
+				keptSlots[slotKey{invID: item.invID, slotID: item.slotID}] = item
+			} else {
+				if delErr := item.delete(); delErr != nil {
+					log.Printf("loadInventoryFromDb: duplicate delete failed charID=%d dbID=%d err=%v", charID, item.dbID, delErr)
+				}
+			}
+			continue
+		}
+		keptSlots[key] = item
 
 		switch item.invID {
 		case 1:

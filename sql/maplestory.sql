@@ -195,6 +195,7 @@ CREATE TABLE `items` (
   `cashSN` int(11) DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `characterID` (`characterID`),
+  UNIQUE KEY `uniq_character_inventory_slot` (`characterID`,`inventoryID`,`slotNumber`),
   CONSTRAINT `items_ibfk_5` FOREIGN KEY (`characterID`) REFERENCES `characters` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
