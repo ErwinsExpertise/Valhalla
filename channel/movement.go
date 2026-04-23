@@ -113,6 +113,10 @@ func parseMovement(reader mpacket.Reader) (movement, movementFrag, bool) {
 		case movementType.equipMovement:
 			frag.equipData = reader.ReadByte()
 
+		case 15:
+			frag.stance = reader.ReadByte()
+			frag.duration = reader.ReadInt16()
+
 		case movementType.jumpdownMovement:
 			frag.x = reader.ReadInt16()
 			frag.y = reader.ReadInt16()
@@ -209,6 +213,10 @@ func parseMobMovement(reader mpacket.Reader, startX, startY int16) (movement, mo
 		case movementType.equipMovement:
 			frag.equipData = reader.ReadByte()
 
+		case 15:
+			frag.stance = reader.ReadByte()
+			frag.duration = reader.ReadInt16()
+
 		case movementType.jumpdownMovement:
 			frag.x = reader.ReadInt16()
 			frag.y = reader.ReadInt16()
@@ -292,6 +300,10 @@ func generateMovementBytes(moveData movement) mpacket.Packet {
 
 		case movementType.equipMovement:
 			p.WriteByte(frag.equipData)
+
+		case 15:
+			p.WriteByte(frag.stance)
+			p.WriteInt16(frag.duration)
 
 		case movementType.jumpdownMovement:
 			p.WriteInt16(frag.x)

@@ -115,6 +115,8 @@ func (server *Server) HandleClientPacket(conn mnet.Client, reader mpacket.Reader
 		server.playerFame(conn, reader)
 	case opcode.RecvChannelInvUseItem:
 		server.playerUseInventoryItem(conn, reader)
+	case opcode.RecvChannelClientTick3A:
+		server.playerClientTick3A(conn, reader)
 	case opcode.RecvChannelNearestTown:
 		// Return Scroll / Nearest Town Scroll
 		server.playerUseReturnScroll(conn, reader)
@@ -270,6 +272,8 @@ func (server *Server) playerConnect(conn mnet.Client, reader mpacket.Reader) {
 		log.Println(err)
 		return
 	}
+
+	newPlr.pos = inst.fhHist.getFinalPosition(newPos(newPlr.pos.x, newPlr.pos.y, 0))
 
 	for _, party := range server.parties {
 		if party.addExistingPlayer(newPlr) {
@@ -468,6 +472,9 @@ func (server Server) playerUseMysticDoor(conn mnet.Client, reader mpacket.Reader
 		return
 	}
 
+	requestedOwnerID := reader.ReadInt32()
+	_ = reader.ReadByte()
+
 	if plr.inst == nil {
 		plr.Send(packetPlayerNoChange())
 		return
@@ -479,6 +486,10 @@ func (server Server) playerUseMysticDoor(conn mnet.Client, reader mpacket.Reader
 		minDist     int32 = 1<<30 - 1
 	)
 	for oid, door := range plr.inst.mysticDoors {
+		if requestedOwnerID != 0 && oid != requestedOwnerID {
+			continue
+		}
+
 		dx := int32(plr.pos.x) - int32(door.pos.x)
 		dy := int32(plr.pos.y) - int32(door.pos.y)
 		dist := dx*dx + dy*dy
@@ -616,6 +627,7 @@ func (server Server) playerAddStatPoint(conn mnet.Client, reader mpacket.Reader)
 }
 
 func (server Server) playerRequestAvatarInfoWindow(conn mnet.Client, reader mpacket.Reader) {
+	_ = reader.ReadInt32() // leading tick/unknown int
 	plr, err := server.players.GetFromID(reader.ReadInt32())
 
 	if err != nil {
@@ -715,6 +727,10 @@ func (server Server) playerChairHeal(conn mnet.Client, reader mpacket.Reader) {
 
 	plr.giveHP(healAmount)
 	plr.lastChairHeal = time.Now()
+}
+
+func (server Server) playerClientTick3A(conn mnet.Client, reader mpacket.Reader) {
+	// The v48 client emits opcode 0x3A with no payload from the timed regen/sit loop.
 }
 
 func (server Server) playerAddSkillPoint(conn mnet.Client, reader mpacket.Reader) {
@@ -1351,7 +1367,8 @@ func (server Server) warpPlayer(plr *Player, dstField *field, dstPortal portal, 
 	}
 
 	plr.setMapID(dstField.id)
-	plr.pos = dstPortal.pos
+	plr.mapPos = dstPortal.id
+	plr.pos = dstInst.fhHist.getFinalPosition(newPos(dstPortal.pos.x, dstPortal.pos.y, 0))
 
 	plr.Send(packetMapChange(dstField.id, int32(server.id), dstPortal.id, plr.hp))
 
@@ -1473,6 +1490,7 @@ func (server Server) playerUseInventoryItem(conn mnet.Client, reader mpacket.Rea
 }
 
 func (server *Server) playerUseReturnScroll(conn mnet.Client, reader mpacket.Reader) {
+	_ = reader.ReadInt32()       // leading tick/unknown int
 	slot := reader.ReadInt16()   // inventory slot in 'use' tab
 	itemID := reader.ReadInt32() // Item ID
 
@@ -4245,6 +4263,7 @@ func (server *Server) guildManagement(conn mnet.Client, reader mpacket.Reader) {
 }
 
 func (server *Server) playerUseSack(conn mnet.Client, reader mpacket.Reader) {
+	_ = reader.ReadInt32() // leading tick/unknown int
 	slot := reader.ReadInt16()
 	itemID := reader.ReadInt32()
 
@@ -5431,8 +5450,14 @@ func (server *Server) playerPetLoot(conn mnet.Client, reader mpacket.Reader) {
 		return
 	}
 
-	reader.Skip(4) // unused pos
+	_ = reader.ReadByte()
+	_ = reader.ReadInt32() // leading tick/unknown int
+	px := reader.ReadInt16()
+	py := reader.ReadInt16()
 	dropID := reader.ReadInt32()
+	_ = reader.ReadByte()
+	_ = reader.ReadByte()
+	_ = reader.ReadByte()
 
 	err, drop := plr.inst.dropPool.findDropFromID(dropID)
 	if err != nil {
@@ -5440,7 +5465,7 @@ func (server *Server) playerPetLoot(conn mnet.Client, reader mpacket.Reader) {
 		return
 	}
 
-	if plr.pet.pos.x-drop.finalPos.x > 800 || plr.pet.pos.y-drop.finalPos.y > 600 {
+	if px-drop.finalPos.x > 800 || py-drop.finalPos.y > 600 {
 		// Hax
 		log.Printf("Player: %s pet tried to pickup an item from far away", plr.Name)
 		plr.Send(packetDropNotAvailable())

@@ -3810,7 +3810,7 @@ func packetBuddyListSizeUpdate(size byte) mpacket.Packet {
 
 func packetPlayerAvatarSummaryWindow(charID int32, plr Player) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelAvatarInfoWindow)
-	p.WriteInt32(plr.ID)
+	p.WriteInt32(charID)
 	p.WriteByte(plr.level)
 	p.WriteInt16(plr.job)
 	p.WriteInt16(plr.fame)
@@ -3821,18 +3821,9 @@ func packetPlayerAvatarSummaryWindow(charID int32, plr Player) mpacket.Packet {
 		p.WriteString("")
 	}
 
-	if plr.petCashID != 0 {
-		p.WriteBool(true)
-		p.WriteInt32(plr.pet.itemID)
-		p.WriteString(plr.pet.name)
-		p.WriteByte(plr.pet.level)
-		p.WriteInt16(plr.pet.closeness)
-		p.WriteByte(plr.pet.fullness)
-		p.WriteInt32(0) // equipped items
-	} else {
-		p.WriteBool(false)
-	}
-	p.WriteByte(0) // wishlist count
+	p.WriteBool(false)
+	p.WriteBool(false)
+	p.WriteByte(0)
 
 	return p
 }
