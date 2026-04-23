@@ -1250,6 +1250,35 @@ func (ctrl *reactorScriptController) SpawnMonster(id int32, x int16, y int16) {
 	ctrl.inst.lifePool.spawnMobFromID(id, newPos(x, y, 0), false, true, true, constant.MobSummonTypeInstant, 0)
 }
 
+func (ctrl *reactorScriptController) GainGuildPoints(points int32) {
+	if len(ctrl.inst.players) == 0 {
+		return
+	}
+	for _, plr := range ctrl.inst.players {
+		if plr != nil && plr.guild != nil {
+			plr.Send(packetMessageGuildPointsChange(points))
+			ctrl.server.world.Send(internal.PacketGuildPointsUpdate(plr.guild.id, plr.guild.points+points))
+			return
+		}
+	}
+}
+
+func (ctrl *reactorScriptController) HitMapReactorByName(mapID int32, name string) bool {
+	field, ok := ctrl.server.fields[mapID]
+	if !ok {
+		return false
+	}
+	inst, err := field.getInstance(ctrl.inst.id)
+	if err != nil {
+		inst, err = field.getInstance(0)
+		if err != nil {
+			return false
+		}
+	}
+	m := scriptMapWrapper{inst: inst, server: ctrl.server}
+	return m.HitReactorByName(name)
+}
+
 func (ctrl *reactorScriptController) DropItems(args ...int32) {
 	reactorID := strconv.Itoa(int(ctrl.reactor.info.ID))
 	reactorDrops := reactorDropTable[reactorID]

@@ -32,8 +32,8 @@ const (
 	RecvChannelNpcStorage          int16 = 0x31
 	RecvChannelInvMoveItem         int16 = 0x37
 	RecvChannelInvUseItem          int16 = 0x38
+	RecvChannelUseSack             int16 = 0x3B
 	RecvChannelChairHeal           int16 = 0x3C
-	RecvChannelUseSack             int16 = 0x3D
 	RecvChannelInvUseCashItem      int16 = 0x3E
 	RecvChannelNearestTown         int16 = 0x41
 	RecvChannelUseScroll           int16 = 0x42
@@ -41,7 +41,7 @@ const (
 	RecvChannelPassiveRegen        int16 = 0x44
 	RecvChannelAddSkillPoint       int16 = 0x45
 	RecvChannelSpecialSkill        int16 = 0x46
-	RecvChannelRequestBuffCancel   int16 = 0x39
+	RecvChannelRequestBuffCancel   int16 = 0x47
 	RecvChannelPlayerDropMesos     int16 = 0x49
 	RecvChannelPlayerFame          int16 = 0x4A
 	RecvChannelCharacterInfo       int16 = 0x4C

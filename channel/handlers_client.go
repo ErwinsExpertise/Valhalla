@@ -154,14 +154,13 @@ func (server *Server) HandleClientPacket(conn mnet.Client, reader mpacket.Reader
 	case opcode.RecvChannelBoatMap:
 		// [mapID int32][? byte]
 	case opcode.RecvChannelAcknowledgeBuff:
-		// Consume
+		server.playerPing(conn, reader)
 	case opcode.RecvChannelCancelBuff:
 		server.playerCancelBuff(conn, reader)
 	case opcode.RecvChannelQuestOperation:
 		server.playerQuestOperation(conn, reader)
 	case opcode.RecvChannelSummonAck:
-		// Observed as a zero-body client ack around summon activity in v48.
-		// Ignore until the full recv table is remapped.
+		server.playerPing(conn, reader)
 	case opcode.RecvChannelSummonMove:
 		server.playerSummonMove(conn, reader)
 	case opcode.RecvChannelSummonAttack:
