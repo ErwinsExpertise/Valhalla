@@ -53,7 +53,7 @@ const (
 	RecvChannelTeleportRock      int16 = 0x51
 	RecvChannelLieDetectorResult int16 = 0x54
 	RecvChannelQuestOperation    int16 = 0x55
-	RecvChannelAcknowledgeBuff   int16 = 0x4E
+	RecvChannelAcknowledgeBuff   int16 = 0x56
 	RecvChannelCharacterReport   int16 = 0x57
 	RecvChannelGroupChat         int16 = 0x59
 	RecvChannelSlashCommands     int16 = 0x5A
