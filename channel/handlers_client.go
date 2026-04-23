@@ -432,11 +432,6 @@ func (server Server) playerMovement(conn mnet.Client, reader mpacket.Reader) {
 		return
 	}
 
-	if plr.pos.foothold == 0 && ((plr.mapID >= 920010000 && plr.mapID <= 920011300) || (plr.mapID >= 990000000 && plr.mapID <= 990001100)) {
-		snapped := inst.fhHist.getFinalPosition(newPos(plr.pos.x, plr.pos.y, 0))
-		plr.SetPos(snapped)
-	}
-
 	inst.movePlayer(plr.ID, moveBytes, plr)
 }
 
@@ -1358,7 +1353,7 @@ func (server Server) warpPlayer(plr *Player, dstField *field, dstPortal portal, 
 
 	plr.setMapID(dstField.id)
 	plr.pos = dstPortal.pos
-
+	
 	plr.Send(packetMapChange(dstField.id, int32(server.id), dstPortal.id, plr.hp))
 
 	if err = dstInst.addPlayer(plr); err != nil {
