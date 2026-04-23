@@ -20,7 +20,9 @@ function start() {
         var field = ctrl.getMap(maps[i]);
         field.reset();
         field.clearProperties();
-        field.removeNpcByTemplate(chamberlainID);
+        if (maps[i] === entryMapID) {
+            field.removeNpcByTemplate(chamberlainID);
+        }
     }
 
     var centerMap = ctrl.getMap(centerMapID);
