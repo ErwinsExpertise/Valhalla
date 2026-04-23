@@ -1255,7 +1255,7 @@ func packetMapPortal(srcMap, dstMap int32, pos pos) mpacket.Packet {
 // packetMapPortalParty creates a party-specific portal packet (only party members can use)
 func packetMapPortalParty(ownerIdx byte, srcMap, dstMap int32, pos pos) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelPartyInfo)
-	p.WriteByte(0x1C)
+	p.WriteByte(0x1D)
 	p.WriteByte(ownerIdx)
 	p.WriteInt32(dstMap)
 	p.WriteInt32(srcMap)
@@ -1267,7 +1267,7 @@ func packetMapPortalParty(ownerIdx byte, srcMap, dstMap int32, pos pos) mpacket.
 // packetMapRemovePortalParty clears the party-door for a specific owner index
 func packetMapRemovePortalParty(ownerIdx byte) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelPartyInfo)
-	p.WriteByte(0x1C)
+	p.WriteByte(0x1D)
 	p.WriteByte(ownerIdx)
 	p.WriteInt32(constant.InvalidMap)
 	p.WriteInt32(constant.InvalidMap)

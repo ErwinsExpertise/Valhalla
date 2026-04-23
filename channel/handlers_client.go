@@ -485,18 +485,22 @@ func (server Server) playerUseMysticDoor(conn mnet.Client, reader mpacket.Reader
 		ownerID     int32
 		minDist     int32 = 1<<30 - 1
 	)
-	for oid, door := range plr.inst.mysticDoors {
-		if requestedOwnerID != 0 && oid != requestedOwnerID {
-			continue
-		}
-
-		dx := int32(plr.pos.x) - int32(door.pos.x)
-		dy := int32(plr.pos.y) - int32(door.pos.y)
-		dist := dx*dx + dy*dy
-		if dist < minDist {
-			minDist = dist
+	if requestedOwnerID != 0 {
+		if door, ok := plr.inst.mysticDoors[requestedOwnerID]; ok {
 			nearestDoor = door
-			ownerID = oid
+			ownerID = requestedOwnerID
+		}
+	}
+	if nearestDoor == nil {
+		for oid, door := range plr.inst.mysticDoors {
+			dx := int32(plr.pos.x) - int32(door.pos.x)
+			dy := int32(plr.pos.y) - int32(door.pos.y)
+			dist := dx*dx + dy*dy
+			if dist < minDist {
+				minDist = dist
+				nearestDoor = door
+				ownerID = oid
+			}
 		}
 	}
 
@@ -4945,7 +4949,7 @@ func (server *Server) playerFame(conn mnet.Client, reader mpacket.Reader) {
 	}
 
 	target.Send(packetFameNotifyVictim(source.Name, up))
-	source.Send(packetFameNotifySource(target.Name, up, target.fame))
+	source.Send(packetFameNotifySource(target.Name, up, int32(target.fame)))
 }
 
 func (server *Server) playerHitReactor(conn mnet.Client, reader mpacket.Reader) {

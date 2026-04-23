@@ -13,6 +13,10 @@ func createMysticDoor(plr *Player, skillID int32, skillLevel byte) {
 		removeMysticDoor(plr)
 	}
 
+	if plr.inst == nil {
+		return
+	}
+
 	doorPos := plr.pos
 
 	var duration int64
@@ -24,18 +28,26 @@ func createMysticDoor(plr *Player, skillID int32, skillLevel byte) {
 	}
 
 	returnMapID := plr.inst.returnMapID
-	if returnMapID != constant.InvalidMap {
-		sendPrimarySkillAnimation(plr, skillID, skillLevel)
-
-		expiresAt := time.Now().Add(time.Duration(duration) * time.Second)
-		createSourceDoor(plr, doorPos, expiresAt)
-
-		if returnField, ok := plr.inst.server.fields[returnMapID]; ok {
-			if returnInst, err := returnField.getInstance(0); err == nil {
-				createTownDoor(plr, returnInst, doorPos, expiresAt)
-			}
-		}
+	if returnMapID == constant.InvalidMap {
+		return
 	}
+
+	sendPrimarySkillAnimation(plr, skillID, skillLevel)
+
+	expiresAt := time.Now().Add(time.Duration(duration) * time.Second)
+	createSourceDoor(plr, doorPos, expiresAt)
+
+	returnField, ok := plr.inst.server.fields[returnMapID]
+	if !ok {
+		return
+	}
+
+	returnInst, err := returnField.getInstance(0)
+	if err != nil {
+		return
+	}
+
+	createTownDoor(plr, returnInst, doorPos, expiresAt)
 }
 
 func createSourceDoor(plr *Player, doorPos pos, expiresAt time.Time) {

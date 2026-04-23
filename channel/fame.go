@@ -50,11 +50,11 @@ func packetFameNotifyVictim(fromName string, up bool) mpacket.Packet {
 	return p
 }
 
-func packetFameNotifySource(victimName string, up bool, newFame int16) mpacket.Packet {
+func packetFameNotifySource(victimName string, up bool, newFame int32) mpacket.Packet {
 	p := mpacket.CreateWithOpcode(opcode.SendChannelFameOperation)
 	p.WriteByte(constant.FameNotifySource)
 	p.WriteString(victimName)
 	p.WriteBool(up)
-	p.WriteInt16(newFame)
+	p.WriteInt32(newFame)
 	return p
 }

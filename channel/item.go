@@ -98,7 +98,10 @@ type Item struct {
 
 const neverExpire int64 = 150842304000000000
 
-var rechargeableItemFooter = []byte{0xA1, 0x6D, 0x05, 0x01, 0x00, 0x00, 0x00, 0x7D}
+// v48 client bundle decode reads an opaque 8-byte tail only for 207xxxx items.
+// Until the exact semantic fields are recovered, prefer a neutral zeroed blob over
+// the previous hardcoded magic footer, which was not client-derived.
+var rechargeableItemFooter = make([]byte, 8)
 
 func isRechargeableItem(itemID int32) bool {
 	switch itemID / 10000 {
