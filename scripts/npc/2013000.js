@@ -73,6 +73,6 @@ if (plr.mapID() === 200080101) {
     }
 } else if (plr.mapID() === 920010000) {
     if (npc.sendYesNo("Would you like to exit the Party Quest?\r\nYou will have to start again next time...")) {
-        plr.leaveEvent();
+        plr.leavePartyQuest();
     }
 }

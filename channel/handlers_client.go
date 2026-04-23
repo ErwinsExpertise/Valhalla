@@ -1353,7 +1353,7 @@ func (server Server) warpPlayer(plr *Player, dstField *field, dstPortal portal, 
 
 	plr.setMapID(dstField.id)
 	plr.pos = dstPortal.pos
-	
+
 	plr.Send(packetMapChange(dstField.id, int32(server.id), dstPortal.id, plr.hp))
 
 	if err = dstInst.addPlayer(plr); err != nil {
@@ -5505,5 +5505,9 @@ func (server *Server) playerQuickslotKeyMappedModified(conn mnet.Client, reader 
 }
 
 func (server *Server) playerPing(conn mnet.Client, reader mpacket.Reader) {
-	// should we send ack?
+	plr, err := server.players.GetFromConn(conn)
+	if err != nil {
+		return
+	}
+	plr.Send(packetPlayerNoChange())
 }

@@ -5,7 +5,7 @@ var rewardMapID = 920011300;
 var exitMapID = 920011200;
 var chamberlainID = 2013001;
 var entryPrompt = "Hi, my name is Eak, the Chamberlain of the Goddess. Don't be alarmed; you won't be able to see me right now. Back when the Goddess turned into a block of stone, I simultaneously lost my own power. If you gather up the power of the Magic Cloud of Orbis, however, then I'll be able to recover my body and re-transform back to my original self. Please collect #b20#k Magic Clouds and bring them back to me. Right now, you'll only see me as a tiny, flickering light.";
-var pqItems = [, 4001044, 4001045, 4001046, 4001047, 4001048, 4001049, 4001050, 4001051, 4001052];
+var pqItems = [4001063, 4001044, 4001045, 4001046, 4001047, 4001048, 4001049, 4001050, 4001051, 4001052];
 
 function clearPQItems(plr) {
     for (var i = 0; i < pqItems.length; i++) {
