@@ -1,15 +1,14 @@
-var ticket = 4031713;
+var TICKET_ID = 4031713;
+var WAITING_ROOM = 600010002;
+var LOCATION_SLOT = "SUBWAY";
 
-if (!plr.haveItem(ticket, 1)) {
-    npc.sendOk("Hello, I am the ticket gate.");
+if (!plr.haveItem(TICKET_ID, 1)) {
+    npc.sendOk("You need a subway ticket before I can let you through.");
+} else if (!npc.sendYesNo("Please have your ticket ready. I will send you to the waiting room for the train to Kerning City. Do you want to go in now?")) {
+    npc.sendOk("Come back when you are ready to board.");
+} else if (!plr.gainItem(TICKET_ID, -1)) {
+    npc.sendOk("I could not take your ticket. Please try again.");
 } else {
-    npc.sendSelection("Hello, I am the ticket gate. Which ticket do you want to use? You will be warped immediately.#b\r\n#L0##t4031713#");
-    if (npc.selection() === 0) {
-        if (!npc.sendYesNo("It seems like there is still plenty of room on this ride. Please keep your ticket ready so I can let you on. The journey may be long, but you will get to your destination safely. What do you think? Do you want to go on this ride?")) {
-            npc.sendOk("You must have some business to take care of here, right?");
-        } else {
-            plr.gainItem(ticket, -1);
-            plr.warp(103000100);
-        }
-    }
+    plr.saveLocation(LOCATION_SLOT);
+    plr.warp(WAITING_ROOM);
 }
