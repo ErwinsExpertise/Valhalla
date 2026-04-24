@@ -1126,8 +1126,6 @@ func (d *Player) addStackableItemToInventory(newItem Item, items *[]Item, slotSi
 
 // GiveItem grants the given item to a player and returns the item
 func (d *Player) GiveItem(newItem Item) (Item, error) { // TODO: Refactor
-	d.normalizeInventoryByInvID(newItem.invID, "give_item")
-
 	isRechargeable := func(itemID int32) bool {
 		base := itemID / 10000
 		return base == 207
@@ -1274,8 +1272,6 @@ func (d *Player) GetSlotSize(invID byte) int16 {
 
 // TakeItem removes an item from the player's inventory
 func (d *Player) takeItem(id int32, slot int16, amount int16, invID byte) (Item, error) {
-	d.normalizeInventoryByInvID(invID, "take_item")
-
 	item, err := d.getItem(invID, slot)
 	if err != nil {
 		return item, fmt.Errorf("item not found at inv=%d slot=%d", invID, slot)
@@ -1307,8 +1303,6 @@ func (d *Player) takeItem(id int32, slot int16, amount int16, invID byte) (Item,
 }
 
 func (d *Player) TakeItemSilent(id int32, slot int16, amount int16, invID byte) (Item, error) {
-	d.normalizeInventoryByInvID(invID, "take_item_silent")
-
 	item, err := d.getItem(invID, slot)
 	if err != nil {
 		return item, fmt.Errorf("item not found at inv=%d slot=%d", invID, slot)
@@ -1366,8 +1360,6 @@ func (d *Player) updateItem(new Item) {
 }
 
 func (d *Player) updateItemInventory(invID byte, inventory []Item) {
-	inventory = d.normalizeInventorySlice(invID, inventory, "update_inventory")
-
 	switch invID {
 	case constant.InventoryEquip:
 		d.equip = inventory
@@ -1399,113 +1391,6 @@ func betterInventorySlotWinner(current, candidate Item) bool {
 		return candidate.amount > current.amount
 	}
 	return candidate.slotID > current.slotID
-}
-
-func (d *Player) inventorySlotLimit(invID byte) byte {
-	switch invID {
-	case constant.InventoryEquip:
-		return d.equipSlotSize
-	case constant.InventoryUse:
-		return d.useSlotSize
-	case constant.InventorySetup:
-		return d.setupSlotSize
-	case constant.InventoryEtc:
-		return d.etcSlotSize
-	case constant.InventoryCash:
-		return d.cashSlotSize
-	default:
-		return constant.InventoryBaseSlotSize
-	}
-}
-
-func (d *Player) normalizeInventoryByInvID(invID byte, reason string) {
-	d.updateItemInventory(invID, d.findItemInventoryByInvID(invID))
-	_ = reason
-}
-
-func (d *Player) findItemInventoryByInvID(invID byte) []Item {
-	switch invID {
-	case constant.InventoryEquip:
-		return d.equip
-	case constant.InventoryUse:
-		return d.use
-	case constant.InventorySetup:
-		return d.setUp
-	case constant.InventoryEtc:
-		return d.etc
-	case constant.InventoryCash:
-		return d.cash
-	}
-	return nil
-}
-
-func (d *Player) normalizeInventorySlice(invID byte, inventory []Item, reason string) []Item {
-	kept := make(map[int16]Item)
-	orderedSlots := make([]int16, 0, len(inventory))
-	removed := make([]Item, 0)
-	relocated := make([]Item, 0)
-	findFreeSlot := func() int16 {
-		limit := d.inventorySlotLimit(invID)
-		for slot := int16(1); slot <= int16(limit); slot++ {
-			if _, exists := kept[slot]; !exists {
-				return slot
-			}
-		}
-		return 0
-	}
-
-	for _, item := range inventory {
-		if item.ID == 0 || item.slotID == 0 || item.amount <= 0 {
-			removed = append(removed, item)
-			continue
-		}
-
-		if existing, ok := kept[item.slotID]; ok {
-			loser := item
-			if betterInventorySlotWinner(existing, item) {
-				loser = existing
-				kept[item.slotID] = item
-			}
-
-			if newSlot := findFreeSlot(); newSlot != 0 {
-				loser.slotID = newSlot
-				kept[newSlot] = loser
-				orderedSlots = append(orderedSlots, newSlot)
-				relocated = append(relocated, loser)
-			} else {
-				removed = append(removed, loser)
-			}
-			continue
-		}
-
-		kept[item.slotID] = item
-		orderedSlots = append(orderedSlots, item.slotID)
-	}
-
-	sort.Slice(orderedSlots, func(i, j int) bool { return orderedSlots[i] < orderedSlots[j] })
-
-	normalized := make([]Item, 0, len(orderedSlots))
-	for _, slot := range orderedSlots {
-		normalized = append(normalized, kept[slot])
-	}
-
-	for _, item := range relocated {
-		if item.dbID != 0 {
-			if _, err := item.save(d.ID); err != nil {
-				log.Printf("normalizeInventorySlice: relocate save failed charID=%d invID=%d slot=%d dbID=%d itemID=%d reason=%s err=%v", d.ID, invID, item.slotID, item.dbID, item.ID, reason, err)
-			}
-		}
-	}
-
-	for _, item := range removed {
-		if item.dbID != 0 {
-			if err := item.delete(); err != nil {
-				log.Printf("normalizeInventorySlice: cleanup delete failed charID=%d invID=%d slot=%d dbID=%d itemID=%d reason=%s err=%v", d.ID, invID, item.slotID, item.dbID, item.ID, reason, err)
-			}
-		}
-	}
-
-	return normalized
 }
 
 func (d *Player) findItemInventory(item Item) []Item {
@@ -1601,12 +1486,48 @@ func (d *Player) GetItemByCashID(invID byte, cashID int64) (Item, int16, error) 
 }
 
 func (d *Player) swapItems(item1, item2 Item, start, end int16) {
-	item1.slotID = end
-	item1.save(d.ID)
-	d.updateItem(item1)
+	if item1.dbID != 0 && item2.dbID != 0 {
+		tx, err := common.DB.Begin()
+		if err != nil {
+			log.Println(err)
+			d.Send(packetInventoryNoChange())
+			return
+		}
 
+		tmpSlot := int32(1000000) + int32(item1.dbID)
+		if _, err = tx.Exec("UPDATE items SET slotNumber=? WHERE ID=?", tmpSlot, item2.dbID); err != nil {
+			_ = tx.Rollback()
+			log.Println(err)
+			d.Send(packetInventoryNoChange())
+			return
+		}
+		if _, err = tx.Exec("UPDATE items SET slotNumber=? WHERE ID=?", end, item1.dbID); err != nil {
+			_ = tx.Rollback()
+			log.Println(err)
+			d.Send(packetInventoryNoChange())
+			return
+		}
+		if _, err = tx.Exec("UPDATE items SET slotNumber=? WHERE ID=?", start, item2.dbID); err != nil {
+			_ = tx.Rollback()
+			log.Println(err)
+			d.Send(packetInventoryNoChange())
+			return
+		}
+		if err = tx.Commit(); err != nil {
+			log.Println(err)
+			d.Send(packetInventoryNoChange())
+			return
+		}
+	} else {
+		item1.slotID = end
+		item1.save(d.ID)
+		item2.slotID = start
+		item2.save(d.ID)
+	}
+
+	item1.slotID = end
+	d.updateItem(item1)
 	item2.slotID = start
-	item2.save(d.ID)
 	d.updateItem(item2)
 
 	d.Send(packetInventoryChangeItemSlot(item1.invID, start, end))
@@ -1649,8 +1570,6 @@ func (d *Player) removeItem(item Item, fromStorage bool) {
 		}
 	}
 
-	d.normalizeInventoryByInvID(item.invID, "remove_item")
-
 	if !fromStorage {
 		d.Send(packetInventoryRemoveItem(item))
 		if item.invID == constant.InventoryEquip && item.slotID < 0 && d.inst != nil {
@@ -1672,8 +1591,6 @@ func (d *Player) dropMesos(amount int32) error {
 }
 
 func (d *Player) moveItem(start, end, amount int16, invID byte) error {
-	d.normalizeInventoryByInvID(invID, "move_item")
-
 	isRechargeable := func(itemID int32) bool {
 		base := itemID / 10000
 		return base == 207
@@ -1735,13 +1652,43 @@ func (d *Player) moveItem(start, end, amount int16, invID byte) error {
 
 		item2, err := d.getItem(invID, end)
 		if err == nil {
-			item2.slotID = start
-			item2.save(d.ID)
-			d.updateItem(item2)
-		}
+			if item1.dbID != 0 && item2.dbID != 0 {
+				tx, txErr := common.DB.Begin()
+				if txErr != nil {
+					return txErr
+				}
 
-		item1.slotID = end
-		item1.save(d.ID)
+				tmpSlot := int32(1000000) + int32(item1.dbID)
+				if _, err = tx.Exec("UPDATE items SET slotNumber=? WHERE ID=?", tmpSlot, item2.dbID); err != nil {
+					_ = tx.Rollback()
+					return err
+				}
+				if _, err = tx.Exec("UPDATE items SET slotNumber=? WHERE ID=?", end, item1.dbID); err != nil {
+					_ = tx.Rollback()
+					return err
+				}
+				if _, err = tx.Exec("UPDATE items SET slotNumber=? WHERE ID=?", start, item2.dbID); err != nil {
+					_ = tx.Rollback()
+					return err
+				}
+				err = tx.Commit()
+				if err != nil {
+					return err
+				}
+			} else {
+				item2.slotID = start
+				item2.save(d.ID)
+				item1.slotID = end
+				item1.save(d.ID)
+			}
+
+			item2.slotID = start
+			d.updateItem(item2)
+			item1.slotID = end
+		} else {
+			item1.slotID = end
+			item1.save(d.ID)
+		}
 		d.updateItem(item1)
 
 		d.Send(packetInventoryChangeItemSlot(invID, start, end))
@@ -2015,12 +1962,6 @@ func (d *Player) Kick() {
 
 // Save data - this needs to be split to occur at relevant points in time
 func (d Player) save() error {
-	d.normalizeInventoryByInvID(constant.InventoryEquip, "player_save")
-	d.normalizeInventoryByInvID(constant.InventoryUse, "player_save")
-	d.normalizeInventoryByInvID(constant.InventorySetup, "player_save")
-	d.normalizeInventoryByInvID(constant.InventoryEtc, "player_save")
-	d.normalizeInventoryByInvID(constant.InventoryCash, "player_save")
-
 	query := `UPDATE characters set skin=?, hair=?, face=?, level=?,
 	job=?, str=?, dex=?, intt=?, luk=?, hp=?, maxHP=?, mp=?, maxMP=?,
 	ap=?, sp=?, exp=?, fame=?, mapID=?, mapPos=?, mesos=?, miniGameWins=?,
