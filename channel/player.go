@@ -1653,6 +1653,10 @@ func (d *Player) removeItem(item Item, fromStorage bool) {
 
 	if !fromStorage {
 		d.Send(packetInventoryRemoveItem(item))
+		if item.invID == constant.InventoryEquip && item.slotID < 0 && d.inst != nil {
+			d.inst.send(packetInventoryChangeEquip(*d))
+			d.recalculateTotalStats()
+		}
 	}
 }
 
@@ -3821,6 +3825,9 @@ func packetInventoryRemoveItem(item Item) mpacket.Packet {
 	p.WriteByte(0x03)
 	p.WriteByte(item.invID)
 	p.WriteInt16(item.slotID)
+	if item.invID == constant.InventoryEquip && item.slotID < 0 {
+		p.WriteByte(0)
+	}
 
 	return p
 }
