@@ -1845,7 +1845,8 @@ func (d *Player) consumeItemsByID(itemID int32, reqCount int32) bool {
 
 func (d Player) admin() bool { return d.Conn.GetAdminLevel() > 0 }
 
-func (d Player) encodeDisplayBytes(pkt *mpacket.Packet) {
+func (d Player) avatarLookBytes() []byte {
+	pkt := mpacket.NewPacket()
 	pkt.WriteByte(d.gender)
 	pkt.WriteByte(d.skin)
 	pkt.WriteInt32(d.face)
@@ -1855,24 +1856,36 @@ func (d Player) encodeDisplayBytes(pkt *mpacket.Packet) {
 	visible := make(map[byte]int32)
 	masked := make(map[byte]int32)
 	cashWeapon := int32(0)
+	unknown := make([]string, 0)
+
+	for _, b := range d.equip {
+		if b.slotID < 0 && b.slotID > -20 {
+			visible[byte(-b.slotID)] = b.ID
+		}
+	}
 
 	for _, b := range d.equip {
 		if b.slotID >= 0 {
 			continue
 		}
 
-		slot := -b.slotID
-		switch {
-		case slot >= 1 && slot <= 29:
-			visible[byte(slot)] = b.ID
-		case slot == 111:
+		if b.slotID > -100 {
+			continue
+		}
+
+		if b.slotID == -111 {
 			cashWeapon = b.ID
-		case slot >= 101 && slot <= 129:
-			cashSlot := byte(slot - 100)
+			continue
+		}
+
+		cashSlot := byte(-(b.slotID + 100))
+		if cashSlot >= 1 && cashSlot <= 29 {
 			if equipped, ok := visible[cashSlot]; ok {
 				masked[cashSlot] = equipped
 			}
 			visible[cashSlot] = b.ID
+		} else {
+			unknown = append(unknown, fmt.Sprintf("slot=%d item=%d", b.slotID, b.ID))
 		}
 	}
 
@@ -1895,6 +1908,12 @@ func (d Player) encodeDisplayBytes(pkt *mpacket.Packet) {
 	pkt.WriteByte(0xFF)
 	pkt.WriteInt32(cashWeapon)
 	pkt.WriteInt32(0)
+
+	return pkt
+}
+
+func (d Player) encodeDisplayBytes(pkt *mpacket.Packet) {
+	pkt.WriteBytes(d.avatarLookBytes())
 }
 
 func (d Player) remoteSpawnTempStatMask() uint64 {
@@ -3196,17 +3215,21 @@ func packetPlayerReceivedDmg(charID int32, attack int8, initalAmmount, reducedAm
 	p.WriteInt8(attack)
 	p.WriteInt32(initalAmmount)
 
-	p.WriteInt32(spawnID)
+	// v48 remote hit packets encode the mob template here; reflected hit data,
+	// including the target spawn ID, is carried later in the optional reflect block.
 	p.WriteInt32(mobID)
 	p.WriteByte(stance)
 	p.WriteByte(reflected)
 
 	if reflected > 0 {
+		p.WriteByte(0)
+		p.WriteInt32(spawnID)
 		p.WriteByte(reflectAction)
 		p.WriteInt16(reflectX)
 		p.WriteInt16(reflectY)
 	}
 
+	p.WriteByte(0)
 	p.WriteInt32(reducedAmmount)
 
 	// Check if used

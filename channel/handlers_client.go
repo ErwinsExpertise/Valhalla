@@ -2494,10 +2494,8 @@ func (server Server) mobControl(conn mnet.Client, reader mpacket.Reader) {
 		return
 	}
 
-	rawMoveBytes := append([]byte(nil), reader.GetRestAsBytes()...)
-
 	moveData, finalData, valid := parseMobMovement(reader, mob.pos.x, mob.pos.y)
-	moveBytes := rawMoveBytes
+	moveBytes := generateMovementBytes(moveData)
 
 	inst.lifePool.mobAcknowledge(mobSpawnID, plr, moveID, skillPossible, action, skillData, moveData, finalData, moveBytes)
 	if !valid {

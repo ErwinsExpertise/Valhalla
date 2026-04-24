@@ -1087,7 +1087,7 @@ func displayBoat(plr *Player, show bool, boatType byte) {
 	case 1: // crog
 		plr.Send(packetMapShowMovingObject(show))
 	default:
-		log.Println("Unkown docked boat type:", boatType)
+		log.Println("Unknown docked boat type:", boatType)
 	}
 }
 
@@ -1111,7 +1111,8 @@ func packetMapPlayerEnter(plr *Player) mpacket.Packet {
 	}
 
 	p.WriteUint64(plr.remoteSpawnTempStatMask())
-	plr.encodeDisplayBytes(&p)
+	display := plr.avatarLookBytes()
+	p.WriteBytes(display)
 
 	p.WriteInt32(0) // consume item effect
 	p.WriteInt32(0) // active effect item id
@@ -1127,7 +1128,6 @@ func packetMapPlayerEnter(plr *Player) mpacket.Packet {
 	p.WriteInt32(0)
 	p.WriteInt32(0)
 	plr.encodeRemoteMiniRoomBalloon(&p)
-	p.WriteByte(0)
 	p.WriteByte(0)
 	p.WriteByte(0)
 	p.WriteByte(0)
