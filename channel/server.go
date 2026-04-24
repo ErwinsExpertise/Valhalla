@@ -173,6 +173,7 @@ func (server *Server) Initialise(work chan func(), dbuser, dbpassword, dbaddress
 	log.Println("Anti-cheat initialized")
 
 	go scheduleBoats(server)
+	go scheduleHeliosElevator(server)
 }
 
 func (server *Server) loadScripts() {

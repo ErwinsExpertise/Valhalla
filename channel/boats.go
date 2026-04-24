@@ -124,31 +124,12 @@ func boatsBoarding(server *Server, canBoard bool) {
 }
 
 func boatsMovePlayers(server *Server, warps map[int32]int32) {
+	transportWarps := make(map[int32]transportDestination, len(warps))
 	for src, dst := range warps {
-		srcField, ok := server.fields[src]
-
-		if !ok {
-			log.Println("Could not not take off for", src)
-			continue
-		}
-
-		dstField, ok := server.fields[dst]
-		if !ok {
-			log.Println("Could not not take off for", dst)
-			continue
-		}
-
-		portal, err := dstField.instances[0].getPortalFromID(0, true)
-		if err != nil {
-			continue
-		}
-
-		for _, inst := range srcField.instances {
-			for _, plr := range inst.players {
-				server.warpPlayer(plr, dstField, portal, true)
-			}
-		}
+		transportWarps[src] = transportDestination{mapID: dst}
 	}
+
+	moveTransportPlayers(server, transportWarps)
 }
 
 func invasion(server *Server) {

@@ -574,6 +574,13 @@ const (
 
 	MapBoatLudiDeparture int32 = 220000111
 	MapBoatLudiFlight    int32 = 200090110
+
+	MapHeliosTower2ndFloor        int32 = 222020100
+	MapHeliosTowerLudiWaitingRoom int32 = 222020110
+	MapHeliosTowerLudiElevator    int32 = 222020111
+	MapHeliosTower99thFloor       int32 = 222020200
+	MapHeliosTowerKFTWaitingRoom  int32 = 222020210
+	MapHeliosTowerKFTElevator     int32 = 222020211
 )
 
 const (

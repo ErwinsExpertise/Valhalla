@@ -1293,7 +1293,12 @@ func (server Server) playerUseScriptedPortal(conn mnet.Client, reader mpacket.Re
 		warp(plr, previousMap, "market00")
 		plr.previousMap = previousMap
 	case constant.PortalPapulatus:
-		if plr.mapID == 222080000 {
+		switch plr.mapID {
+		case constant.MapHeliosTower2ndFloor:
+			warp(plr, constant.MapHeliosTowerLudiWaitingRoom, "sp")
+		case constant.MapHeliosTower99thFloor:
+			warp(plr, constant.MapHeliosTowerKFTWaitingRoom, "sp")
+		case 222080000:
 			if !checkMap(plr, constant.MapBossPapulatus, true, 0, 120) {
 				warp(plr, constant.MapBossPapulatus, "st00")
 			}
