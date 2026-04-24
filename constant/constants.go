@@ -577,6 +577,13 @@ const (
 	MapBoatLudiDeparture int32 = 220000111
 	MapBoatLudiFlight    int32 = 200090110
 
+	MapMuLungDeparture      int32 = 250000100
+	MapOrbisMuLungDeparture int32 = 200000141
+	MapTransportToMuLung    int32 = 200090300
+	MapTransportToOrbis     int32 = 200090310
+	MapMuLungArrival        int32 = 250000000
+	MapOrbisArrival         int32 = 200000100
+
 	MapKerningSubwayStation    int32 = 103000100
 	MapNLCSubwayStation        int32 = 600010001
 	MapNLCToKerningWaitingRoom int32 = 600010002
