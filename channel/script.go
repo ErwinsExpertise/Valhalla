@@ -1701,6 +1701,17 @@ func (ctrl *npcChatController) clearUserInput() {
 	ctrl.stateTracker.number = 0
 }
 
+func (ctrl *npcChatController) Dispose() {
+	ctrl.vm = nil
+	ctrl.program = nil
+	ctrl.stateTracker.currentPos = 0
+	ctrl.stateTracker.lastPos = 0
+	ctrl.stateTracker.selections = nil
+	ctrl.stateTracker.inputs = nil
+	ctrl.stateTracker.numbers = nil
+	ctrl.clearUserInput()
+}
+
 // Selection value
 func (ctrl *npcChatController) Selection() int32 {
 	if len(ctrl.stateTracker.selections) == 0 {
