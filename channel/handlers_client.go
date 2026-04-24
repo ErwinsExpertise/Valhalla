@@ -1205,7 +1205,7 @@ func (server Server) playerUseScriptedPortal(conn mnet.Client, reader mpacket.Re
 		}
 	}
 
-	warp := func(plr *Player, mapID int32, portalName string, checkActive bool, maxPlayers int, minLevel byte) {
+	warp := func(plr *Player, mapID int32, portalName string) {
 		dstField, ok := server.fields[mapID]
 
 		if !ok {
@@ -1221,32 +1221,6 @@ func (server Server) playerUseScriptedPortal(conn mnet.Client, reader mpacket.Re
 			return
 		}
 
-		if checkActive {
-			bossActive, ok := inst.properties["eventActive"].(bool)
-
-			if !ok {
-				bossActive = false
-			}
-
-			if bossActive {
-				plr.Send(packetMessageRedText("The fight is already active. Please try again later."))
-				plr.Send(packetPlayerNoChange())
-				return
-			}
-		}
-
-		if maxPlayers > 0 && len(inst.players) >= maxPlayers {
-			plr.Send(packetMessageRedText("The boss room is currently full."))
-			plr.Send(packetPlayerNoChange())
-			return
-		}
-
-		if plr.level < minLevel {
-			plr.Send(packetMessageRedText(fmt.Sprintf("You must be level %d or higher to enter.", minLevel)))
-			plr.Send(packetPlayerNoChange())
-			return
-		}
-
 		portal, err := inst.getPortalFromName(portalName)
 
 		if err != nil {
@@ -1256,21 +1230,86 @@ func (server Server) playerUseScriptedPortal(conn mnet.Client, reader mpacket.Re
 		}
 
 		server.warpPlayer(plr, dstField, portal, true)
+
+		if mapID == constant.MapBossZakumWaiting {
+			remaining := server.getZakumExpeditionRemainingSeconds(plr.inst.id)
+			if remaining > 0 {
+				plr.Send(packetShowCountdown(remaining))
+			} else {
+				plr.Send(packetHideCountdown())
+			}
+		}
+	}
+
+	checkMap := func(plr *Player, mapID int32, checkActive bool, maxPlayers int, minLevel byte) bool {
+		dstField, ok := server.fields[mapID]
+
+		if !ok {
+			plr.Send(packetPlayerNoChange())
+			return true
+		}
+
+		inst, err := dstField.getInstance(plr.inst.id)
+
+		if err != nil {
+			log.Println(err)
+			plr.Send(packetPlayerNoChange())
+			return true
+		}
+
+		if checkActive {
+			bossActive, ok := inst.properties["eventActive"].(bool)
+			if !ok {
+				bossActive = false
+			}
+
+			if bossActive {
+				plr.Send(packetMessageRedText("The fight is already active. Please try again later."))
+				plr.Send(packetPlayerNoChange())
+				return bossActive
+			}
+		}
+
+		if maxPlayers > 0 && len(inst.players) >= maxPlayers {
+			plr.Send(packetMessageRedText("The boss room is currently full."))
+			plr.Send(packetPlayerNoChange())
+			return true
+		}
+
+		if plr.level < minLevel {
+			plr.Send(packetMessageRedText(fmt.Sprintf("You must be level %d or higher to enter.", minLevel)))
+			plr.Send(packetPlayerNoChange())
+			return true
+		}
+
+		return false
 	}
 
 	switch portalName {
 	case constant.PortalFreeMarketEnter:
-		warp(plr, constant.MapFreeMarket, "out00", false, 0, 10)
+		warp(plr, constant.MapFreeMarket, "out00")
 	case constant.PortalFreeMarketLeave:
 		previousMap := plr.previousMap
-		warp(plr, previousMap, "market00", false, 0, 0)
+		warp(plr, previousMap, "market00")
 		plr.previousMap = previousMap
 	case constant.PortalPapulatus:
-		warp(plr, constant.MapBossPapulatus, "st00", true, 0, 120)
+		if plr.mapID == 222080000 {
+			if !checkMap(plr, constant.MapBossPapulatus, true, 0, 120) {
+				warp(plr, constant.MapBossPapulatus, "st00")
+			}
+		}
 	case constant.PortalPianus:
-		warp(plr, constant.MapBossPianus, "out00", false, 10, 0)
+		if plr.mapID == 230040410 {
+			if !checkMap(plr, constant.MapBossPianus, false, 10, 0) {
+				warp(plr, constant.MapBossPianus, "out00")
+			}
+		}
 	case constant.PortalZakum:
-		warp(plr, constant.MapBossZakum, "st00", true, 20, 50)
+		if plr.mapID == 211042300 {
+			if !checkMap(plr, constant.MapBossZakum, true, 20, 50) {
+				warp(plr, constant.MapBossZakumWaiting, "west00")
+			}
+		}
 	}
 }
 

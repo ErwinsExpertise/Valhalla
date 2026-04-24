@@ -37,6 +37,9 @@ func manageSummonedBoss(inst *fieldInstance, mobID int32, server *Server) {
 					inst.dropPool.eraseDrops()
 					inst.reactorPool.reset(false)
 					inst.properties["eventActive"] = false
+					if inst.fieldID == constant.MapBossZakum {
+						server.clearZakumExpedition(inst.id)
+					}
 					finished.Store(true)
 				}
 			}
@@ -77,6 +80,9 @@ func manageSummonedBoss(inst *fieldInstance, mobID int32, server *Server) {
 				inst.dropPool.eraseDrops()
 				inst.reactorPool.reset(false)
 				inst.properties["eventActive"] = false
+				if inst.fieldID == constant.MapBossZakum {
+					server.clearZakumExpedition(inst.id)
+				}
 			}
 			return
 		}

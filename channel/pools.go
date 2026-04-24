@@ -1640,7 +1640,10 @@ func (pool *reactorPool) processStateSideEffects(r *fieldReactor, plr *Player) {
 				pool.instance.lifePool.spawnMobFromID(int32(mobID), spawnPos, false, true, true, constant.MobSummonTypeInstant, 0)
 
 				if summonRequiresBossHandler(int32(mobID)) {
-					go manageSummonedBoss(pool.instance, int32(mobID), pool.server)
+					bossActive, ok := pool.instance.properties["eventActive"].(bool)
+					if !ok || !bossActive {
+						go manageSummonedBoss(pool.instance, int32(mobID), pool.server)
+					}
 				}
 			}
 		case constant.ReactorDrop:

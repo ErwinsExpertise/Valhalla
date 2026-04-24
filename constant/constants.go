@@ -544,7 +544,8 @@ const (
 	MapBossPapulatusReturn int32 = 220080000
 	MapBossPianus          int32 = 230040420
 	MapBossZakum           int32 = 280030000
-	MapBossZakumReturn     int32 = 211042300
+	MapBossZakumWaiting    int32 = 211042400
+	MapBossZakumReturn     int32 = 280090000
 	MapZakumPQ             int32 = 280010000 // Zakum Party Quest (Stage 1 - Dead Mine)
 	MapKerningPQ           int32 = 103000800
 	MapLudiPQ              int32 = 922010100
