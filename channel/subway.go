@@ -1,7 +1,6 @@
 package channel
 
 import (
-	"log"
 	"time"
 
 	"github.com/Hucaru/Valhalla/constant"
@@ -30,14 +29,12 @@ func scheduleSubway(server *Server) {
 	}
 
 	for {
-		log.Println("Subway departing in", subwayWaitingDuration)
 		wait(subwayWaitingDuration)
 
 		server.dispatch <- func() {
 			moveTransportPlayers(server, departures)
 		}
 
-		log.Println("Subway arriving in", subwayRideDuration)
 		wait(subwayRideDuration)
 
 		server.dispatch <- func() {

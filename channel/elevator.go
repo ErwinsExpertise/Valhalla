@@ -1,7 +1,6 @@
 package channel
 
 import (
-	"log"
 	"time"
 
 	"github.com/Hucaru/Valhalla/constant"
@@ -30,14 +29,12 @@ func scheduleHeliosElevator(server *Server) {
 	}
 
 	for {
-		log.Println("Helios elevator departing in", heliosElevatorBoardingDuration)
 		wait(heliosElevatorBoardingDuration)
 
 		server.dispatch <- func() {
 			moveTransportPlayers(server, departures)
 		}
 
-		log.Println("Helios elevator arriving in", heliosElevatorRideDuration)
 		wait(heliosElevatorRideDuration)
 
 		server.dispatch <- func() {

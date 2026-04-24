@@ -1,7 +1,6 @@
 package channel
 
 import (
-	"log"
 	"time"
 
 	"github.com/Hucaru/Valhalla/constant"
@@ -22,7 +21,6 @@ func scheduleMuLungTransport(server *Server) {
 	}
 
 	for {
-		log.Println("Mu Lung transport arriving in", muLungTransportRideDuration)
 		wait(muLungTransportRideDuration)
 
 		server.dispatch <- func() {
