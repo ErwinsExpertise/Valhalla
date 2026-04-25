@@ -1203,6 +1203,7 @@ type npcChatController struct {
 	program *goja.Program
 
 	selectionCalls int
+	disposed       bool
 }
 
 type portalScriptController struct {
@@ -1702,14 +1703,7 @@ func (ctrl *npcChatController) clearUserInput() {
 }
 
 func (ctrl *npcChatController) Dispose() {
-	ctrl.vm = nil
-	ctrl.program = nil
-	ctrl.stateTracker.currentPos = 0
-	ctrl.stateTracker.lastPos = 0
-	ctrl.stateTracker.selections = nil
-	ctrl.stateTracker.inputs = nil
-	ctrl.stateTracker.numbers = nil
-	ctrl.clearUserInput()
+	ctrl.disposed = true
 }
 
 // Selection value
@@ -1767,6 +1761,9 @@ func (ctrl *npcChatController) run() bool {
 
 	if err != nil {
 		if _, isInterrupted := err.(*goja.InterruptedError); isInterrupted {
+			if ctrl.disposed {
+				return true
+			}
 			return false
 		}
 		return true
