@@ -1,6 +1,6 @@
 // Platform Service Manager - Orbis Station / 200000100
-var mapNames = ["Victoria Island", "Ludibrium"];
-var mapPortals = [200000111, 200000121];
+var mapNames = ["Victoria Island", "Ludibrium", "Mu Lung"];
+var mapPortals = [200000111, 200000121, 200000140];
 
 var chat = "There are two platforms at Orbis Station. Which platform would you like to go to? #b";
 for (var i = 0; i < mapNames.length; i++) {
@@ -16,8 +16,10 @@ if (sel < 0 || sel >= mapNames.length) {
     var confirmText = "";
     if (sel === 0) {
         confirmText = "Even if you enter the wrong passage, you can return here using the portal. Move to the platform to board a ship to Victoria Island?";
-    } else {
+    } else if (sel === 1) {
         confirmText = "Even if you enter the wrong passage, you can return here using the portal. Move to the platform to board a ship to Ludibrium?";
+    } else {
+        confirmText = "Even if you enter the wrong passage, you can return here using the portal. Move to the platform to board a ship to Mu Lung?";
     }
 
     if (npc.sendYesNo(confirmText)) {
