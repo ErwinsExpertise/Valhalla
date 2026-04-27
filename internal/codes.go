@@ -7,10 +7,11 @@ const (
 	OpChatGuild     = 0x03
 	OpChatMegaphone = 0x04
 
-	OpPartyCreate     = 0x01
-	OpPartyLeaveExpel = 0x02
-	OpPartyAccept     = 0x03
-	OpPartyInfoUpdate = 0x04
+	OpPartyCreate       = 0x01
+	OpPartyLeaveExpel   = 0x02
+	OpPartyAccept       = 0x03
+	OpPartyInfoUpdate   = 0x04
+	OpPartyLeaderChange = 0x05
 
 	OpGuildDisband      = 0x01
 	OpGuildRankUpdate   = 0x02

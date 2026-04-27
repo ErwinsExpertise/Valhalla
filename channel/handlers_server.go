@@ -250,7 +250,7 @@ func (server *Server) handlePartyEvent(conn mnet.Server, reader mpacket.Reader) 
 		plr, err := server.players.GetFromID(playerID)
 
 		if !reader.ReadBool() {
-			if err != nil {
+			if err == nil {
 				plr.Send(packetPartyCreateUnkownError())
 			}
 
@@ -259,7 +259,12 @@ func (server *Server) handlePartyEvent(conn mnet.Server, reader mpacket.Reader) 
 
 		newParty := &party{serverChannelID: int32(server.id)}
 		newParty.SerialisePacket(&reader)
-		newParty.addPlayer(plr, 0)
+		if plr != nil {
+			newParty.players[0] = plr
+			plr.party = newParty
+			p := packetPartyCreate(newParty.ID, -1, -1, pos{})
+			plr.Send(p)
+		}
 		server.parties[newParty.ID] = newParty
 		server.updatePartyMetric()
 	case internal.OpPartyLeaveExpel:
@@ -269,8 +274,10 @@ func (server *Server) handlePartyEvent(conn mnet.Server, reader mpacket.Reader) 
 		index := reader.ReadInt32()
 
 		if party, ok := server.parties[partyID]; ok {
+			formerID := party.PlayerID[index]
+			formerName := party.Name[index]
 			party.SerialisePacket(&reader)
-			party.removePlayer(index, kicked)
+			party.removePlayer(index, kicked, formerID, formerName)
 		}
 
 		if destroy {
@@ -300,13 +307,29 @@ func (server *Server) handlePartyEvent(conn mnet.Server, reader mpacket.Reader) 
 		index := reader.ReadInt32()
 		onlineStatus := reader.ReadBool()
 		if party, ok := server.parties[partyID]; ok {
+			oldMapID := party.MapID[index]
+			oldChannelID := party.ChannelID[index]
+			oldJob := party.Job[index]
+			oldLevel := party.Level[index]
 			party.SerialisePacket(&reader)
 			if onlineStatus {
 				plr, _ := server.players.GetFromID(playerID)
 				party.updateOnlineStatus(index, plr)
-			} else {
-				party.updateInfo(index)
+			} else if oldMapID != party.MapID[index] || oldChannelID != party.ChannelID[index] {
+				p := packetPartyUpdate(party.ID, party)
+				party.broadcast(p)
+			} else if oldJob != party.Job[index] || oldLevel != party.Level[index] {
+				p := packetPartyUpdateJobLevel(playerID, party.Level[index], party.Job[index])
+				party.broadcast(p)
 			}
+		}
+	case internal.OpPartyLeaderChange:
+		partyID := reader.ReadInt32()
+		if party, ok := server.parties[partyID]; ok {
+			party.SerialisePacket(&reader)
+			party.relinkPlayers(&server.players)
+			p := packetPartyLeaderChange(party.ID, party)
+			party.broadcast(p)
 		}
 	default:
 		log.Println("Unknown party event type:", op)
@@ -721,7 +744,7 @@ func (server *Server) handleCharacterDeleted(conn mnet.Server, reader mpacket.Re
 	for _, party := range server.parties {
 		for i, plrID := range party.PlayerID {
 			if plrID == charID {
-				party.removePlayer(int32(i), true)
+				party.removePlayer(int32(i), true, plrID, party.Name[i])
 				break
 			}
 		}

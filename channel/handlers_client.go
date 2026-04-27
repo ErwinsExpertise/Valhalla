@@ -2310,6 +2310,32 @@ func (server *Server) playerPartyInfo(conn mnet.Client, reader mpacket.Reader) {
 		}
 
 		server.world.Send(internal.PacketChannelPartyLeave(plr.party.ID, playerID, true))
+	case 6: // change leader
+		playerID := reader.ReadInt32()
+
+		plr, err := server.players.GetFromConn(conn)
+
+		if err != nil {
+			return
+		}
+
+		if plr.party == nil || plr.party.PlayerID[0] != plr.ID || playerID == plr.ID {
+			return
+		}
+
+		found := false
+		for _, pid := range plr.party.PlayerID {
+			if pid == playerID {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			return
+		}
+
+		server.world.Send(internal.PacketChannelPartyLeaderChange(plr.party.ID, playerID))
 	default:
 		log.Println("Unknown party info type:", op, reader)
 	}

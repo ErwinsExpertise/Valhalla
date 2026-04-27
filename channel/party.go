@@ -37,13 +37,30 @@ func (d *party) addExistingPlayer(plr *Player) bool {
 	return false
 }
 
+func (d *party) relinkPlayers(players *Players) {
+	var linked [constant.MaxPartySize]*Player
+
+	for i, id := range d.PlayerID {
+		if id == 0 {
+			continue
+		}
+
+		if plr, err := players.GetFromID(id); err == nil {
+			linked[i] = plr
+			plr.party = d
+		}
+	}
+
+	d.players = linked
+}
 func (d *party) addPlayer(plr *Player, index int32) {
 	if plr != nil {
 		d.players[index] = plr
 		plr.party = d
 	}
 
-	d.broadcast(packetPartyPlayerJoin(d.ID, d.Name[index], d))
+	p := packetPartyPlayerJoin(d.ID, d.Name[index], d)
+	d.broadcast(p)
 }
 
 func (d *party) getPlayerIndex(plrID int32) byte {
@@ -55,12 +72,19 @@ func (d *party) getPlayerIndex(plrID int32) byte {
 	return 0
 }
 
-func (d *party) removePlayer(index int32, kick bool) {
-	playerID := d.PlayerID[index]
-	name := d.Name[index]
+func (d *party) removePlayer(index int32, kick bool, formerID int32, formerName string) {
+	playerID := formerID
+	if playerID == 0 {
+		playerID = d.PlayerID[index]
+	}
+	name := formerName
+	if name == "" {
+		name = d.Name[index]
+	}
 
 	if index == 0 {
-		d.broadcast(packetPartyLeave(d.ID, playerID, false, kick, "", d))
+		p := packetPartyLeave(d.ID, playerID, false, kick, "", d)
+		d.broadcast(p)
 
 		for _, p := range d.players {
 			if p != nil {
@@ -72,7 +96,8 @@ func (d *party) removePlayer(index int32, kick bool) {
 			d.players[index].party = nil
 		}
 
-		d.broadcast(packetPartyLeave(d.ID, playerID, true, kick, name, d))
+		p := packetPartyLeave(d.ID, playerID, true, kick, name, d)
+		d.broadcast(p)
 
 		d.players[index] = nil
 	}
@@ -96,21 +121,8 @@ func (d *party) updateOnlineStatus(index int32, plr *Player) {
 		plr.party = d
 	}
 
-	d.broadcast(packetPartyUpdate(d.ID, d))
-}
-
-func (d *party) updateInfo(index int32) {
-	mapID := d.MapID[index]
-
-	if mapID != d.MapID[index] {
-		d.broadcast(packetPartyUpdate(d.ID, d))
-	} else {
-		playerID := d.PlayerID[index]
-		job := d.Job[index]
-		level := d.Level[index]
-
-		d.broadcast(packetPartyUpdateJobLevel(playerID, job, level))
-	}
+	p := packetPartyUpdate(d.ID, d)
+	d.broadcast(p)
 }
 
 func (d *party) syncPlayersHP() {
@@ -197,7 +209,8 @@ func packetPartyCreate(partyID int32, doorMap1, doorMap2 int32, point pos) mpack
 	} else {
 		p.WriteInt32(-1)
 		p.WriteInt32(-1)
-		p.WriteInt32(0) // empty pos
+		p.WriteInt16(0)
+		p.WriteInt16(0)
 	}
 
 	return p
@@ -221,6 +234,14 @@ func packetPartyUpdate(partyID int32, party *party) mpacket.Packet {
 
 	updateParty(&p, party)
 
+	return p
+}
+
+func packetPartyLeaderChange(partyID int32, party *party) mpacket.Packet {
+	p := mpacket.CreateWithOpcode(opcode.SendChannelPartyInfo)
+	p.WriteByte(0x06)
+	p.WriteInt32(partyID)
+	updateParty(&p, party)
 	return p
 }
 
@@ -284,14 +305,8 @@ func updateParty(p *mpacket.Packet, party *party) {
 	}
 
 	for i := 0; i < constant.MaxPartySize; i++ {
-		if party.ChannelID[i] != party.serverChannelID {
-			p.WriteInt32(-1)
-		} else {
-			p.WriteInt32(party.MapID[i])
-		}
+		p.WriteInt32(party.MapID[i])
 	}
-
-	p.WriteInt32(party.PlayerID[0])
 
 	// Mystic door
 	for i := 0; i < constant.MaxPartySize; i++ {

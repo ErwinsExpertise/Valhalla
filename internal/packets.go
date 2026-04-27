@@ -167,6 +167,14 @@ func PacketChannelPartyUpdateInfo(partyID, playerID, job, level, mapID int32, na
 	return p
 }
 
+func PacketChannelPartyLeaderChange(partyID, playerID int32) mpacket.Packet {
+	p := mpacket.CreateInternal(opcode.ChannelPlayerPartyEvent)
+	p.WriteByte(OpPartyLeaderChange)
+	p.WriteInt32(partyID)
+	p.WriteInt32(playerID)
+	return p
+}
+
 func PacketWorldPartyUpdate(partyID, playerID, index int32, onlineStatus bool, party *Party) mpacket.Packet {
 	p := mpacket.CreateInternal(opcode.ChannelPlayerPartyEvent)
 	p.WriteByte(OpPartyInfoUpdate)
@@ -176,6 +184,14 @@ func PacketWorldPartyUpdate(partyID, playerID, index int32, onlineStatus bool, p
 	p.WriteBool(onlineStatus)
 	p.WriteBytes(party.GeneratePacket())
 
+	return p
+}
+
+func PacketWorldPartyLeaderChange(partyID int32, party *Party) mpacket.Packet {
+	p := mpacket.CreateInternal(opcode.ChannelPlayerPartyEvent)
+	p.WriteByte(OpPartyLeaderChange)
+	p.WriteInt32(partyID)
+	p.WriteBytes(party.GeneratePacket())
 	return p
 }
 
