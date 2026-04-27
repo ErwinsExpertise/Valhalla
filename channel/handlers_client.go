@@ -396,14 +396,15 @@ func (server Server) playerMovement(conn mnet.Client, reader mpacket.Reader) {
 		return
 	}
 
-	if plr.portalCount != reader.ReadByte() {
-		return
+	portalCount := reader.ReadByte()
+	if plr.portalCount != portalCount {
+		plr.portalCount = portalCount
 	}
 
-	moveData, finalData, valid := parseMovement(reader)
+	moveData, finalData, _, _, valid := parseMovement(reader)
 
 	if !valid {
-		log.Println("unknown playerMovement data")
+		log.Println("invalid playerMovement data alignment")
 	}
 
 	if !moveData.validateChar(plr) {
@@ -1423,6 +1424,7 @@ func (server Server) warpPlayer(plr *Player, dstField *field, dstPortal portal, 
 	plr.setMapID(dstField.id)
 	plr.mapPos = dstPortal.id
 	plr.pos = dstInst.fhHist.getFinalPosition(newPos(dstPortal.pos.x, dstPortal.pos.y, 0))
+	plr.portalCount++
 
 	plr.Send(packetMapChange(dstField.id, int32(server.id), dstPortal.id, plr.hp))
 
@@ -2514,7 +2516,7 @@ func (server Server) mobControl(conn mnet.Client, reader mpacket.Reader) {
 		return
 	}
 
-	moveData, finalData, valid := parseMobMovement(reader, mob.pos.x, mob.pos.y)
+	moveData, finalData, _, _, valid := parseMobMovement(reader, mob.pos.x, mob.pos.y)
 	moveBytes := generateMovementBytes(moveData)
 
 	inst.lifePool.mobAcknowledge(mobSpawnID, plr, moveID, skillPossible, action, skillData, moveData, finalData, moveBytes)
@@ -4808,7 +4810,7 @@ func (server Server) playerSummonMove(conn mnet.Client, reader mpacket.Reader) {
 		return
 	}
 
-	moveData, finalData, valid := parseMovement(reader)
+	moveData, finalData, _, _, valid := parseMovement(reader)
 
 	moveBytes := generateMovementBytes(moveData)
 
@@ -5449,7 +5451,7 @@ func (server *Server) playerPetMove(conn mnet.Client, reader mpacket.Reader) {
 		return
 	}
 
-	moveData, finalData, valid := parseMovement(reader)
+	moveData, finalData, _, _, valid := parseMovement(reader)
 
 	moveBytes := generateMovementBytes(moveData)
 
