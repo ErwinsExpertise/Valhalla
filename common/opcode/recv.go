@@ -64,6 +64,9 @@ const (
 	RecvChannelGuildReject       int16 = 0x61
 	RecvChannelBuddyOperation    int16 = 0x64
 	RecvChannelUseMysticDoor     int16 = 0x67
+	RecvChannelRingAction        int16 = 0x69
+	RecvChannelWeddingAction     int16 = 0x6A
+	RecvChannelWeddingTalk       int16 = 0x6B
 	RecvChannelQuickSlot         int16 = 0x6E
 	RecvChannelPetMove           int16 = 0x71
 	RecvChannelPetAction         int16 = 0x72

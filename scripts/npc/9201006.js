@@ -1,19 +1,22 @@
-var mapId = plr.mapID();
+var mapId = plr.mapID()
 
-if (mapId === 680000210) {
-    npc.sendSelection("\r\n#L0##bWhen does the wedding begin?#l\r\n#L1#I want out!#l");
-    var selection = npc.selection();
-
-    if (selection === 0) {
-        npc.sendOk("We will wait until the bride and groom are ready. Please wait a few minutes!");
-    } else if (selection === 1) {
-        plr.removeAll(5251100);
-        plr.warp(680000000);
+if (mapId === 680000200) {
+    if (plr.weddingStage(true) === 0) {
+        npc.sendOk("The guests are gathering in Saint Maple Lounge right now. Please wait awhile, the ceremony will start soon enough.")
+    } else if (plr.enterWeddingAsGuest(true)) {
+        npc.sendOk("Please take your seat at the Cathedral altar.")
     } else {
-        npc.sendOk("Bye");
+        npc.sendOk("The ceremony is not ready yet. Please wait a little longer.")
     }
-} else if (mapId === 680000200) {
-    npc.sendOk("Uhh, sorry for the delay. Father John went to do something very quickly. It should not be long; please wait for us to start.");
+} else if (mapId === 680000210) {
+    var text = "How can I help you?#b\r\n#L0#When does the wedding begin?#l\r\n#L1#I want to leave.#l"
+    npc.sendSelection(text)
+    var selection = npc.selection()
+    if (selection === 0) {
+        npc.sendOk("We will wait until the bride and groom are ready. Please wait a few minutes.")
+    } else if (selection === 1) {
+        plr.warp(680000000)
+    }
 } else {
-    npc.sendOk("Bye");
+    npc.sendOk("I can only assist guests inside the Cathedral wedding maps.")
 }

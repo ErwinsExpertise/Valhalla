@@ -112,11 +112,16 @@ CREATE TABLE `characters` (
   `inCashShop` int(11) NOT NULL DEFAULT '0',
   `regTeleportRocks` text,
   `vipTeleportRocks` text,
+  `partnerID` int(11) DEFAULT NULL,
+  `marriageItemID` int(11) DEFAULT NULL,
+  `divorceUntil` bigint(20) NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`),
   KEY `userID` (`accountID`),
   KEY `guildID` (`guildID`),
+  KEY `partnerID` (`partnerID`),
   CONSTRAINT `characters_ibfk_2` FOREIGN KEY (`accountID`) REFERENCES `accounts` (`accountID`) ON DELETE CASCADE,
-  CONSTRAINT `characters_ibfk_4` FOREIGN KEY (`guildID`) REFERENCES `guilds` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+  CONSTRAINT `characters_ibfk_4` FOREIGN KEY (`guildID`) REFERENCES `guilds` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `characters_ibfk_partner` FOREIGN KEY (`partnerID`) REFERENCES `characters` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
 

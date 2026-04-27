@@ -294,6 +294,8 @@ func (server *Server) ClientDisconnected(conn mnet.Client) {
 		removeMysticDoor(plr)
 	}
 
+	server.handleWeddingDisconnect(plr)
+
 	if field, ok := server.fields[plr.mapID]; ok && plr.inst != nil {
 		if inst, ierr := field.getInstance(plr.inst.id); ierr == nil {
 			if remErr := inst.removePlayer(plr, true); remErr != nil {

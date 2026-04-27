@@ -185,6 +185,12 @@ func (server *Server) HandleClientPacket(conn mnet.Client, reader mpacket.Reader
 		server.playerPetInteraction(conn, reader)
 	case opcode.RecvChannelPetLoot:
 		server.playerPetLoot(conn, reader)
+	case opcode.RecvChannelRingAction:
+		server.playerRingAction(conn, reader)
+	case opcode.RecvChannelWeddingAction:
+		server.playerWeddingAction(conn, reader)
+	case opcode.RecvChannelWeddingTalk:
+		server.playerWeddingTalk(conn, reader)
 	case opcode.RecvChannelUseSack:
 		server.playerUseSack(conn, reader)
 	case opcode.RecvChannelQuickSlot:
@@ -1453,6 +1459,15 @@ func (server Server) warpPlayer(plr *Player, dstField *field, dstPortal portal, 
 		plr.pet.pos = plr.pos
 		plr.pet.pos.y -= 15
 		dstInst.send(packetPetSpawn(plr.ID, plr.pet))
+	}
+
+	server.handleWeddingMapLeave(plr, dstField.id)
+
+	if plr.partnerID > 0 {
+		if partner, err := server.players.GetFromID(plr.partnerID); err == nil {
+			partner.Send(packetNotifyWeddingPartnerTransfer(plr.ID, plr.mapID))
+			plr.Send(packetNotifyWeddingPartnerTransfer(partner.ID, partner.mapID))
+		}
 	}
 
 	return nil

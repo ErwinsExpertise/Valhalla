@@ -251,9 +251,12 @@ type Player struct {
 	etc   []Item
 	cash  []Item
 
-	mesos       int32
-	nx          int32
-	maplepoints int32
+	mesos          int32
+	nx             int32
+	maplepoints    int32
+	partnerID      int32
+	marriageItemID int32
+	divorceUntil   int64
 
 	storageInventory *storage
 
@@ -996,6 +999,38 @@ func (d *Player) setSkin(id byte) error {
 	d.skin = id
 	d.Send(packetPlayerStatChange(true, constant.SkinID, int32(id)))
 	return err
+}
+
+func (d *Player) setPartnerID(id int32) error {
+	_, err := common.DB.Exec("UPDATE characters SET partnerID=? WHERE ID=?", id, d.ID)
+	if err == nil {
+		d.partnerID = id
+	}
+	return err
+}
+
+func (d *Player) setMarriageItemID(id int32) error {
+	_, err := common.DB.Exec("UPDATE characters SET marriageItemID=? WHERE ID=?", id, d.ID)
+	if err == nil {
+		d.marriageItemID = id
+	}
+	return err
+}
+
+func (d *Player) setDivorceUntil(ts int64) error {
+	_, err := common.DB.Exec("UPDATE characters SET divorceUntil=? WHERE ID=?", ts, d.ID)
+	if err == nil {
+		d.divorceUntil = ts
+	}
+	return err
+}
+
+func (d *Player) married() bool {
+	return d.partnerID > 0 && d.marriageItemID >= 1112800 && d.marriageItemID <= 1112809
+}
+
+func (d *Player) underMarriageCooldown() bool {
+	return d.divorceUntil > time.Now().Unix()
 }
 
 // UpdateMovement - update Data from position data
@@ -2242,6 +2277,15 @@ func (d *Player) findUseItemBySlot(slot int16) *Item {
 	return nil
 }
 
+func (d *Player) findEtcItemBySlot(slot int16) *Item {
+	for i := range d.etc {
+		if d.etc[i].slotID == slot {
+			return &d.etc[i]
+		}
+	}
+	return nil
+}
+
 // findEquipBySlot returns the equip by slot (negative = equipped, positive = inventory slot).
 func (d *Player) findEquipBySlot(slot int16) *Item {
 	for i := range d.equip {
@@ -2293,20 +2337,37 @@ func LoadPlayerFromID(id int32, conn mnet.Client) Player {
 	filter := "ID,accountID,worldID,Name,gender,skin,hair,face,level,job,str,dex,intt," +
 		"luk,hp,maxHP,mp,maxMP,ap,sp, exp,fame,mapID,mapPos,previousMapID,mesos," +
 		"equipSlotSize,useSlotSize,setupSlotSize,etcSlotSize,cashSlotSize,miniGameWins," +
-		"miniGameDraw,miniGameLoss,miniGamePoints,buddyListSize,regTeleportRocks,vipTeleportRocks"
+		"miniGameDraw,miniGameLoss,miniGamePoints,buddyListSize,regTeleportRocks,vipTeleportRocks,partnerID,marriageItemID,divorceUntil"
 
 	var regTeleportRocksStr, vipTeleportRocksStr sql.NullString
+	var partnerID, marriageItemID sql.NullInt32
+	var divorceUntil sql.NullInt64
 	err := common.DB.QueryRow("SELECT "+filter+" FROM characters where ID=?", id).Scan(&c.ID,
 		&c.accountID, &c.worldID, &c.Name, &c.gender, &c.skin, &c.hair, &c.face,
 		&c.level, &c.job, &c.str, &c.dex, &c.intt, &c.luk, &c.hp, &c.maxHP, &c.mp,
 		&c.maxMP, &c.ap, &c.sp, &c.exp, &c.fame, &c.mapID, &c.mapPos,
 		&c.previousMap, &c.mesos, &c.equipSlotSize, &c.useSlotSize, &c.setupSlotSize,
 		&c.etcSlotSize, &c.cashSlotSize, &c.miniGameWins, &c.miniGameDraw, &c.miniGameLoss,
-		&c.miniGamePoints, &c.buddyListSize, &regTeleportRocksStr, &vipTeleportRocksStr)
+		&c.miniGamePoints, &c.buddyListSize, &regTeleportRocksStr, &vipTeleportRocksStr, &partnerID, &marriageItemID, &divorceUntil)
 
 	if err != nil {
 		log.Println(err)
 		return c
+	}
+
+	c.partnerID = -1
+	if partnerID.Valid {
+		c.partnerID = partnerID.Int32
+	}
+
+	c.marriageItemID = -1
+	if marriageItemID.Valid {
+		c.marriageItemID = marriageItemID.Int32
+	}
+
+	c.divorceUntil = 0
+	if divorceUntil.Valid {
+		c.divorceUntil = divorceUntil.Int64
 	}
 
 	c.petCashID = 0

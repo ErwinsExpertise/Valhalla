@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Hucaru/Valhalla/common"
 	"github.com/Hucaru/Valhalla/constant"
 	"github.com/Hucaru/Valhalla/internal"
 	"github.com/Hucaru/Valhalla/mnet"
@@ -298,6 +299,96 @@ func (ctrl *scriptPlayerWrapper) SetJob(id int16) {
 
 func (ctrl *scriptPlayerWrapper) Level() byte {
 	return ctrl.plr.level
+}
+
+func (ctrl *scriptPlayerWrapper) PartnerID() int32 {
+	return ctrl.plr.partnerID
+}
+
+func (ctrl *scriptPlayerWrapper) MarriageItemID() int32 {
+	return ctrl.plr.marriageItemID
+}
+
+func (ctrl *scriptPlayerWrapper) IsMarried() bool {
+	return ctrl.plr.married()
+}
+
+func (ctrl *scriptPlayerWrapper) HasEngagementBox() bool {
+	for _, id := range []int32{constant.ItemEngagementBoxMoonstone, constant.ItemEngagementBoxStar, constant.ItemEngagementBoxGolden, constant.ItemEngagementBoxSilver} {
+		if ctrl.plr.countItem(id) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func (ctrl *scriptPlayerWrapper) PartnerName() string {
+	if ctrl.plr.partnerID <= 0 {
+		return ""
+	}
+	if partner, err := ctrl.server.players.GetFromID(ctrl.plr.partnerID); err == nil {
+		return partner.Name
+	}
+	var name string
+	_ = common.DB.QueryRow("SELECT name FROM characters WHERE id=?", ctrl.plr.partnerID).Scan(&name)
+	return name
+}
+
+func (ctrl *scriptPlayerWrapper) ReserveWedding(cathedral, premium bool) bool {
+	return ctrl.server.reserveWedding(ctrl.plr, cathedral, premium) == nil
+}
+
+func (ctrl *scriptPlayerWrapper) StartWedding(cathedral bool) bool {
+	return ctrl.server.startWedding(ctrl.plr, cathedral) == nil
+}
+
+func (ctrl *scriptPlayerWrapper) EnterWeddingAsGuest(cathedral bool) bool {
+	return ctrl.server.enterWeddingAsGuest(ctrl.plr, cathedral) == nil
+}
+
+func (ctrl *scriptPlayerWrapper) HasWeddingReservation(cathedral bool) bool {
+	return ctrl.server.currentWeddingReservation(ctrl.plr, cathedral) != nil
+}
+
+func (ctrl *scriptPlayerWrapper) WeddingStarted(cathedral bool) bool {
+	res := ctrl.server.currentWeddingReservation(ctrl.plr, cathedral)
+	return res != nil && res.Started
+}
+
+func (ctrl *scriptPlayerWrapper) WeddingGuestTicket(cathedral bool) int32 {
+	return weddingGuestTicket(cathedral)
+}
+
+func (ctrl *scriptPlayerWrapper) WeddingReservationTicket(cathedral, premium bool) int32 {
+	return weddingReservationTicket(cathedral, premium)
+}
+
+func (ctrl *scriptPlayerWrapper) WeddingInviteItem(cathedral bool) int32 {
+	return weddingInviteItem(cathedral)
+}
+
+func (ctrl *scriptPlayerWrapper) WeddingStage(cathedral bool) int {
+	res := ctrl.server.currentWeddingReservation(ctrl.plr, cathedral)
+	if res == nil {
+		return -1
+	}
+	return int(res.Stage)
+}
+
+func (ctrl *scriptPlayerWrapper) BreakMarriage(itemID int32) {
+	ctrl.server.breakMarriageState(ctrl.plr, itemID)
+}
+
+func (ctrl *scriptPlayerWrapper) CompleteWedding(cathedral bool) bool {
+	return ctrl.server.completeWedding(ctrl.plr, cathedral) == nil
+}
+
+func (ctrl *scriptPlayerWrapper) UnderMarriageCooldown() bool {
+	return ctrl.plr.underMarriageCooldown()
+}
+
+func (ctrl *scriptPlayerWrapper) StartWeddingAfterParty() bool {
+	return ctrl.server.startWeddingAfterParty(ctrl.plr) == nil
 }
 
 func (ctrl *scriptPlayerWrapper) InGuild() bool {
