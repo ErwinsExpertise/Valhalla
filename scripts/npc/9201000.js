@@ -1,0 +1,1 @@
+npc.sendOk("I'm #p9201000#, the wedding jeweler. I can normally craft engagement ring boxes for couples who have completed the required blessing steps, but the full Amoria engagement system is not available on this server yet.")
