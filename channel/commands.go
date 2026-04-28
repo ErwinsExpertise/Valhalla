@@ -112,6 +112,56 @@ func (server *Server) gmCommand(conn mnet.Client, msg string) {
 			info = v.String()
 			conn.Send(packetMessageNotice(info))
 		}
+	case "search":
+		if len(command) < 2 {
+			conn.Send(packetMessageRedText("Command structure is /search [item|map|quest] <query>"))
+			return
+		}
+
+		searchType := "all"
+		queryStart := 1
+		switch strings.ToLower(command[1]) {
+		case "item", "items", "map", "maps", "quest", "quests":
+			searchType = strings.ToLower(command[1])
+			queryStart = 2
+		}
+
+		if len(command) <= queryStart {
+			conn.Send(packetMessageRedText("Search query was not provided"))
+			return
+		}
+
+		query := strings.Join(command[queryStart:], " ")
+		const perTypeLimit = 5
+		sent := 0
+
+		sendMatches := func(label string, matches []nx.StringMatch) {
+			if len(matches) == 0 {
+				return
+			}
+			conn.Send(packetMessageRedText(label + ":"))
+			for _, match := range matches {
+				conn.Send(packetMessageRedText(fmt.Sprintf("  [%d] %s", match.ID, match.Name)))
+				sent++
+			}
+		}
+
+		switch searchType {
+		case "item", "items":
+			sendMatches("Items", nx.SearchItemsByName(query, perTypeLimit))
+		case "map", "maps":
+			sendMatches("Maps", nx.SearchMapsByName(query, perTypeLimit))
+		case "quest", "quests":
+			sendMatches("Quests", nx.SearchQuestsByName(query, perTypeLimit))
+		default:
+			sendMatches("Items", nx.SearchItemsByName(query, perTypeLimit))
+			sendMatches("Maps", nx.SearchMapsByName(query, perTypeLimit))
+			sendMatches("Quests", nx.SearchQuestsByName(query, perTypeLimit))
+		}
+
+		if sent == 0 {
+			conn.Send(packetMessageRedText("No WZ matches found for: " + query))
+		}
 	case "pos":
 		player, err := server.players.GetFromConn(conn)
 

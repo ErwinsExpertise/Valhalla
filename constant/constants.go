@@ -524,7 +524,7 @@ const (
 const (
 	AutoRegisterDefaultGender      byte   = 0
 	AutoRegisterDefaultDOB         int    = 11111111
-	AutoRegisterDefaultEULA        byte   = 0
+	AutoRegisterDefaultEULA        byte   = 1
 	AutoRegisterDefaultAdminLevel  int    = 0
 	AutoRegisterDefaultIsBanned    int    = 0
 	AutoRegisterDefaultNX          int    = 0
