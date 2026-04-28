@@ -12,19 +12,24 @@ import (
 
 // DamageRange represents the min and max damage for validation
 type DamageRange struct {
-	Min float64
-	Max float64
+	Min    float64
+	Max    float64
+	Valid  bool
+	Reason string
 }
 
 // CalcHitResult represents the result of a hit calculation
 type CalcHitResult struct {
-	IsCrit       bool
-	IsMiss       bool
-	MinDamage    float64
-	MaxDamage    float64
-	ExpectedDmg  float64
-	ClientDamage int32
-	IsValid      bool
+	IsCrit            bool
+	IsMiss            bool
+	MinDamage         float64
+	MaxDamage         float64
+	ExpectedDmg       float64
+	ToleranceMax      float64
+	ClientDamage      int32
+	IsValid           bool
+	ValidationSkipped bool
+	ValidationReason  string
 }
 
 type DamageRngBuffer [constant.DamageRngBufferSize]uint32
@@ -93,10 +98,20 @@ type ElementAmpData struct {
 	Mana  int
 }
 
+const (
+	elementCodeNone byte = iota
+	elementCodeFire
+	elementCodeIce
+	elementCodeLightning
+	elementCodeHoly
+	elementCodePoison
+)
+
 type DamageCalculator struct {
 	player       *Player
 	data         *attackData
 	attackType   int
+	weaponID     int32
 	weaponType   constant.WeaponType
 	skill        *nx.PlayerSkill
 	skillID      int32
@@ -132,6 +147,7 @@ func NewDamageCalculator(plr *Player, data *attackData, attackType int) *DamageC
 			break
 		}
 	}
+	calc.weaponID = weaponID
 	calc.weaponType = constant.GetWeaponType(weaponID)
 
 	if data.skillID > 0 {
@@ -151,6 +167,8 @@ func NewDamageCalculator(plr *Player, data *attackData, attackType int) *DamageC
 
 // ValidateAttack validates all hits in an attack and determines critical hits
 func (calc *DamageCalculator) ValidateAttack() [][]CalcHitResult {
+	calc.LogSuspiciousAttackShape()
+
 	results := make([][]CalcHitResult, len(calc.data.attackInfo))
 
 	for targetIdx := range calc.data.attackInfo {
@@ -206,87 +224,125 @@ func (calc *DamageCalculator) CalculateHit(
 	if calc.attackType == attackMagic && mob.invincible {
 		result.MinDamage = 1
 		result.MaxDamage = 1
+		result.ToleranceMax = 1
 		result.IsValid = (result.ClientDamage == 1)
 		return result
 	}
 
-	if calc.GetIsMiss(rngBuf, targetAccuracy, mob, hitIdx) {
-		result.IsMiss = true
-		result.MinDamage = 0
-		result.MaxDamage = 0
-		result.IsValid = (result.ClientDamage == 0)
+	rangeData := calc.CalculateBaseDamageRange(mob, hitIdx)
+	if !rangeData.Valid {
+		result.ValidationSkipped = true
+		result.ValidationReason = rangeData.Reason
+		result.IsValid = true
+
+		if result.ClientDamage > 0 {
+			log.Printf(
+				"Skipped damage validation for player %s (ID: %d, level: %d, job: %d): client=%d, skill=%d, attackType=%d, weaponID=%d, weaponType=%d, STR=%d, DEX=%d, INT=%d, LUK=%d, WATK=%d, MATK=%d, mobID=%d, mobPD=%d, mobMD=%d, reason=%s",
+				calc.player.Name,
+				calc.player.ID,
+				calc.player.level,
+				calc.player.job,
+				result.ClientDamage,
+				calc.skillID,
+				calc.attackType,
+				calc.weaponID,
+				calc.weaponType,
+				calc.GetTotalStr(),
+				calc.GetTotalDex(),
+				calc.GetTotalInt(),
+				calc.GetTotalLuk(),
+				calc.GetTotalWatk(),
+				calc.GetTotalMatk(),
+				mob.id,
+				mob.pdDamage,
+				mob.mdDamage,
+				rangeData.Reason,
+			)
+		}
+
 		return result
 	}
 
-	minDmg, maxDmg := calc.CalculateBaseDamageRange(mob, hitIdx)
-	minDmg, maxDmg = calc.ApplySkillModifiers(minDmg, maxDmg, ampData, mob)
-
-	redMin, redMax := calc.CalculateDefenseReductionBounds(mob)
-	defRoll := 0.5
-	if rngBuf != nil {
-		defRoll = NormalizeDamageRng(rngBuf.DefenseRaw(hitIdx, 3))
-	}
-	defReduction := redMin + (redMax-redMin)*defRoll
-
-	minDmg -= defReduction
-	maxDmg -= defReduction
-
-	if minDmg < 0 {
-		minDmg = 0
-	}
-	if maxDmg < 0 {
-		maxDmg = 0
-	}
-	if maxDmg < minDmg {
-		maxDmg = minDmg
-	}
-
-	multiplier := 1.0
-	if calc.skill != nil && calc.skill.Damage > 0 {
-		multiplier = float64(calc.skill.Damage) / 100.0
-	}
-	minDmg *= multiplier
-	maxDmg *= multiplier
-
+	minDmg, maxDmg := calc.ApplySkillModifiers(rangeData.Min, rangeData.Max, ampData, mob)
 	result.IsCrit = calc.CheckCritical(rngBuf, hitIdx)
-	if result.IsCrit && calc.critSkill != nil {
-		critBonus := float64(calc.critSkill.Damage-100) / 100.0
-		minDmg += critBonus * math.Floor(minDmg)
-		maxDmg += critBonus * math.Floor(maxDmg)
-	}
 
 	afterMod := calc.GetAfterModifier(targetIdx, (minDmg+maxDmg)/2.0)
 	minDmg *= afterMod
 	maxDmg *= afterMod
+	if calc.attackOption&constant.AttackOptionShadowPartner != 0 && len(info.damages) > 1 && hitIdx >= len(info.damages)/2 {
+		minDmg *= 0.5
+		maxDmg *= 0.5
+	}
+
+	if maxDmg > 0 && maxDmg < 1 {
+		maxDmg = 1
+	}
+	if minDmg > maxDmg {
+		minDmg = maxDmg
+	}
+
+	allowedMax := maxDmg
+	if calc.CanCriticallyExceedBaseCap() {
+		allowedMax *= 2
+	}
+	if calc.HasPhysicalOrMagicImmunity(mob) {
+		if allowedMax < 1 {
+			allowedMax = 1
+		}
+		if minDmg > 1 {
+			minDmg = 1
+		}
+	}
 
 	dmgRoll := 0.5
 	if rngBuf != nil {
 		dmgRoll = NormalizeDamageRng(rngBuf.DamageRaw(hitIdx, 3))
 	}
-	expected := minDmg + (maxDmg-minDmg)*dmgRoll
+	expected := minDmg + (allowedMax-minDmg)*dmgRoll
 
 	minDmg = math.Floor(minDmg)
-	maxDmg = math.Floor(maxDmg)
+	allowedMax = math.Floor(allowedMax)
 	expected = math.Floor(expected)
 
 	result.MinDamage = minDmg
-	result.MaxDamage = maxDmg
+	result.MaxDamage = allowedMax
 	result.ExpectedDmg = expected
 
 	tolerance := constant.DamageVarianceTolerance
-	toleranceMax := maxDmg * (1.0 + tolerance)
+	toleranceMax := math.Ceil(allowedMax * (1.0 + tolerance))
+	if toleranceMax < 1 && result.ClientDamage > 0 && allowedMax > 0 {
+		toleranceMax = 1
+	}
 
 	clientDmgFloat := float64(result.ClientDamage)
+	result.ToleranceMax = toleranceMax
 	result.IsValid = (clientDmgFloat <= toleranceMax)
 
 	if !result.IsValid {
+		result.ValidationReason = "client damage exceeds tolerated cap"
 		log.Printf(
-			"Suspicious high damage from player %s (ID: %d): client=%d, max expected=%.0f (with tolerance), skill=%d",
+			"Suspicious high damage from player %s (ID: %d, level: %d, job: %d): client=%d, max expected=%.0f (with tolerance), base min=%.0f, base max=%.0f, skill=%d, attackType=%d, weaponID=%d, weaponType=%d, STR=%d, DEX=%d, INT=%d, LUK=%d, WATK=%d, MATK=%d, mobID=%d, mobPD=%d, mobMD=%d",
 			calc.player.Name,
 			calc.player.ID,
+			calc.player.level,
+			calc.player.job,
 			result.ClientDamage,
 			toleranceMax,
+			result.MinDamage,
+			result.MaxDamage,
 			calc.skillID,
+			calc.attackType,
+			calc.weaponID,
+			calc.weaponType,
+			calc.GetTotalStr(),
+			calc.GetTotalDex(),
+			calc.GetTotalInt(),
+			calc.GetTotalLuk(),
+			calc.GetTotalWatk(),
+			calc.GetTotalMatk(),
+			mob.id,
+			mob.pdDamage,
+			mob.mdDamage,
 		)
 	}
 
@@ -307,7 +363,7 @@ func (calc *DamageCalculator) handleSpecialSkillDamage(result *CalcHitResult, mo
 		result.MinDamage = (dex*2.5*0.7 + str) * attackRate / 100.0
 		result.MaxDamage = (dex*2.5 + str) * attackRate / 100.0
 		result.ExpectedDmg = (result.MinDamage + result.MaxDamage) / 2.0
-		result.IsValid = float64(result.ClientDamage) <= result.MaxDamage*(1.0+constant.DamageVarianceTolerance)
+		applyResultTolerance(result, 1.0+constant.DamageVarianceTolerance)
 		return true
 	}
 
@@ -318,7 +374,7 @@ func (calc *DamageCalculator) handleSpecialSkillDamage(result *CalcHitResult, mo
 			result.MinDamage = 0
 			result.MaxDamage = 0
 			result.ExpectedDmg = 0
-			result.IsValid = (result.ClientDamage == 0)
+			applyResultTolerance(result, 1.0)
 			return true
 		}
 
@@ -342,7 +398,7 @@ func (calc *DamageCalculator) handleSpecialSkillDamage(result *CalcHitResult, mo
 			result.MinDamage = 0
 			result.MaxDamage = 0
 			result.ExpectedDmg = 0
-			result.IsValid = (result.ClientDamage == 0)
+			applyResultTolerance(result, 1.0)
 			return true
 		}
 
@@ -367,9 +423,7 @@ func (calc *DamageCalculator) handleSpecialSkillDamage(result *CalcHitResult, mo
 		result.ExpectedDmg = (minDamage + maxDamage) / 2.0
 
 		// Validate with tolerance
-		clientDmg := float64(result.ClientDamage)
-		toleranceMax := maxDamage * constant.MesoExplosionDamageVarianceTolerance
-		result.IsValid = (clientDmg >= 0 && clientDmg <= toleranceMax)
+		applyResultTolerance(result, constant.MesoExplosionDamageVarianceTolerance)
 
 		return true
 
@@ -398,7 +452,7 @@ func (calc *DamageCalculator) handleSpecialSkillDamage(result *CalcHitResult, mo
 			}
 		}
 
-		result.IsValid = float64(result.ClientDamage) <= result.MaxDamage*(1.0+constant.DamageVarianceTolerance)
+		applyResultTolerance(result, 1.0+constant.DamageVarianceTolerance)
 		return true
 
 	case skill.ShadowWeb:
@@ -414,7 +468,7 @@ func (calc *DamageCalculator) handleSpecialSkillDamage(result *CalcHitResult, mo
 		result.MinDamage = dmg
 		result.MaxDamage = dmg
 		result.ExpectedDmg = dmg
-		result.IsValid = float64(result.ClientDamage) <= result.MaxDamage*(1.0+constant.DamageVarianceTolerance)
+		applyResultTolerance(result, 1.0+constant.DamageVarianceTolerance)
 		return true
 
 	case skill.Drain:
@@ -422,7 +476,7 @@ func (calc *DamageCalculator) handleSpecialSkillDamage(result *CalcHitResult, mo
 		result.MinDamage = (8.0*(str+luk) + dex*2.0) / 100.0 * basicAttack
 		result.MaxDamage = (18.5*(str+luk) + dex*2.0) / 100.0 * basicAttack
 		result.ExpectedDmg = (result.MinDamage + result.MaxDamage) / 2.0
-		result.IsValid = float64(result.ClientDamage) <= result.MaxDamage*(1.0+constant.DamageVarianceTolerance)
+		applyResultTolerance(result, 1.0+constant.DamageVarianceTolerance)
 		return true
 
 	case skill.PoisonMyst:
@@ -438,175 +492,116 @@ func (calc *DamageCalculator) handleSpecialSkillDamage(result *CalcHitResult, mo
 		result.MinDamage = dmg
 		result.MaxDamage = dmg
 		result.ExpectedDmg = dmg
-		result.IsValid = float64(result.ClientDamage) <= result.MaxDamage*(1.0+constant.DamageVarianceTolerance)
+		applyResultTolerance(result, 1.0+constant.DamageVarianceTolerance)
 		return true
 	}
 
 	return false
 }
 
-func (calc *DamageCalculator) CalculateBaseDamageRange(mob *monster, hitIdx int) (float64, float64) {
+func (calc *DamageCalculator) CalculateBaseDamageRange(mob *monster, hitIdx int) DamageRange {
 	str := float64(calc.GetTotalStr())
 	dex := float64(calc.GetTotalDex())
+	intl := float64(calc.GetTotalInt())
 	luk := float64(calc.GetTotalLuk())
 	watk := float64(calc.GetTotalWatk())
 
-	if calc.attackType == attackMagic {
+	if calc.HasPhysicalOrMagicImmunity(mob) {
+		return DamageRange{Min: 0, Max: 1, Valid: true}
+	}
+
+	if calc.attackType == attackMagic && calc.skillID != 0 {
 		return calc.CalculateMagicDamageRange()
 	}
-	masteryMin := calc.masteryMod
-	masteryMax := 1.0
 
-	var minStatMod, maxStatMod float64
+	if watk <= 0 {
+		if calc.weaponID == 0 {
+			return DamageRange{Min: 1, Max: 1, Valid: true}
+		}
+		return DamageRange{Valid: false, Reason: "effective weapon attack is zero"}
+	}
+
+	switch skill.Skill(calc.skillID) {
+	case skill.LuckySeven:
+		maxDmg := (luk * 5.0) * math.Ceil(watk/100.0)
+		return DamageRange{Min: math.Ceil(maxDmg * 0.5), Max: math.Ceil(maxDmg), Valid: true}
+	case skill.DragonRoar, skill.SuperDragonRoar:
+		maxDmg := (str*4.0 + dex) * math.Ceil(watk/100.0)
+		return DamageRange{Min: math.Ceil(maxDmg * math.Max(calc.masteryMod, 0.6)), Max: math.Ceil(maxDmg), Valid: true}
+	}
 
 	isSwing := calc.attackAction >= constant.AttackActionSwing1H1 && calc.attackAction <= constant.AttackActionSwing2H7
-
-	switch calc.weaponType {
-	case constant.WeaponTypeBow2:
-		if skill.Skill(calc.skillID) == skill.PowerKnockback || skill.Skill(calc.skillID) == skill.CBPowerKnockback {
-			minStatMod = dex*3.4*0.1*0.9 + str
-			maxStatMod = dex*3.4 + str
-			minDmg := minStatMod * watk / 150.0
-			maxDmg := maxStatMod * watk / 150.0
-			return minDmg, maxDmg
-		}
-		minStatMod = dex*masteryMin*3.4 + str
-		maxStatMod = dex*masteryMax*3.4 + str
-
-	case constant.WeaponTypeCrossbow2:
-		if skill.Skill(calc.skillID) == skill.PowerKnockback || skill.Skill(calc.skillID) == skill.CBPowerKnockback {
-			minStatMod = dex*3.4*0.1*0.9 + str
-			maxStatMod = dex*3.4 + str
-			minDmg := minStatMod * watk / 150.0
-			maxDmg := maxStatMod * watk / 150.0
-			return minDmg, maxDmg
-		}
-		minStatMod = dex*masteryMin*3.6 + str
-		maxStatMod = dex*masteryMax*3.6 + str
-
-	case constant.WeaponTypeAxe2H, constant.WeaponTypeBW2H:
-		if isSwing {
-			minStatMod = str*masteryMin*4.8 + dex
-			maxStatMod = str*masteryMax*4.8 + dex
-		} else {
-			minStatMod = str*masteryMin*3.4 + dex
-			maxStatMod = str*masteryMax*3.4 + dex
-		}
-
-	case constant.WeaponTypeSpear2, constant.WeaponTypePolearm2:
-		if skill.Skill(calc.skillID) == skill.DragonRoar {
-			minStatMod = str*4.0*calc.masteryMod*0.9 + dex
-			maxStatMod = str*4.0 + dex
-		} else if isSwing != (calc.weaponType == constant.WeaponTypeSpear2) {
-			minStatMod = str*masteryMin*5.0 + dex
-			maxStatMod = str*masteryMax*5.0 + dex
-		} else {
-			minStatMod = str*masteryMin*3.0 + dex
-			maxStatMod = str*masteryMax*3.0 + dex
-		}
-
-	case constant.WeaponTypeSword2H:
-		minStatMod = str*masteryMin*4.6 + dex
-		maxStatMod = str*masteryMax*4.6 + dex
-
-	case constant.WeaponTypeAxe1H, constant.WeaponTypeBW1H, constant.WeaponTypeWand2, constant.WeaponTypeStaff2:
-		if isSwing {
-			minStatMod = str*masteryMin*4.4 + dex
-			maxStatMod = str*masteryMax*4.4 + dex
-		} else {
-			minStatMod = str*masteryMin*3.2 + dex
-			maxStatMod = str*masteryMax*3.2 + dex
-		}
-
-	case constant.WeaponTypeSword1H, constant.WeaponTypeDagger2:
-		if calc.player.job/100 == 4 && calc.weaponType == constant.WeaponTypeDagger2 {
-			minStatMod = luk*masteryMin*3.6 + str + dex
-			maxStatMod = luk*masteryMax*3.6 + str + dex
-		} else {
-			minStatMod = str*masteryMin*4.0 + dex
-			maxStatMod = str*masteryMax*4.0 + dex
-		}
-
-	case constant.WeaponTypeClaw2:
-		if skill.Skill(calc.skillID) == skill.LuckySeven {
-			projectileWatk := float64(calc.GetProjectileWatk())
-			totalWatk := watk + projectileWatk
-			minStatMod = luk * 2.5
-			maxStatMod = luk * 5.0
-
-			minDmg := minStatMod * totalWatk / 100.0
-			maxDmg := maxStatMod * totalWatk / 100.0
-			return minDmg, maxDmg
-		} else if calc.attackAction == constant.AttackActionProne ||
-			(calc.attackAction >= constant.AttackActionSwing1H1 && calc.attackAction <= constant.AttackActionSwing2H7) {
-			minStatMod = luk*0.1 + str + dex
-			maxStatMod = luk*1.0 + str + dex
-
-			minDmg := minStatMod * watk / 150.0
-			maxDmg := maxStatMod * watk / 150.0
-			return minDmg, maxDmg
-		} else {
-			minStatMod = luk*masteryMin*3.6 + str + dex
-			maxStatMod = luk*masteryMax*3.6 + str + dex
-		}
-
-	default:
-		if calc.weaponType == constant.WeaponTypeNone {
-			level := float64(calc.player.level)
-			bareHandsATT := math.Floor((2.0*level + 31.0) / 3.0)
-			if bareHandsATT > 31 {
-				bareHandsATT = 31
-			}
-
-			J := 3.0
-			if calc.player.job >= 500 && calc.player.job < 600 {
-				J = 4.2
-			}
-
-			minStatMod = str*J*0.1*0.9 + dex
-			maxStatMod = str*J + dex
-
-			minDmg := minStatMod * bareHandsATT / 100.0
-			maxDmg := maxStatMod * bareHandsATT / 100.0
-			return minDmg, maxDmg
-		}
-		return 0, 0
+	primaryStat := str
+	secondaryStat := dex
+	if calc.weaponType == constant.WeaponTypeBow2 || calc.weaponType == constant.WeaponTypeCrossbow2 {
+		primaryStat = dex
+		secondaryStat = str
+	} else if calc.weaponType == constant.WeaponTypeClaw2 || (calc.weaponType == constant.WeaponTypeDagger2 && calc.player.job/100 == 4) {
+		primaryStat = luk
+		secondaryStat = str + dex
 	}
 
-	minDmg := minStatMod * watk * 0.01
-	maxDmg := maxStatMod * watk * 0.01
+	if calc.weaponID == 0 || calc.weaponType == constant.WeaponTypeNone {
+		if calc.weaponID != 0 {
+			return DamageRange{Valid: false, Reason: "equipped weapon type is unsupported by validator"}
+		}
 
-	if int(calc.player.level) < int(mob.level) {
-		levelPenalty := (100.0 - float64(int(mob.level)-int(calc.player.level))) / 100.0
-		minDmg *= levelPenalty
-		maxDmg *= levelPenalty
+		if calc.player.job >= 500 && calc.player.job < 600 {
+			attack := math.Min(math.Floor((2.0*float64(calc.player.level)+31.0)/3.0), 31.0)
+			maxDmg := math.Ceil((str*4.2 + dex) * attack / 100.0)
+			return DamageRange{Min: math.Ceil(maxDmg * math.Max(calc.masteryMod, 0.6)), Max: maxDmg, Valid: true}
+		}
+
+		return DamageRange{Min: 1, Max: 1, Valid: true}
 	}
 
-	return minDmg, maxDmg
+	weaponMultiplier, valid := calc.GetWeaponDamageMultiplier(isSwing)
+	if !valid {
+		return DamageRange{Valid: false, Reason: "missing weapon multiplier for equipped weapon"}
+	}
+
+	maxDmg := math.Ceil(((weaponMultiplier * primaryStat) + secondaryStat) * watk / 100.0)
+	minDmg := math.Ceil(((weaponMultiplier * primaryStat * calc.masteryMod) + secondaryStat) * watk / 100.0)
+
+	if calc.attackType == attackMagic {
+		maxDmg = math.Ceil(((weaponMultiplier * intl) + luk) * watk / 100.0)
+		minDmg = math.Ceil((((weaponMultiplier * intl) * calc.masteryMod) + luk) * watk / 100.0)
+	}
+
+	if minDmg < 1 {
+		minDmg = 1
+	}
+	if maxDmg < 1 {
+		maxDmg = 1
+	}
+
+	return DamageRange{Min: minDmg, Max: maxDmg, Valid: true}
 }
 
-func (calc *DamageCalculator) CalculateMagicDamageRange() (float64, float64) {
+func (calc *DamageCalculator) CalculateMagicDamageRange() DamageRange {
 	totalMAD := float64(calc.GetTotalMatk())
-	intl := float64(calc.player.intt)
-	luk := float64(calc.player.luk)
+	intl := float64(calc.GetTotalInt())
+	luk := float64(calc.GetTotalLuk())
 
-	if skill.Skill(calc.skillID) == skill.Heal {
-		numTargets := float64(len(calc.data.attackInfo) + 1)
-		targetMultiplier := 1.5 + 5.0/numTargets
-
-		minDmg := (intl*0.3 + luk) * totalMAD / 1000.0 * targetMultiplier
-		maxDmg := (intl*1.2 + luk) * totalMAD / 1000.0 * targetMultiplier
-
-		return minDmg, maxDmg
+	if totalMAD <= 0 {
+		return DamageRange{Valid: false, Reason: "effective magic attack is zero"}
+	}
+	if calc.skill == nil {
+		return DamageRange{Valid: false, Reason: "missing skill data for magic validation"}
 	}
 
-	minMAD := totalMAD * calc.masteryMod
-	maxMAD := totalMAD
+	if skill.Skill(calc.skillID) == skill.Heal {
+		baseMax := math.Round((intl*4.8 + luk*4.0) * totalMAD / 1000.0)
+		if calc.skill.Hp > 0 {
+			baseMax *= float64(calc.skill.Hp) / 100.0
+		}
+		return DamageRange{Min: math.Ceil(baseMax * 0.5), Max: math.Ceil(baseMax), Valid: true}
+	}
 
-	minDmg := (intl*0.5 + totalMAD*0.058*totalMAD*0.058 + minMAD*3.3) * float64(calc.skill.Damage) * 0.01
-	maxDmg := (intl*0.5 + totalMAD*0.058*totalMAD*0.058 + maxMAD*3.3) * float64(calc.skill.Damage) * 0.01
+	baseMax := math.Ceil((totalMAD*math.Ceil(totalMAD/1000.0)+totalMAD)/30.0) + math.Ceil(intl/200.0)
+	baseMin := math.Ceil(baseMax * calc.masteryMod)
 
-	return minDmg, maxDmg
+	return DamageRange{Min: baseMin, Max: baseMax, Valid: true}
 }
 
 func (calc *DamageCalculator) ApplySkillModifiers(minDmg, maxDmg float64, ampData *ElementAmpData, mob *monster) (float64, float64) {
@@ -618,6 +613,23 @@ func (calc *DamageCalculator) ApplySkillModifiers(minDmg, maxDmg float64, ampDat
 		elemMod := float64(ampData.Magic) / 100.0
 		minDmg *= elemMod
 		maxDmg *= elemMod
+	}
+
+	skillElemMod := calc.GetElementalDamageModifier(mob)
+	if skillElemMod == constant.ElementModifierNullify {
+		return 1, 1
+	}
+	if skillElemMod == constant.ElementModifierOneAndHalf {
+		minDmg *= 1.5
+		maxDmg *= 1.5
+	}
+
+	if calc.UsesSkillDamageMultiplier() {
+		skillMultiplier := float64(calc.skill.Damage) / 100.0
+		if skillMultiplier > 0 {
+			minDmg *= skillMultiplier
+			maxDmg *= skillMultiplier
+		}
 	}
 
 	return minDmg, maxDmg
@@ -837,11 +849,22 @@ func (calc *DamageCalculator) GetCritSkill() (byte, *nx.PlayerSkill) {
 }
 
 func (calc *DamageCalculator) GetTotalWatk() int16 {
-	return calc.player.totalWatk
+	watk := calc.player.totalWatk - calc.player.str/10
+	if watk < 0 {
+		watk = 0
+	}
+	if calc.projectileID != 0 {
+		watk += calc.GetProjectileWatk()
+	}
+	return watk
 }
 
 func (calc *DamageCalculator) GetTotalMatk() int16 {
-	return calc.player.totalMatk
+	matk := calc.player.totalMatk - calc.player.intt/10
+	if matk < 0 {
+		return 0
+	}
+	return matk
 }
 
 func (calc *DamageCalculator) GetTotalAccuracy() int16 {
@@ -876,4 +899,273 @@ func (calc *DamageCalculator) GetTotalInt() int16 {
 
 func (calc *DamageCalculator) GetTotalLuk() int16 {
 	return calc.player.totalLuk
+}
+
+func (calc *DamageCalculator) GetWeaponDamageMultiplier(isSwing bool) (float64, bool) {
+	switch calc.weaponType {
+	case constant.WeaponTypeBow2:
+		return 3.4, true
+	case constant.WeaponTypeCrossbow2:
+		return 3.6, true
+	case constant.WeaponTypeClaw2:
+		return 3.6, true
+	case constant.WeaponTypeSword1H:
+		return 4.0, true
+	case constant.WeaponTypeSword2H:
+		return 4.6, true
+	case constant.WeaponTypeDagger2:
+		if calc.player.job/100 == 4 {
+			return 3.6, true
+		}
+		return 4.0, true
+	case constant.WeaponTypeWand2, constant.WeaponTypeStaff2:
+		return 3.6, true
+	case constant.WeaponTypeAxe1H, constant.WeaponTypeBW1H:
+		if isSwing {
+			return 4.4, true
+		}
+		return 3.2, true
+	case constant.WeaponTypeAxe2H, constant.WeaponTypeBW2H:
+		if isSwing {
+			return 4.8, true
+		}
+		return 3.4, true
+	case constant.WeaponTypeSpear2:
+		if isSwing {
+			return 3.0, true
+		}
+		return 5.0, true
+	case constant.WeaponTypePolearm2:
+		if isSwing {
+			return 5.0, true
+		}
+		return 3.0, true
+	default:
+		return 0, false
+	}
+}
+
+func (calc *DamageCalculator) UsesSkillDamageMultiplier() bool {
+	if calc.skill == nil || calc.skillID == 0 || calc.skill.Damage <= 0 {
+		return false
+	}
+
+	switch skill.Skill(calc.skillID) {
+	case skill.LuckySeven, skill.DragonRoar, skill.SuperDragonRoar, skill.ShadowMeso, skill.ShadowWeb, skill.Heal:
+		return false
+	default:
+		return true
+	}
+}
+
+func (calc *DamageCalculator) CanCriticallyExceedBaseCap() bool {
+	return calc.critSkill != nil
+}
+
+func (calc *DamageCalculator) HasPhysicalOrMagicImmunity(mob *monster) bool {
+	if mob == nil {
+		return false
+	}
+
+	if calc.attackType == attackMagic {
+		return (mob.statBuff & skill.MobStat.MagicImmune) > 0
+	}
+
+	return (mob.statBuff & skill.MobStat.PhysicalImmune) > 0
+}
+
+func (calc *DamageCalculator) LogSuspiciousAttackShape() {
+	expectedTargets, hasTargetLimit := calc.GetExpectedTargetCount()
+	if hasTargetLimit && expectedTargets > 0 && int(calc.data.targets) > expectedTargets {
+		log.Printf(
+			"Suspicious attack target count from player %s (ID: %d): actualTargets=%d, expectedTargets=%d, skill=%d, attackType=%d",
+			calc.player.Name,
+			calc.player.ID,
+			calc.data.targets,
+			expectedTargets,
+			calc.skillID,
+			calc.attackType,
+		)
+	}
+
+	expectedHits, hasHitLimit := calc.GetExpectedHitCount()
+	if !hasHitLimit || expectedHits <= 0 {
+		return
+	}
+
+	for _, info := range calc.data.attackInfo {
+		if len(info.damages) > expectedHits {
+			log.Printf(
+				"Suspicious attack hit count from player %s (ID: %d): actualHits=%d, expectedHits=%d, skill=%d, attackType=%d, target=%d",
+				calc.player.Name,
+				calc.player.ID,
+				len(info.damages),
+				expectedHits,
+				calc.skillID,
+				calc.attackType,
+				info.spawnID,
+			)
+		}
+	}
+}
+
+func (calc *DamageCalculator) GetExpectedHitCount() (int, bool) {
+	if calc.attackType == attackSummon {
+		return 1, true
+	}
+
+	if calc.skillID == 0 {
+		return 1, true
+	}
+	if calc.skill == nil {
+		return 0, false
+	}
+
+	expected := int(calc.skill.AttackCount)
+	if int(calc.skill.BulletCount) > expected {
+		expected = int(calc.skill.BulletCount)
+	}
+	if expected <= 0 {
+		return 0, false
+	}
+	if calc.attackOption&constant.AttackOptionShadowPartner != 0 {
+		expected *= 2
+	}
+
+	return expected, true
+}
+
+func (calc *DamageCalculator) GetExpectedTargetCount() (int, bool) {
+	if calc.attackType == attackSummon {
+		return 1, true
+	}
+	if calc.skillID == 0 {
+		return 1, true
+	}
+	if calc.skill == nil || calc.skill.MobCount <= 0 {
+		return 0, false
+	}
+
+	return int(calc.skill.MobCount), true
+}
+
+func (calc *DamageCalculator) GetElementalDamageModifier(mob *monster) constant.ElementModifier {
+	elemCode := calc.GetAttackElement()
+	if elemCode == elementCodeNone {
+		elemCode = calc.GetActiveChargeElement()
+	}
+	if elemCode == elementCodeNone {
+		return constant.ElementModifierNormal
+	}
+
+	modifier := calc.GetMobElementModifier(mob, elemCode)
+	if modifier == constant.ElementModifierOneAndHalf {
+		return modifier
+	}
+	if modifier == constant.ElementModifierNullify {
+		return modifier
+	}
+	return constant.ElementModifierNormal
+}
+
+func (calc *DamageCalculator) GetAttackElement() byte {
+	switch skill.Skill(calc.skillID) {
+	case skill.FireArrow, skill.Explosion, skill.Inferno, skill.ElementComposition:
+		return elementCodeFire
+	case skill.ColdBeam, skill.IceStrike, skill.Blizzard, skill.ILElementComposition:
+		return elementCodeIce
+	case skill.ThunderBolt, skill.Lightning:
+		return elementCodeLightning
+	case skill.Heal, skill.HolyArrow:
+		return elementCodeHoly
+	case skill.PoisonBreath, skill.PoisonMyst:
+		return elementCodePoison
+	default:
+		return elementCodeNone
+	}
+}
+
+func (calc *DamageCalculator) GetActiveChargeElement() byte {
+	if calc.player.buffs == nil {
+		return elementCodeNone
+	}
+
+	for skillID := range calc.player.buffs.activeSkillLevels {
+		switch skill.Skill(skillID) {
+		case skill.BwFireCharge, skill.SwordFireCharge:
+			return elementCodeFire
+		case skill.BwIceCharge, skill.SwordIceCharge:
+			return elementCodeIce
+		case skill.BwLitCharge, skill.SwordLitCharge:
+			return elementCodeLightning
+		}
+	}
+
+	return elementCodeNone
+}
+
+func (calc *DamageCalculator) GetMobElementModifier(mob *monster, elemCode byte) constant.ElementModifier {
+	if mob == nil {
+		return constant.ElementModifierNormal
+	}
+
+	mobData, err := nx.GetMob(mob.id)
+	if err != nil || mobData.ElemAttr == "" {
+		return constant.ElementModifierNormal
+	}
+
+	return parseMobElementModifier(mobData.ElemAttr, calc.GetElementRune(elemCode))
+}
+
+func parseMobElementModifier(elemAttr string, elemRune byte) constant.ElementModifier {
+	if elemRune == 0 || elemAttr == "" {
+		return constant.ElementModifierNormal
+	}
+
+	for i := 0; i+1 < len(elemAttr); i += 2 {
+		if elemAttr[i] != elemRune {
+			continue
+		}
+
+		switch elemAttr[i+1] {
+		case '1':
+			return constant.ElementModifierNullify
+		case '2':
+			return constant.ElementModifierHalf
+		case '3':
+			return constant.ElementModifierOneAndHalf
+		default:
+			return constant.ElementModifierNormal
+		}
+	}
+
+	return constant.ElementModifierNormal
+}
+
+func (calc *DamageCalculator) GetElementRune(elemCode byte) byte {
+	switch elemCode {
+	case elementCodeFire:
+		return 'F'
+	case elementCodeIce:
+		return 'I'
+	case elementCodeLightning:
+		return 'L'
+	case elementCodeHoly:
+		return 'H'
+	case elementCodePoison:
+		return 'P'
+	default:
+		return 0
+	}
+}
+
+func applyResultTolerance(result *CalcHitResult, multiplier float64) {
+	result.ToleranceMax = math.Ceil(result.MaxDamage * multiplier)
+	if result.ToleranceMax < 1 && result.ClientDamage > 0 && result.MaxDamage > 0 {
+		result.ToleranceMax = 1
+	}
+	result.IsValid = float64(result.ClientDamage) <= result.ToleranceMax
+	if !result.IsValid {
+		result.ValidationReason = "client damage exceeds tolerated cap"
+	}
 }

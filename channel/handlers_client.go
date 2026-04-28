@@ -2785,12 +2785,18 @@ func (server *Server) validateAndApplyCriticals(conn mnet.Client, plr *Player, d
 			}
 
 			data.attackInfo[targetIdx].isCritical[hitIdx] = result.IsCrit
+			if result.ValidationSkipped {
+				continue
+			}
 			if !result.IsValid {
-				maxAllowed := int32(result.MaxDamage * (1.0 + constant.DamageVarianceTolerance))
+				maxAllowed := int32(math.Ceil(result.ToleranceMax))
+				if maxAllowed < 1 && result.ClientDamage > 0 && result.MaxDamage > 0 {
+					maxAllowed = 1
+				}
 				data.attackInfo[targetIdx].damages[hitIdx] = maxAllowed
 
-				log.Printf("Capped excessive damage from player %s (ID: %d): client=%d -> capped=%d, max=%.0f, skill=%d",
-					plr.Name, plr.ID, result.ClientDamage, maxAllowed, result.MaxDamage, data.skillID)
+				log.Printf("Capped excessive damage from player %s (ID: %d): client=%d -> capped=%d, max=%.0f, toleranceMax=%.0f, skill=%d, reason=%s",
+					plr.Name, plr.ID, result.ClientDamage, maxAllowed, result.MaxDamage, result.ToleranceMax, data.skillID, result.ValidationReason)
 
 				if server.ac != nil {
 					server.ac.LogDamageViolation(plr.accountID, result.ClientDamage, int32(result.MaxDamage))
