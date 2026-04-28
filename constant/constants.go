@@ -154,6 +154,15 @@ const (
 	MaxPartySize = 6
 	MaxGuildSize = 255
 
+	StarterMapVisualHatID     int32 = 1002562
+	StarterMapVisualOverallID int32 = 1052081
+	StarterMapVisualShoesID   int32 = 1072181
+
+	StarterMapBeginnerTown int32 = 0
+	StarterMapAmherst      int32 = 1
+	StarterMapSouthperry   int32 = 2
+	StarterMapTutorialExit int32 = 3
+
 	GuildCreateDialogue   byte = 0x02
 	GuildInvite           byte = 0x05
 	GuildAcceptInvite     byte = 0x06

@@ -1393,6 +1393,8 @@ func (server Server) playerTeleportRockOperation(conn mnet.Client, reader mpacke
 }
 
 func (server Server) warpPlayer(plr *Player, dstField *field, dstPortal portal, usedPortal bool) error {
+	hadStarterVisualOverride := isStarterEquipOverrideMap(plr.mapID)
+
 	srcField, ok := server.fields[plr.mapID]
 	if !ok {
 		return fmt.Errorf("Error in map ID %d", plr.mapID)
@@ -1430,6 +1432,10 @@ func (server Server) warpPlayer(plr *Player, dstField *field, dstPortal portal, 
 
 	if err = dstInst.addPlayer(plr); err != nil {
 		return err
+	}
+
+	if hadStarterVisualOverride != isStarterEquipOverrideMap(plr.mapID) {
+		plr.Send(packetInventoryChangeEquip(*plr))
 	}
 
 	if plr.event != nil && plr.event.onMapChangeCallback != nil {

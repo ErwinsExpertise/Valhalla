@@ -42,6 +42,118 @@ type funcKeyMapState struct {
 	Loaded  bool
 }
 
+var starterMapVisualEquipBySlot = map[byte]int32{
+	1: constant.StarterMapVisualHatID,
+	5: constant.StarterMapVisualOverallID,
+	7: constant.StarterMapVisualShoesID,
+}
+
+func isStarterEquipOverrideMap(mapID int32) bool {
+	switch mapID {
+	case constant.StarterMapBeginnerTown,
+		constant.StarterMapAmherst,
+		constant.StarterMapSouthperry,
+		constant.StarterMapTutorialExit:
+		return true
+	default:
+		return false
+	}
+}
+
+func applyStarterMapVisualEquips(mapID int32, visible, masked map[byte]int32) {
+	if !isStarterEquipOverrideMap(mapID) {
+		return
+	}
+
+	for slot, itemID := range starterMapVisualEquipBySlot {
+		if equipped, ok := visible[slot]; ok {
+			masked[slot] = equipped
+		}
+		visible[slot] = itemID
+	}
+}
+
+func starterMapVisualEquipSlot(slotID int16) (byte, bool) {
+	if slotID >= 0 {
+		return 0, false
+	}
+
+	if slotID < -100 {
+		slotID += 100
+	}
+
+	slot := byte(-slotID)
+	_, ok := starterMapVisualEquipBySlot[slot]
+	return slot, ok
+}
+
+func starterMapVisualEquipItem(slot byte) Item {
+	return Item{
+		invID:      constant.InventoryEquip,
+		slotID:     -int16(slot),
+		ID:         starterMapVisualEquipBySlot[slot],
+		amount:     1,
+		expireTime: neverExpire,
+	}
+}
+
+func writeSetFieldEquippedItems(p *mpacket.Packet, plr Player) {
+	if !isStarterEquipOverrideMap(plr.mapID) {
+		for _, it := range plr.equip {
+			if it.slotID < 0 && !it.cash {
+				p.WriteBytes(it.InventoryBytes())
+			}
+		}
+		p.WriteByte(0)
+
+		for _, it := range plr.equip {
+			if it.slotID < 0 && it.cash {
+				p.WriteBytes(it.InventoryBytes())
+			}
+		}
+		p.WriteByte(0)
+		return
+	}
+
+	writtenOverride := make(map[byte]bool, len(starterMapVisualEquipBySlot))
+
+	for _, it := range plr.equip {
+		if it.slotID >= 0 || it.cash {
+			continue
+		}
+
+		if slot, ok := starterMapVisualEquipSlot(it.slotID); ok {
+			if !writtenOverride[slot] {
+				p.WriteBytes(starterMapVisualEquipItem(slot).InventoryBytes())
+				writtenOverride[slot] = true
+			}
+			continue
+		}
+
+		p.WriteBytes(it.InventoryBytes())
+	}
+
+	for slot := range starterMapVisualEquipBySlot {
+		if !writtenOverride[slot] {
+			p.WriteBytes(starterMapVisualEquipItem(slot).InventoryBytes())
+		}
+	}
+	p.WriteByte(0)
+
+	for _, it := range plr.equip {
+		if it.slotID >= 0 || !it.cash {
+			continue
+		}
+
+		if _, ok := starterMapVisualEquipSlot(it.slotID); ok {
+			continue
+		}
+
+		p.WriteBytes(it.InventoryBytes())
+	}
+	p.WriteByte(0)
+}
+
 func createPlayerSkillFromData(ID int32, level byte) (playerSkill, error) {
 	skill, err := nx.GetPlayerSkill(ID)
 	if err != nil {
@@ -1924,6 +2036,8 @@ func (d Player) avatarLookBytes() []byte {
 		}
 	}
 
+	applyStarterMapVisualEquips(d.mapID, visible, masked)
+
 	for slot := byte(1); slot <= 29; slot++ {
 		if itemID, ok := visible[slot]; ok {
 			pkt.WriteByte(slot)
@@ -3668,19 +3782,7 @@ func writeSetFieldSlotSizes(p *mpacket.Packet, plr *Player) {
 }
 
 func writeSetFieldInventory(p *mpacket.Packet, plr Player) {
-	for _, it := range plr.equip {
-		if it.slotID < 0 && !it.cash {
-			p.WriteBytes(it.InventoryBytes())
-		}
-	}
-	p.WriteByte(0)
-
-	for _, it := range plr.equip {
-		if it.slotID < 0 && it.cash {
-			p.WriteBytes(it.InventoryBytes())
-		}
-	}
-	p.WriteByte(0)
+	writeSetFieldEquippedItems(p, plr)
 
 	writeSetFieldInventoryTab(p, plr.equip)
 	writeSetFieldInventoryTab(p, plr.use)
