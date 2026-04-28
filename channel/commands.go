@@ -932,6 +932,7 @@ func (server *Server) gmCommand(conn mnet.Client, msg string) {
 		var mapName string
 		var id int32
 		var playerName string
+		var ok bool
 
 		if len(command) == 2 {
 			val, err = strconv.Atoi(command[1])
@@ -940,10 +941,17 @@ func (server *Server) gmCommand(conn mnet.Client, msg string) {
 			playerName = command[1]
 			val, err = strconv.Atoi(command[2])
 			mapName = command[2]
+		} else {
+			conn.Send(packetMessageRedText("Command structure is /warp [player] <mapname | mapid>"))
+			return
 		}
 
 		if err != nil {
-			id = convertMapNameToID(mapName)
+			id, ok = convertMapNameToID(mapName)
+			if !ok {
+				conn.Send(packetMessageRedText("Unknown map destination: " + mapName))
+				return
+			}
 		} else {
 			id = int32(val)
 		}
@@ -1791,57 +1799,71 @@ func (server *Server) gmCommand(conn mnet.Client, msg string) {
 	}
 }
 
-func convertMapNameToID(name string) int32 {
-	switch name {
-	// Maple island
-	case "amherst":
-		return 1010000
-	case "southperry":
-		return 60000
-	// Victoria island
-	case "lith":
-		return 104000000
-	case "henesys":
-		return 100000000
-	case "kerning":
-		return 103000000
-	case "perion":
-		return 102000000
-	case "ellinia":
-		return 101000000
-	case "sleepy":
-		return 105040300
-	case "gm":
-		return 180000000
-	// Ossyria
-	case "orbis":
-		return 200000000
-	case "elnath":
-		return 211000000
-	case "ludi":
-		return 220000000
-	case "omega":
-		return 221000000
-	case "aqua":
-		return 230000000
-	// Misc
-	case "balrog":
-		return 105090900
-	case "guild":
-		return 200000301
-	case "pap":
-		return constant.MapBossPapulatus
-	case "pianus":
-		return constant.MapBossPianus
-	case "zakum":
-		return constant.MapBossZakum
-	case "kerningpq":
-		return constant.MapKerningPQ
-	case "ludipq":
-		return constant.MapLudiPQ
-	default:
-		return 180000000
-	}
+var warpDestinationByName = map[string]int32{
+	// Maple Island / Maple Road
+	"amherst":    1010000,
+	"southperry": 60000,
+	"sp":         60000,
+
+	// Victoria Island
+	"lith":        104000000,
+	"lithharbor":  104000000,
+	"lithharbour": 104000000,
+	"henesys":     100000000,
+	"hene":        100000000,
+	"ellinia":     101000000,
+	"elli":        101000000,
+	"perion":      102000000,
+	"kerning":     103000000,
+	"kerningcity": 103000000,
+	"kc":          103000000,
+	"sleepy":      105040300,
+	"sleepywood":  105040300,
+
+	// Ossyria / world travel towns
+	"orbis":          200000000,
+	"elnath":         211000000,
+	"elnathtown":     211000000,
+	"ludi":           220000000,
+	"ludibrium":      220000000,
+	"omega":          221000000,
+	"omegasector":    221000000,
+	"kft":            222000000,
+	"koreanfolk":     222000000,
+	"koreanfolktown": 222000000,
+	"aqua":           230000000,
+	"aquarium":       230000000,
+	"aquaroad":       230000000,
+	"mulung":         250000000,
+	"herbtown":       251000000,
+	"nlc":            600000000,
+	"newleafcity":    600000000,
+	"zipangu":        800000000,
+	"mushroomshrine": 800000000,
+	"amoria":         680000000,
+
+	// Misc existing destinations
+	"gm":        180000000,
+	"balrog":    105090900,
+	"guild":     200000301,
+	"pap":       constant.MapBossPapulatus,
+	"pianus":    constant.MapBossPianus,
+	"zakum":     constant.MapBossZakum,
+	"kerningpq": constant.MapKerningPQ,
+	"ludipq":    constant.MapLudiPQ,
+}
+
+func convertMapNameToID(name string) (int32, bool) {
+	id, ok := warpDestinationByName[normalizeWarpDestination(name)]
+	return id, ok
+}
+
+func normalizeWarpDestination(name string) string {
+	name = strings.ToLower(strings.TrimSpace(name))
+	name = strings.ReplaceAll(name, " ", "")
+	name = strings.ReplaceAll(name, "_", "")
+	name = strings.ReplaceAll(name, "-", "")
+	return name
 }
 
 func convertJobNameToID(name string) int16 {
